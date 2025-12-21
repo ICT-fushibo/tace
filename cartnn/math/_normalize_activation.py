@@ -20,6 +20,7 @@ def moment(f, n, dtype=None, device=None):
 
 @compile_mode("trace")
 class normalize2mom(torch.nn.Module):
+    """Ensure RMS = 1"""
     _is_id: bool
     cst: float
 

@@ -8,6 +8,7 @@ import argparse
 import time
 from typing import Dict
 
+
 import ase.io
 from tqdm import tqdm
 import torch
@@ -15,7 +16,8 @@ from torch import Tensor
 from torch_geometric.loader import DataLoader
 from e3nn.util.jit import compile
 
-from ..lightning.lit_model import LightningWrapperModel
+
+from ..lightning import load_tace
 from ..dataset.element import TorchElement
 from ..dataset.graph import from_atoms
 from ..utils.metrics import build_metrics, update_metrics
@@ -68,18 +70,7 @@ def main():
     if args.test == 1:
         check = True
 
-    # Load model
-    if args.model.endswith(".ckpt"):
-        model = LightningWrapperModel.load_from_checkpoint(
-            args.model,
-            map_location=args.device,
-            strict=True,
-            use_ema=args.ema,
-        )
-    elif args.model.endswith(".pt") or args.model.endswith(".pth"):
-        model = torch.load(args.model, weights_only=False, map_location=args.device)
-    else:
-        raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
+    model =load_tace(args.model, args.device, strict=True, use_ema=args.ema)
     max_neighbors = model.max_neighbors.item() if hasattr(model, "max_neighbors") else None
     cutoff = model.readout_fn.cutoff.item()
     atomic_numbers = model.readout_fn.atomic_numbers.cpu().tolist()

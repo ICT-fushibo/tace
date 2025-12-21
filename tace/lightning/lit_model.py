@@ -3,7 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import yaml
 import logging
+from pathlib import Path
 from collections import Counter
 from typing import Optional, Dict, Any
 
@@ -15,19 +17,19 @@ from torchmetrics import MetricCollection
 
 from .select_model import select_model
 from ..dataset.quantity import get_target_property, get_embedding_property
-from ..utils.ema import ExponentialMovingAverage
 from ..utils.metrics import build_metrics, update_metrics
-from .. utils._global import _DTYPE
+from .. utils._global import DTYPE
+
+from .lora import inject_lora_into_model
 
 # === LightningModule wrap ===
 class LightningWrapperModel(L.LightningModule):
-    def __init__(self, cfg: Dict, statistics, target_property, model=None):
+    def __init__(self, cfg: Dict, statistics, target_property: list[str], model: torch.nn.Module):
         super().__init__()
         self.cfg = cfg
         self.statistics = statistics
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
         self.save_hyperparameters(ignore=["model"])
-        self.model = model
         self.loss_fn = instantiate(cfg["loss"])  # TODO for xzm
         self.loss_property = target_property
         synth_metric = cfg.get('synth_metric', None)
@@ -51,7 +53,10 @@ class LightningWrapperModel(L.LightningModule):
             self.num_test_sets = len(test_sets)
             for i in range(self.num_test_sets):
                 self._create_metrics(f"test_{i}")
-        self.force_dtype = _DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
+        self.force_dtype = DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
+        self.model = model
+        self.init_finetune()
+ 
 
     def setup(self, stage: Optional[str] = None):
         self.sync_dist = self.trainer.num_devices > 1
@@ -204,13 +209,62 @@ class LightningWrapperModel(L.LightningModule):
                 },
             }
 
+    def init_finetune(self):
+        # === check ===
+        yaml_path = Path("finetune_config.yaml")
+        if not yaml_path.exists():
+            logging.warning(f"{yaml_path} not found, skipping parameter freezing and lora.")
+            return
+
+        try:
+            finetune_cfg = yaml.safe_load(yaml_path.read_text())
+        except Exception as e:
+            logging.error(f"Failed to read {yaml_path}: {e}")
+            return
+        
+
+        # === init ===
+        strategy = finetune_cfg['strategy']
+        atomic_numbers = finetune_cfg['atomic_numbers']
+
+        if atomic_numbers is not None:
+            assert isinstance(atomic_numbers, list), 'atomic_numbers must be a list'
+            atomic_numbers = sorted(atomic_numbers)
+            raise NotImplementedError(
+                "The functionality for extracting weights and converting them into a specified element model "
+                "has not been implemented yet."
+            )
+        
+        if strategy == 'freeze':
+            name_to_param = dict(self.model.named_parameters())
+            for name, flag in finetune_cfg.items():
+                if name not in name_to_param:
+                    logging.warning(f"Parameter '{name}' not found in self.model.")
+                    continue
+                param = name_to_param[name]
+                param.requires_grad = not bool(flag)
+                logging.info('Finetune strategy = freeze')
+        elif strategy == 'lora':
+            # raise NotImplementedError(
+            #     "LoRA has not been implemented yet."
+            # )
+            for name, param in self.model.named_parameters():
+                param.requires_grad = False
+            inject_lora_into_model(self.model, finetune_cfg['lora'])
+            logging.info('Finetune strategy = lora')
+        else:
+            raise ValueError(
+                f'{strategy} not in allow strategy {['lora', 'freeze']}'
+            )
+
+
     @classmethod
     def load_from_checkpoint(
         cls,
         ckpt_path: str,
         map_location: str = "cpu",
         strict: Optional[bool] = True,
-        use_ema: int = 1,
+        use_ema: int | bool = 1,
         **kwargs: Any,
     ) -> Any:
 
@@ -240,16 +294,32 @@ class LightningWrapperModel(L.LightningModule):
         }
         model.load_state_dict(filtered_state_dict, strict=strict)
 
-        if use_ema == 1 and "ema_state_dict" in checkpoint:
-            ema = ExponentialMovingAverage(
-                [p for p in model.parameters() if p.requires_grad],
-                decay=checkpoint["ema_state_dict"]["decay"],
-                use_num_updates=("num_updates" in checkpoint["ema_state_dict"]),
-            )
-            ema.load_state_dict(checkpoint["ema_state_dict"])
-            ema.copy_to([p for p in model.parameters() if p.requires_grad])
+        # === EMA ===
+        if bool(use_ema) and "ema_state_dict" in checkpoint:
+            ema_params = checkpoint['ema_state_dict']['shadow_params']
+            if len(ema_params) == len([p for p in model.parameters() if p.requires_grad]):
+                idx = 0
+                for name, _ in model.named_parameters():
+                    filtered_state_dict[name] = ema_params[idx]
+                    idx += 1
+            else:
+                yaml_path = Path("finetune_config.yaml")
+                if yaml_path.exists():
+                    freeze_cfg = yaml.safe_load(yaml_path.read_text())['freeze']
+                    idx = 0
+                    for name, _ in model.named_parameters():
+                        if not freeze_cfg[name]: # not freezed params
+                            filtered_state_dict[name] = ema_params[idx]
+                            idx += 1
+                else:
+                    raise RuntimeError(
+                        "You used tace_param.yaml to freeze a portion of the parameters. "
+                        "When restoring the model from a ckpt file and attempting to use EMA parameters, "
+                        "you must also provide the same tace_param.yaml in the current directory."
+                    )
+            model.load_state_dict(filtered_state_dict, strict=strict)
 
-        return model
+        return model.to(map_location)
 
 
 def finetune(cfg: Dict) -> torch.nn.Module:
@@ -266,8 +336,51 @@ def finetune(cfg: Dict) -> torch.nn.Module:
         )
     elif ckpt_path.endswith(".pt") or ckpt_path.endswith(".pth"):
         MODEL = torch.load(ckpt_path, weights_only=False, map_location="cpu")
+        precision = cfg['trainer']['precision']
+        if precision == 32:
+            MODEL.float()
+        else:
+            MODEL.double()
     else:
         raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
-
     logging.info(f"Load model for Fine-tunning")
+    
     return MODEL
+
+def load_tace(
+    model: str | Path | torch.nn.Module,
+    device: Optional[str | torch.device] = None,
+    strict: Optional[bool] = True,
+    use_ema: bool = True,
+    # backend: str = 'torch',
+    **kwargs: Any,
+):
+    device = device or torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
+    if isinstance(model, str | Path):
+        model_path = str(model)
+        if model_path.endswith(".ckpt"):
+            model = LightningWrapperModel.load_from_checkpoint(
+                model_path,
+                map_location=device,
+                strict=strict,
+                use_ema=use_ema,
+                **kwargs,
+            )
+        elif model_path.endswith(".pt") or model_path.endswith(".pth"):
+            model = torch.load(
+                model_path, 
+                weights_only=False, 
+                # strict=strict, 
+                map_location=device,
+                **kwargs,
+            )
+        else:
+            raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
+    elif isinstance(torch.nn.Module):
+        model = model.to(device)
+    else:
+        raise TypeError("Model must be a path or torch.nn.Module")
+
+    return model

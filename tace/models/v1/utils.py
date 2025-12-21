@@ -3,178 +3,18 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import itertools
-from itertools import combinations
 from typing import Dict, Tuple, Optional, NamedTuple
 
 
 import torch
-from torch import Tensor
 
 
 from cartnn.util import scatter_sum
-
-STR = list("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-EINSUM_STR = list("defghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-RADIAL_BASIS = {
-    "radial_basis": "j0",
-    "num_radial_basis": 8,
-    "distance_transform": None,
-    "polynomial_cutoff": 5,
-    "order": 0,
-    "trainable": False,
-    "apply_cutoff": True,
-}
-
-
-ANGULAR_BASIS = {
-    "type": "ictd",
-    "norm": True,
-}
-
-
-RADIAL_MLP = {
-    "hidden": [
-        [64, 64, 64],
-        [64, 64, 64],
-    ],
-    "act": "silu",
-    "bias": False,
-    "enable_layer_norm": False,
-}
-
-
-INTER = {
-    "max_paths": 1,
-    "restriction": [None, None],
-    "allow_nosym": True,
-    "kernel": False,
-    "residual": False,
-}
-
-
-PROD = {
-    "restriction": None,
-    "correlation": 3,
-    "allow_nosym": True,
-    "element": True,
-    "coupled": True,
-    "kernel": False,
-    "add_source_target_embedding": False,
-    "normalizer": {
-      "type": "fixed",
-      "hidden": [64],
-      "act_1": 'silu',
-      "act_2": 'tanh',
-      "bias": False,
-      "scale_shift_trainable": True,
-    }
-
-}
-
-
-ICTD = {"weight": "max"}
-
-
-READOUT_MLP = {"hidden": [16], "act": "silu", "bias": False}
-
-
-SCALE_SHIFT = {
-    "scale_type": "rms_forces",
-    "shift_type": "mean_delta_energy_per_atom",
-    "scale_trainable": False,
-    "shift_trainable": False,
-    "scale_dict": "auto",
-    "shift_dict": "auto",
-}
-SHORT_RANGE = {
-    'enable_zbl': False
-}
-
-LONG_RANGE = {
-    'les': 
-        {
-            'enable_les': False,
-            'les_arguments': None,
-        },
-}
-
-
-def expand_dims_to(T: Tensor, n_dim: int, dim: int = -1) -> Tensor:
-    '''jit-safe'''
-    while T.ndim < n_dim:
-        T = T.unsqueeze(dim)
-    return T
-
-
-def nonsym_tensor_to_sym(T: Tensor) -> Tensor:
-
-    rank = T.ndim - 2
-    perm_indices = list(range(-rank, 0))
-    perms = list(itertools.permutations(perm_indices))
-
-    sym_Ts = []
-    for perm in perms:
-        full_perm = list(range(T.ndim - rank)) + [T.ndim + i for i in perm]
-        permuted_T = T.permute(full_perm)
-        sym_Ts.append(permuted_T)
-
-    sym_T = torch.stack(sym_Ts, dim=0).mean(dim=0)
-    return sym_T
-
-
-def delta_tensor(i: int, j: int, ndim: int, device=None, dtype=None) -> Tensor:
-
-    delta = torch.eye(3, device=device, dtype=dtype)
-    for _ in range(ndim - 2):
-        delta = delta.unsqueeze(0)
-    perm = list(range(ndim))
-    perm[i], perm[-2] = perm[-2], perm[i]
-    perm[j], perm[-1] = perm[-1], perm[j]
-    delta = delta.permute(*perm)
-    return delta
-
-
-def sym_tensor_to_traceless(T: Tensor) -> Tensor:
-    """
-    For r >= 4, numerical errors can be significant; full tracelessness requires using float64
-
-    Compute the first-order, second-order, ..., up to floor(n/2) traces step by step,
-    and subtract their corresponding contributions to obtain a fully symmetric traceless tensor
-    """
-
-    B, C = T.shape[:2]
-    spatial_shape = T.shape[2:]
-
-    T = T.view(B * C, *spatial_shape)
-
-    ndim = T.ndim
-    n = ndim - 1
-
-    result = T.clone()
-    base_combs = list(combinations(range(-n, 0), 2))
-    for k in range(1, n // 2 + 1):
-        denom = 1.0
-        for j in range(2, k + 2):
-            denom *= 3 + 2 * (n - j)
-        coeff = ((-1) ** k) / denom
-        corr = torch.zeros_like(T)
-        for pairs in combinations(base_combs, k):
-            idxs = [idx for pair in pairs for idx in pair]
-            if len(set(idxs)) < 2 * k:
-                continue
-            delta = torch.ones_like(T)
-            for i, j in pairs:
-                delta = delta * delta_tensor(i, j, ndim, device=T.device, dtype=T.dtype)
-            trace = torch.sum(T * delta, dim=tuple(idxs), keepdim=True)
-            corr += delta * trace
-        result = result + coeff * corr
-    return result.view(B, C, *spatial_shape)
+from cartnn.o3 import expand_dims_to
 
 
 def add_to_left(
-    T1: Dict[int, Tensor], T2: Dict[int, Tensor]
+    T1: Dict[int, torch.Tensor], T2: Dict[int, torch.Tensor]
 ) -> Dict[int, torch.Tensor]:
 
     for k in T2:
@@ -185,7 +25,9 @@ def add_to_left(
     return T1
 
 
-def add_to_right(T1: Dict[int, Tensor], T2: Dict[int, Tensor]) -> Dict[int, Tensor]:
+def add_to_right(
+        T1: Dict[int, torch.Tensor], T2: Dict[int, torch.Tensor]
+    ) -> Dict[int, torch.Tensor]:
 
     for k in T1:
         if k in T2:
@@ -195,7 +37,7 @@ def add_to_right(T1: Dict[int, Tensor], T2: Dict[int, Tensor]) -> Dict[int, Tens
     return T2
 
 
-def satisfy(r_1:int, r_2: int, restriction, r_o: Optional[int] = None, tensor_product_only: bool = False):
+def satisfy(r_1:int, r_2: int, restriction, r_o: Optional[int] = None):
     r_1_r_2 = None; bool_1 = True
     r_o_r_1 = None; bool_2 = True
 
@@ -225,16 +67,16 @@ def satisfy(r_1:int, r_2: int, restriction, r_o: Optional[int] = None, tensor_pr
 
 
 def compute_fixed_charge_dipole(
-    charges: Tensor,
-    positions: Tensor,
-    batch: Tensor,
+    charges: torch.Tensor,
+    positions: torch.Tensor,
+    batch: torch.Tensor,
     num_graphs: int,
-) -> Tensor:
+) -> torch.Tensor:
     mu = positions * charges.unsqueeze(-1) * 4.8032047  # e·Å to Debye
     return scatter_sum(src=mu, index=batch.unsqueeze(-1), dim=0, dim_size=num_graphs)
 
 
-def torch_full_3x3_to_voigt_6_stress(stress_tensor: Tensor) -> Tensor:
+def torch_full_3x3_to_voigt_6_stress(stress_tensor: torch.Tensor) -> torch.Tensor:
     """
     Convert stress tensor [batch, 3, 3] -> [batch, 6] in Voigt notation,
     matching ASE's full_3x3_to_voigt_6_stress.
@@ -254,7 +96,7 @@ def torch_full_3x3_to_voigt_6_stress(stress_tensor: Tensor) -> Tensor:
     return s_voigt
 
 
-def vec_to_skew(v: Tensor) -> Tensor:
+def vec_to_skew(v: torch.Tensor) -> torch.Tensor:
     """ TODO, maybe not (1,1,1) to (2,1,1), should use basis change
     v: (B, 3) tensor
     return: (B, 3, 3) skew-symmetric matrix
@@ -270,7 +112,9 @@ def vec_to_skew(v: Tensor) -> Tensor:
     return skew
 
 
-def select_corresponding_level_for_scalar(x: Tensor, node_level: Tensor, num_levels: int) -> Tensor:
+def select_corresponding_level_for_scalar(
+        x: torch.Tensor, node_level: torch.Tensor, num_levels: int
+    ) -> torch.Tensor:
     '''
     For rank-0 tensor, 
     '''
@@ -282,7 +126,9 @@ def select_corresponding_level_for_scalar(x: Tensor, node_level: Tensor, num_lev
     mask = mask.reshape((B, C_LEVELS))
     return x * mask
 
-def select_corresponding_level_for_tensor(x: Tensor, node_level: Tensor, num_levels: int) -> Tensor:
+def select_corresponding_level_for_tensor(
+        x: torch.Tensor, node_level: torch.Tensor, num_levels: int
+    ) -> torch.Tensor:
     '''
     For rank>0 tensor, 
     '''
@@ -297,16 +143,16 @@ def select_corresponding_level_for_tensor(x: Tensor, node_level: Tensor, num_lev
 
 class Graph(NamedTuple):
     lmp: bool
-    lmp_data: Optional[Tensor]
+    lmp_data: Optional[torch.Tensor]
     lmp_natoms: Tuple[int, int]
     num_graphs: int
-    displacement: Optional[Tensor]
-    positions: Tensor
-    edge_vector: Tensor
-    edge_length: Tensor
-    lattice: Tensor
-    node_level: Tensor
-    num_atoms_arange: Tensor
+    displacement: Optional[torch.Tensor]
+    positions: torch.Tensor
+    edge_vector: torch.Tensor
+    edge_length: torch.Tensor
+    lattice: torch.Tensor
+    node_level: torch.Tensor
+    num_atoms_arange: torch.Tensor
 
 
 class LAMMPS_MP(torch.autograd.Function):
@@ -327,7 +173,7 @@ class LAMMPS_MP(torch.autograd.Function):
         return gout, None
     
 
-def dict2flatten(max_r: int, t: Dict[int, Tensor]):
+def dict2flatten(max_r: int, t: Dict[int, torch.Tensor]):
     tmp = []
     B, C = t[0].shape[:2]
     for k in sorted(t.keys()):
@@ -336,7 +182,7 @@ def dict2flatten(max_r: int, t: Dict[int, Tensor]):
     return torch.cat(tmp, dim=-1).reshape(B, -1)
 
 
-def flatten2dict(max_r: int, t: Tensor, C: int) -> Dict[int, Tensor]:
+def flatten2dict(max_r: int, t: torch.Tensor, C: int) -> Dict[int, torch.Tensor]:
     B = t.size(0)
     ndim = (3 ** (max_r + 1) - 1) // 2
     t = t.reshape(B, C, ndim)  

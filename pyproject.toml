@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TACE"
-version = "0.0.7"
+version = "0.0.8"
 description = "TACE - Cartesian Tensor based E(3) equivariant interatomic potentials."
 authors = [{ name = "Zemin Xu", email = "xvzemin@smail.nju.edu.cn" }]
 
@@ -24,6 +24,7 @@ dependencies = [
     "configargparse",
     "lmdb",
     "pandas",
+    "torch-sim-atomistic" # interface with torch_sim
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,10 @@ dependencies = [
 lammps = [
     "cython",
     "cupy-cuda12x",
+]
+
+d3 = [
+    "torch_dftd",
 ]
 
 dev = [
@@ -76,9 +81,10 @@ tace-eval = "tace.scripts.eval:main"
 tace-clean = "tace.scripts.clean:main"
 tace-split = "tace.scripts.split:main"
 tace-export = "tace.scripts.export:main"
-tace-graph = "tace.scripts.xyz2lmdb:main"
-tace-convert = "tace.scripts.convert:main"
-tace-utils = "tace.scripts.utils:main"
+tace-graph = "tace.scripts.graph:main"
+tace-update = "tace.scripts.update:main"
+# tace-convert = "tace.scripts.convert:main"
+tace-finetune_config = "tace.scripts.finetune_config:main"
 
 [tool.setuptools.packages.find]
 include = ["tace", "tace.*", "cartnn", "cartnn.*"]

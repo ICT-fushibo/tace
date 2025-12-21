@@ -11,11 +11,11 @@ from .experimental import FullTensorProductv2
 from ._linear import Linear
 from ._norm import Norm
 from ._ictd import ICTD
-from ._cartesian_harmonics import CartesianHarmonics
+from ._cartesian_harmonics import CartesianHarmonics, LegacyCartesianHarmonics1, LegacyCartesianHarmonics2
 from ._spherical_harmonics import SphericalHarmonics
 from ._wigner import wigner_3j
 from ._zemin import cartesian_3j
-from ._change_of_basis import ChangeOfBasis
+from .utils import expand_dims_to
 
 __all__ = [
     "Irrep",
@@ -30,10 +30,12 @@ __all__ = [
     "TensorSquare",
     "SphericalHarmonics",
     "CartesianHarmonics",
+    "LegacyCartesianHarmonics1",
+    "LegacyCartesianHarmonics2",
     "Linear",
     "Norm",
     "ICTD",
     "wigner_3j",
     "cartesian_3j",
-    "ChangeOfBasis",
+    "expand_dims_to"
 ]

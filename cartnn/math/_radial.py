@@ -656,9 +656,7 @@ class ZBLBasis(torch.nn.Module):
     ) -> torch.Tensor:
         source = edge_index[0]
         target = edge_index[1]
-        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(
-            -1
-        )
+        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(-1)
         Z_u = node_atomic_numbers[source]
         Z_v = node_atomic_numbers[target]
         a = (

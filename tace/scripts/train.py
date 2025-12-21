@@ -73,8 +73,7 @@ def main(cfg: DictConfig):
         keySpecification, cfg.get('dataset', {}).get('keys', KEYS)
     )
 
-    num_levels = len(cfg['model']['config'].get("mixed_precision", {}).get("level_names", ['default']))
-
+    num_levels = cfg['model']['config'].get("num_levels", 1)
     statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
     if all(yaml_file.exists() for yaml_file in statistics_yaml):
         statistics = []
@@ -86,9 +85,9 @@ def main(cfg: DictConfig):
             logging.info(f"Using statistics_yaml from '{str(yaml_file)}' for level {idx}")
     else:
         logging.info(f"Computing statistics information from scratch")
-        statistics = compute_statistics(cfg, target_property, keySpecification, embedding_property, num_levels)
+        statistics = compute_statistics(cfg, target_property, embedding_property, keySpecification, num_levels)
 
-    datamodule = build_datamodule(cfg, statistics, target_property, keySpecification, embedding_property, num_levels)
+    datamodule = build_datamodule(cfg, target_property,  embedding_property, keySpecification, num_levels, statistics)
 
     # Model trained from scratch or from fine-tuning
     if cfg.get("finetune_from_model", None) is not None:
@@ -98,6 +97,7 @@ def main(cfg: DictConfig):
 
     if cfg.get('resume_from_model', None) is None:
         log_parameters(model)
+        
 
     train_arguments = {
         "cfg": cfg,

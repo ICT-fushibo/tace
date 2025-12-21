@@ -30,4 +30,5 @@ and `Hydra <https://hydra.cc/>`_.
    training.rst
    ase.rst
    lmp.rst
+   torchSim.rst
    scripts.rst

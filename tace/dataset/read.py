@@ -198,8 +198,8 @@ HOW_TO_READ = {"ase": ase_io_read, "ase_db": ase_db_connect, "lmdb": fair_lmdb}
 def _read(
     cfg: Dict,
     target_property: List[str],
-    keyspec: KeyboardInterrupt,
     embedding_property: List[str],
+    keyspec: KeyboardInterrupt,
     in_datamodule: bool = False,
 ) -> ThreeDataset:
     file_type = cfg.get("dataset", {}).get("type", "ase")

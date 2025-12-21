@@ -20,6 +20,7 @@ class WrapModelV1(torch.nn.Module):
     def __init__(self, readout_fn: torch.nn.Module):
         super().__init__()
         # === init and compute flag ===
+        self.level = 0
         target = set(readout_fn.target_property)
         self.target_property = readout_fn.target_property
         self.embedding_property = readout_fn.embedding_property
@@ -358,8 +359,8 @@ class WrapModelV1(torch.nn.Module):
         node_level = (
             data['level'][data['batch']]
             if "level" in data
-            else torch.zeros_like(data['batch'], dtype=torch.int64)
-        ) # multi-fidelity and multi-head
+            else torch.full_like(data['batch'], self.level, dtype=torch.int64)
+        )  # multi-fidelity and multi-head
 
         if self.lmp:
             for p in self.target_property:

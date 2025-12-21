@@ -5,7 +5,7 @@
 '''
 This interface is general. As long as you have successfully compiled LAMMPS 
 with any one of the models ``TACE, MACE, NequIP, or Allegro ...``
-then all MLIPs that have an interface with LAMMPS-IAP can be used.
+then all MLIPs that have an interface with LAMMPS-MLIAP can be used.
 '''
 
 
@@ -16,9 +16,10 @@ import torch
 from torch import Tensor
 from ase.data import chemical_symbols
 from e3nn.util.jit import compile_mode
-
-
 from lammps.mliap.mliap_unified_abc import MLIAPUnified
+
+
+from ...lightning import load_tace
 
 # TODO check device 
 class EdgeForcesWrapper(torch.nn.Module):
@@ -52,10 +53,11 @@ class EdgeForcesWrapper(torch.nn.Module):
         return total_energy, node_energy, pair_forces
 
 
-class LAMMPS_MLIAP_TACE(MLIAPUnified):
+class TACE_LAMMPS_MLIAP(MLIAPUnified):
     '''Not test for cpu running, only cuda devices are tested by author'''
     def __init__(self, model, **kwargs):
         super().__init__()
+        model = load_tace(model)
         self.model = EdgeForcesWrapper(model, **kwargs)
         self.element_types = [chemical_symbols[s] for s in model.readout_fn.atomic_numbers]
         self.num_species = len(self.element_types)

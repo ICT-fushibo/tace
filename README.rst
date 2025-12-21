@@ -74,9 +74,12 @@ TACE currently supports the following plugin:
 Interfaces
 ----------
 
-- ✅ Supports integration with **LAMMPS** (`LAMMPS-MLIAP`).
+- ✅ Supports integration with **TorchSim**.
 
-- ✅ Supports integration with **ASE Calculator** (`ase.Calculator`).
+- ✅ Supports integration with **LAMMPS-ML-IAP**.
+
+- ✅ Supports integration with **ASE Calculator**.
+
 
 
 Citing
@@ -94,6 +97,20 @@ If you use TACE, please cite our papers:
          archivePrefix={arXiv},
          primaryClass={stat.ML},
          url={https://arxiv.org/abs/2509.14961}, 
+   }
+
+If you use Cartesian-3j or Cartesian-nj, please cite our papers:
+
+.. code-block:: bibtex
+
+   @misc{Cartesian-nj,
+         title={Cartesian-nj: Extending e3nn to Irreducible Cartesian Tensor Product and Contracion}, 
+         author={Zemin Xu and Chenyu Wu and Wenbo Xie and Daiqian Xie and P. Hu},
+         year={2025},
+         eprint={2512.16882},
+         archivePrefix={arXiv},
+         primaryClass={physics.chem-ph},
+         url={https://arxiv.org/abs/2512.16882}, 
    }
 
 Contact

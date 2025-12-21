@@ -1,3 +1,3 @@
-from .calculator import TACECalculator
+from .calculator import TACEAseCalc, add_dispersion
 
-__all__ = ["TACECalculator"]
+__all__ = ["TACEAseCalc", "add_dispersion"]

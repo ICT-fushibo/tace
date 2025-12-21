@@ -8,25 +8,40 @@ import packaging
 
 import torch
 
-_BOOL = {
+BOOL = {
     0: False,
     1: True,
 }
 
-_DTYPE = {
+
+DTYPE = {
     None: None,
     16: torch.float16,
     32: torch.float32,
     64: torch.float64,
-}
-
-DTYPE = {
-    None: None,
+    "fp16": torch.float16,
+    "fp32": torch.float32,
+    "fp64": torch.float64,
     "float16": torch.float16,
     "float32": torch.float32,
     "float64": torch.float64,
+    torch.float16: torch.float16,
+    torch.float32: torch.float32,
+    torch.float64: torch.float64,
 }
 
+
+num_gpus = 128
+DEVICE = {
+    None: None,
+    "cpu": torch.device("cpu"),
+    "cuda": torch.device("cuda"),
+    torch.device("cpu"): torch.device("cpu"),
+    torch.device("cuda"): torch.device("cuda"),
+    **{i: torch.device(f"cuda:{i}") for i in range(num_gpus)},
+    **{f"cuda:{i}": torch.device(f"cuda:{i}") for i in range(num_gpus)},
+    **{torch.device(f"cuda:{i}"): torch.device(f"cuda:{i}") for i in range(num_gpus)},
+}
 
 _TORCH_VERSION = packaging.version.parse(torch.__version__)
 _TORCH_GE_2_9 = _TORCH_VERSION >= packaging.version.parse("2.9")

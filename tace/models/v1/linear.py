@@ -3,6 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import string
 from math import sqrt
 from typing import Dict, List, Optional
 
@@ -11,43 +12,53 @@ import torch
 from torch import Tensor, nn
 
 
-from .utils import expand_dims_to
+BATCH_ = 100
 
 
-class Linear(nn.Module):
+class Linear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
         out_dim: int,
         bias: bool = False,
-        atomic_numbers: List[int] = None,
+        l: int = -1,
+        **kwargs,
     ) -> None:
         super().__init__()
+        assert l >= 0
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.alpha = 1.0 / sqrt(in_dim)
+        self.l = l
         self.weight = torch.nn.Parameter(torch.empty((in_dim, out_dim)))
         torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
-        if bias:
+        if bias and l == 0:
             self.bias = torch.nn.Parameter(torch.zeros(out_dim))
         else:
             self.register_parameter("bias", None)
 
-    def forward(self, T: Tensor, node_attrs: Optional[Tensor] = None) -> Tensor:
-        B = T.size(0)
-        C = T.size(1)
-        REST = T.size()[2:]
-        if B == 0:
-            return T.new_empty((B, self.out_dim) + REST) # for isolated atoms 
-        T = T.contiguous().reshape(B, C, -1).transpose(1, 2)
-        T = T @ self.weight * self.alpha
-        if self.bias is not None:
-            T = T + self.bias
-        T = T.transpose(1, 2).reshape((B, -1) + REST)
-        return T
+        letters = [letter for letter in list(string.ascii_letters)[3:] if letter != 'C']
+        in1 = 'bc' + ''.join(letters[:self.l])
+        in2 = 'cC'
+        out = 'bC' + ''.join(letters[:self.l])
+        self.expr = f'{in1}, {in2} -> {out}'
+        
+    def forward(
+            self, 
+            t: torch.Tensor, 
+            node_attrs: Optional[torch.Tensor] = None, 
+            s: Optional[slice] = None,
+            bias: bool = True,
+        ) -> torch.Tensor:
+        W = self.weight if s is None else self.weight[s, :]
+        W = W * self.alpha
+        t = torch.einsum(self.expr, t, W)
+        if self.bias is not None and bias:
+            t = t + self.bias.unsqueeze(0)
+        return t
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim}, bias={self.bias is not None})"
+        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim}, bias={self.bias is not None}, l={self.l})"
 
 
 class ElementLinear(torch.nn.Module):
@@ -56,44 +67,183 @@ class ElementLinear(torch.nn.Module):
         in_dim: int,
         out_dim: int,
         bias: bool = False,
+        l: int = -1,
         atomic_numbers: List[int] = None,
+        groups: Optional[List[List[int]]] = None,
+        **kwargs,
     ):
         super().__init__()
-        num_elemnts = len(atomic_numbers)
-
+        assert l >= 0
+        assert atomic_numbers is not None
+        num_elements = len(atomic_numbers)
+        self.register_buffer(
+            "num_elements", torch.tensor(num_elements, dtype=torch.int64)
+        )
         self.in_dim = in_dim
         self.out_dim = out_dim
-        self.atomic_numbers = atomic_numbers
         self.alpha = 1.0 / sqrt(in_dim)
-        self.register_buffer(
-            "num_elemnts", torch.tensor(num_elemnts, dtype=torch.int64)
+        self.l = l
+        self.atomic_numbers = atomic_numbers
+        self.groups = groups
+        self.num_groups = len(groups) if groups is not None else None
+        # if self.groups is None:
+        self.weights = nn.Parameter(
+            torch.empty(num_elements, out_dim, in_dim)
         )
-        self.weights = nn.Parameter(torch.empty(num_elemnts, out_dim, in_dim))
         torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(num_elemnts, out_dim))
+        if bias and l ==0:
+            self.bias = nn.Parameter(torch.empty(num_elements, out_dim))
             torch.nn.init.zeros_(self.bias)
         else:
             self.register_parameter("bias", None)
+        
+        letters = [c for c in string.ascii_letters[3:] if c not in ['C', 'z']]
+        self.expr = (
+            f'bz, zCc, bc{"".join(letters[:self.l])} -> '
+            f'bC{"".join(letters[:self.l])}'
+        )
+        # else:
+        #     assert sum(len(g) for g in groups) == num_elements
+        #     elem2gid = {}
+        #     for gid, g in enumerate(groups):
+        #         for elem in g:
+        #             elem2gid[elem] = gid
+        #     gid_map = [elem2gid[z] for z in atomic_numbers]
+        #     self.register_buffer("elem2gid", torch.tensor(gid_map, dtype=torch.int64))
+        #     self.weights = nn.Parameter(
+        #         torch.empty(self.num_groups, out_dim, in_dim)
+        #     )
+        #     torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
+        #     if bias:
+        #         self.bias = nn.Parameter(torch.empty(self.num_groups, out_dim))
+        #         torch.nn.init.zeros_(self.bias)
+        #     else:
+        #         self.register_parameter("bias", None)
 
-    def forward(self, T: Tensor, node_attrs: Tensor) -> Tensor:
-        B = T.size(0)
-        C = T.size(1)
-        REST = T.size()[2:]
-        if B == 0:
-            return T.new_empty((B, self.out_dim) + REST)  # for isolated atoms 
-        idx = node_attrs.argmax(dim=-1)
-        T = T.reshape(B, C, -1)
-        W = self.weights[idx] * self.alpha
-        T = torch.bmm(W, T)
-        if self.bias is not None:
-            b = self.bias[idx].unsqueeze(-1)
-            T = T + b
-        T = T.reshape((B, -1) + REST)
-        return T
+
+    def forward(
+            self, 
+            t: torch.Tensor, 
+            node_attrs: Optional[torch.Tensor] = None, 
+            s: Optional[slice] = None,
+            bias: bool = True,
+        ) -> torch.Tensor:
+
+        W = self.weights * self.alpha
+        t = torch.einsum(self.expr, node_attrs, W, t)
+        if self.bias is not None and bias:
+            b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
+            t = t + b
+        return t
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim}, bias={self.bias is not None})"
+        return (f"{self.__class__.__name__}(in_dim={self.in_dim}, "
+                    f"out_dim={self.out_dim}, bias={self.bias is not None}, l={self.l})")
+
+
+# only for prod
+class CWLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        l: int = -1,
+        **kwargs,
+    ):
+        super().__init__()
+        assert l >= 0
+        self.l = l
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.channel = out_dim
+        num_path = int(in_dim / out_dim)
+        self.num_path = num_path
+        self.alpha = 1.0 / sqrt(num_path)
+        self.weight = nn.Parameter(torch.empty(out_dim, num_path))
+        torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
+        if bias and self.l == 0:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.register_parameter("bias", None)
+        letters = list(string.ascii_letters[3:])
+        self.expr = (
+            f'abc{"".join(letters[:self.l])}, ca -> '
+            f'bc{"".join(letters[:self.l])}'
+        )
+
+    def forward(
+            self, 
+            t: torch.Tensor, 
+            node_attrs: Optional[torch.Tensor] = None, 
+            s: Optional[slice] = None,
+            bias: bool = True,
+        ) -> torch.Tensor:
+        W = self.weight * self.alpha
+        t = torch.einsum(self.expr, t, W)
+        if self.bias is not None and bias:
+            t = t + self.bias.unsqueeze(0)
+        return t
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(in_dim={self.num_path}, out_dim={self.channel}, bias={self.bias is not None}, l={self.l})"
+
+
+# only for prod
+class ElementCWLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        l: int = -1,
+        atomic_numbers: List[int] = None,
+        **kwargs,
+    ):
+        super().__init__()
+        assert l >= 0
+        assert atomic_numbers is not None
+        num_elements = len(atomic_numbers)
+        self.register_buffer(
+            "num_elements", torch.tensor(num_elements, dtype=torch.int64)
+        )
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.channel = out_dim
+        num_path = int(in_dim / out_dim)
+        self.num_path = num_path
+        self.atomic_numbers = atomic_numbers
+        self.alpha = 1.0 / sqrt(num_path)
+        self.l = l
+        self.weights = nn.Parameter(torch.empty(num_elements, out_dim, num_path))
+        torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
+        if bias and l == 0:
+            self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+        else:
+            self.register_parameter("bias", None)
+        letters = [c for c in string.ascii_letters[3:] if c != 'z']
+        self.expr = (
+            f'bz, zca, abc{"".join(letters[:self.l])} -> '
+            f'bc{"".join(letters[:self.l])}'
+        )
+
+    def forward(
+            self, 
+            t: torch.Tensor, 
+            node_attrs: Optional[torch.Tensor] = None, 
+            s: Optional[slice] = None,
+            bias: bool = True,
+        ) -> torch.Tensor:
+        W = self.weights * self.alpha
+        t = torch.einsum(self.expr, node_attrs, W, t)
+        if self.bias is not None and bias:
+            b = torch.einsum('bz, zC -> bC')
+            t = t + b
+        return t
+
+    def __repr__(self):
+        return (f"{self.__class__.__name__}(in_dim={self.num_path}, "
+                    f"out_dim=1, bias={self.bias is not None}, l={self.l})")
 
 
 class SelfInteraction(torch.nn.Module):
@@ -115,6 +265,9 @@ class SelfInteraction(torch.nn.Module):
                     in_channel,
                     out_channel,
                     bias=(r == 0 and bias),
+                    l=r,
+                    in_channel=in_channel,
+                    out_channel=out_channel,
                 )
                 for r in rs
             }
@@ -127,104 +280,334 @@ class SelfInteraction(torch.nn.Module):
             outs[r] = linear(ins[r])
         return outs
 
-    def __repr__(self):
-        return f"{self.__class__.__name__}(in_channel={self.in_channel}, out_channel={self.out_channel}, rank={self.rs})"
+    # def __repr__(self):
+    #     return f"{self.__class__.__name__}(in_channel={self.in_channel}, out_channel={self.out_channel}, rank={self.rs})"
 
-# only for prod
-class CWLinear(nn.Module):
+
+class LoRALinear(nn.Module):
     def __init__(
         self,
         in_dim: int,
         out_dim: int,
         bias: bool = False,
-        atomic_numbers: List[int] = None,
+        l: int = -1,
+        lora_r: int = 8,
+        lora_alpha: float = 8.0,
+        **kwargs,
     ):
         super().__init__()
-        self.channel = out_dim
-        num_path = int(in_dim / out_dim)
-        self.num_path = num_path
-        self.atomic_numbers = atomic_numbers
-        self.alpha = 1.0 / sqrt(num_path)
-        self.weight = nn.Parameter(torch.empty(out_dim, num_path))
+        assert l >= 0
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.l = l
+        self.alpha = 1.0 / sqrt(in_dim)
+        self.use_lora = True
+        self.lora_r = lora_r
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / lora_r
+        self.weight = nn.Parameter(torch.empty(in_dim, out_dim))
         torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
-        if bias:
+        self.weight.requires_grad_(False)
+        if bias and l == 0:
             self.bias = nn.Parameter(torch.zeros(out_dim))
+            self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
+        self.lora_A = nn.Parameter(torch.zeros(in_dim, lora_r))
+        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
+        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        nn.init.zeros_(self.lora_B)
 
-    def forward(self, x: Tensor, node_attrs=None) -> Tensor:
-        # (P, B, C, ...) => (B, C, P, ...)
+        letters = [c for c in string.ascii_letters[3:] if c != 'C']
+        in1 = 'bc' + ''.join(letters[:self.l])
+        in2 = 'cC'
+        out = 'bC' + ''.join(letters[:self.l])
+        self.expr = f'{in1}, {in2} -> {out}'
 
-        ndim = x.ndim
-        device = x.device
-        REST: List[int] = torch.arange(3, ndim, device=device).tolist()
-        PERMUTE = [1, 2, 0] + REST
-        x = x.permute(PERMUTE)
-
-        W = self.weight.unsqueeze(0)
-        W = expand_dims_to(W, n_dim=ndim, dim=-1)  # (1, C, P)
-
-        # (B, C, 3, 3, ...)
-        out = (x * W).sum(dim=2) * self.alpha
-
-        if self.bias is not None:
-            b = self.bias
-            b = expand_dims_to(b, n_dim=out.ndim, dim=-1)
-            out = out + b.view(-1, self.channel)
-
-        return out
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(in_dim={self.num_path}, out_dim={self.channel}, bias={self.bias is not None})"
-
-# only for prod
-class ElementCWLinear(nn.Module):
-    def __init__(
+    def forward(
         self,
-        in_dim: int,
-        out_dim: int,
-        bias: bool = False,
-        atomic_numbers: List[int] = None,
-    ):
-        super().__init__()
-        num_elements = len(atomic_numbers)
-        self.channel = out_dim
-        num_path = int(in_dim / out_dim)
-        self.num_path = num_path
-        self.atomic_numbers = atomic_numbers
-        self.alpha = 1.0 / sqrt(num_path)
+        t: torch.Tensor,
+        node_attrs: Optional[torch.Tensor] = None,
+        s: Optional[slice] = None,
+        bias: bool = True,
+    ) -> torch.Tensor:
 
-        self.register_buffer(
-            "num_elements", torch.tensor(num_elements, dtype=torch.int64)
+        if self.use_lora:
+            delta_w = self.lora_A @ (self.lora_B * self.scaling)
+            W = self.weight + delta_w
+        else:
+            W = self.weight
+
+        if s is not None:
+            W = W[s, :]
+
+        W = W * self.alpha
+        t = torch.einsum(self.expr, t, W)
+
+        if self.bias is not None and bias:
+            t = t + self.bias.unsqueeze(0)
+
+        return t
+    
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  in_dim      = {self.in_dim},\n"
+            f"  out_dim     = {self.out_dim},\n"
+            f"  bias        = {self.bias is not None},\n"
+            f"  alpha       = {self.alpha:.2f},\n"
+            f"  lora_r      = {self.lora_r},\n"
+            f"  lora_alpha  = {self.lora_alpha},\n"
+            f")"
         )
 
-        self.weights = nn.Parameter(torch.empty(num_elements, out_dim, num_path))
-        torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
 
-        if bias:
+class LoRAElementLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        l: int = -1,
+        atomic_numbers: List[int] = None,
+        lora_r: int = 8,
+        lora_alpha: float = 8.0,
+        element_aware: bool = True, 
+        **kwargs,
+    ):
+        super().__init__()
+        assert l >= 0
+        assert atomic_numbers is not None
+        num_elements = len(atomic_numbers)
+        self.register_buffer("num_elements", torch.tensor(num_elements))
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.l = l
+        self.alpha = 1.0 / sqrt(in_dim)
+        self.use_lora = True
+        self.element_aware = element_aware
+        self.lora_r = lora_r
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / lora_r
+        self.weights = nn.Parameter(
+            torch.empty(num_elements, out_dim, in_dim)
+        )
+        torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
+        self.weights.requires_grad_(False)
+        if bias and l == 0:
             self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+            self.bias.requires_grad_(False)
+        else:
+            self.register_parameter("bias", None)
+        if self.element_aware:
+            self.lora_A = nn.Parameter(torch.zeros(num_elements, lora_r, in_dim))
+            self.lora_B = nn.Parameter(torch.zeros(num_elements, out_dim, lora_r))
+        else:
+            self.lora_A = nn.Parameter(torch.zeros(lora_r, in_dim))
+            self.lora_B = nn.Parameter(torch.zeros(out_dim, lora_r))
+        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        letters = [c for c in string.ascii_letters[3:] if c not in ['C', 'z']]
+        self.expr = (
+            f'bz, zCc, bc{"".join(letters[:self.l])} -> '
+            f'bC{"".join(letters[:self.l])}'
+        )
+
+    def forward(
+        self,
+        t: torch.Tensor,
+        node_attrs: Optional[torch.Tensor] = None,
+        s: Optional[slice] = None,
+        bias: bool = True,
+    ) -> torch.Tensor:
+        if self.use_lora:
+            if self.element_aware:
+                delta_w = torch.einsum(
+                    'zri, zor -> zoi',
+                    self.lora_A,
+                    self.lora_B * self.scaling,
+                )
+            else:
+                delta_w = (self.lora_B * self.scaling) @ self.lora_A 
+                delta_w = delta_w.unsqueeze(0)
+            W = self.weights + delta_w
+        else:
+            W = self.weights
+        W = W * self.alpha
+        t = torch.einsum(self.expr, node_attrs, W, t)
+        if self.bias is not None and bias:
+            b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
+            t = t + b
+        return t
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  in_dim             = {self.in_dim},\n"
+            f"  out_dim            = {self.out_dim},\n"
+            f"  bias               = {self.bias is not None},\n"
+            f"  alpha              = {self.alpha:.2f},\n"
+            f"  lora_r             = {self.lora_r},\n"
+            f"  lora_alpha         = {self.lora_alpha},\n"
+            f"  lora_element_aware = {self.element_aware},\n"
+            f")"
+        )
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={self.bias is not None}, alpha={self.alpha:.2f}, lora_r={self.lora_r}, lora_alpha={self.lora_alpha}, ) "
+
+
+# only for prod
+class LoRACWLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        l: int = -1,
+        lora_r: int = 8,
+        lora_alpha: float = 8.0,
+        **kwargs,
+    ):
+        super().__init__()
+        assert l >= 0
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.channel = out_dim
+        self.num_path = int(in_dim / out_dim)
+        self.l = l
+        self.alpha = 1.0 / sqrt(self.num_path)
+        self.use_lora = True
+        self.lora_alpha = lora_alpha
+        self.lora_r = lora_r
+        self.scaling = lora_alpha / lora_r
+        self.weight = nn.Parameter(torch.empty(out_dim, self.num_path))
+        torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
+        self.weight.requires_grad_(False)
+        if bias and l == 0:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+            self.bias.requires_grad_(False)
+        else:
+            self.register_parameter("bias", None)
+        self.lora_A = nn.Parameter(torch.zeros(self.num_path, lora_r))
+        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
+        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        letters = list(string.ascii_letters[3:])
+        self.expr = (
+            f'abc{"".join(letters[:self.l])}, ca -> '
+            f'bc{"".join(letters[:self.l])}'
+        )
+
+    def forward(
+        self,
+        t: torch.Tensor,
+        node_attrs: Optional[torch.Tensor] = None,
+        s: Optional[slice] = None,
+        bias: bool = True,
+    ) -> torch.Tensor:
+        if self.use_lora:
+            delta_w = (self.lora_A @ self.lora_B.T) * self.scaling
+            W = self.weight + delta_w
+        else:
+            W = self.weight
+        W = W * self.alpha
+        t = torch.einsum(self.expr, t, W)
+        if self.bias is not None and bias:
+            t = t + self.bias.unsqueeze(0)
+        return t
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  in_dim      = {self.in_dim},\n"
+            f"  out_dim     = {self.out_dim},\n"
+            f"  bias        = {self.bias is not None},\n"
+            f"  alpha       = {self.alpha:.2f},\n"
+            f"  lora_r      = {self.lora_r},\n"
+            f"  lora_alpha  = {self.lora_alpha},\n"
+            f")"
+        )
+
+
+# only for prod
+class LoRAElementCWLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        l: int = -1,
+        atomic_numbers: List[int] = None,
+        lora_r: int = 8,
+        lora_alpha: float = 8.0,
+        **kwargs,
+    ):
+        super().__init__()
+        assert l >= 0
+        assert atomic_numbers is not None
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        num_elements = len(atomic_numbers)
+        self.register_buffer("num_elements", torch.tensor(num_elements))
+        self.channel = out_dim
+        self.num_path = int(in_dim / out_dim)
+        self.l = l
+        self.alpha = 1.0 / sqrt(self.num_path)
+        self.use_lora = True
+        self.lora_r = lora_r
+        self.lora_alpha = lora_alpha
+        self.scaling = lora_alpha / lora_r
+        self.weights = nn.Parameter(
+            torch.empty(num_elements, out_dim, self.num_path)
+        )
+        torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
+        self.weights.requires_grad_(False)
+        if bias and l == 0:
+            self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+            self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
 
-    def forward(self, x: Tensor, node_attrs: Tensor) -> Tensor:
-        # [P, B, C, ...] =>  [B, C, P, ...]
-        ndim = x.ndim
-        device = x.device
-        REST: List[int] = torch.arange(3, ndim, device=device).tolist()
-        PERMUTE = [1, 2, 0] + REST
-        x = x.permute(PERMUTE)
+        self.lora_A = nn.Parameter(torch.zeros(self.num_path, lora_r))
+        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
+        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        nn.init.zeros_(self.lora_B)
+        letters = [c for c in string.ascii_letters[3:] if c != 'z']
+        self.expr = (
+            f'bz, zca, abc{"".join(letters[:self.l])} -> '
+            f'bc{"".join(letters[:self.l])}'
+        )
 
-        idx = node_attrs.argmax(dim=-1)  # [B]
-        W = self.weights[idx]  # [B, C, P]
-        W = expand_dims_to(W, n_dim=ndim, dim=-1)
-        out = (x * W).sum(dim=2) * self.alpha  # [B, C, ...]
+    def forward(
+        self,
+        t: torch.Tensor,
+        node_attrs: Optional[torch.Tensor] = None,
+        s: Optional[slice] = None,
+        bias: bool = True,
+    ) -> torch.Tensor:
+        if self.use_lora:
+            delta_w = (self.lora_B.T @ self.lora_A.T) * self.scaling
+            W = self.weights + delta_w.unsqueeze(0)
+        else:
+            W = self.weights
+        W = W * self.alpha
+        t = torch.einsum(self.expr, node_attrs, W, t)
+        if self.bias is not None and bias:
+            b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
+            t = t + b
+        return t
 
-        if self.bias is not None:
-            b = self.bias[idx]  # [B, C]
-            b = expand_dims_to(b, n_dim=out.ndim, dim=-1)
-            out = out + b.view(-1, self.channel)
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  in_dim      = {self.in_dim},\n"
+            f"  out_dim     = {self.out_dim},\n"
+            f"  bias        = {self.bias is not None},\n"
+            f"  alpha       = {self.alpha:.2f},\n"
+            f"  lora_r      = {self.lora_r},\n"
+            f"  lora_alpha  = {self.lora_alpha},\n"
+            f")"
+        )
+    
 
-        return out
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(in_dim={self.num_path}, out_dim={self.channel}, bias={self.bias is not None})"

@@ -1,3 +1,4 @@
+from math import sqrt
 from typing import List, NamedTuple, Optional, Tuple, Union
 
 from opt_einsum_fx import optimize_einsums_full
@@ -122,10 +123,12 @@ class Linear(CodeGenMixin, torch.nn.Module):
         biases: Union[bool, List[bool]] = False,
         path_normalization: str = "element",
         _optimize_einsums: Optional[bool] = None,
+        weight_initialization: str = "e3nn",
     ) -> None:
         super().__init__()
 
         assert path_normalization in ["element", "path"]
+        assert weight_initialization in ["e3nn", "tacev1"]
 
         irreps_in = Irreps(irreps_in)
         irreps_out = Irreps(irreps_out)
@@ -149,6 +152,8 @@ class Linear(CodeGenMixin, torch.nn.Module):
             for i_in, i_out in instructions
         ]
 
+        # element => alpha equal for same l
+        # path => alpha not equal for same l
         def alpha(ins) -> float:
             x = sum(
                 irreps_in[i.i_in if path_normalization == "element" else ins.i_in].mul
@@ -223,7 +228,11 @@ class Linear(CodeGenMixin, torch.nn.Module):
         # == Generate weights ==
         if internal_weights and self.weight_numel > 0:
             assert self.shared_weights, "Having internal weights impose shared weights"
-            self.weight = torch.nn.Parameter(torch.randn(*((f_in, f_out) if f_in is not None else ()), self.weight_numel))
+            if weight_initialization == "e3nn":
+                self.weight = torch.nn.Parameter(torch.randn(*((f_in, f_out) if f_in is not None else ()), self.weight_numel))
+            else:
+                self.weight = torch.nn.Parameter(torch.empty(*((f_in, f_out) if f_in is not None else ()), self.weight_numel))
+                torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
         else:
             # For TorchScript, there always has to be some kind of defined .weight
             self.register_buffer("weight", torch.Tensor())

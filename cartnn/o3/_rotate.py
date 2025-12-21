@@ -2,34 +2,22 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-'''
-Not use in TACE now, but will update in future work,
-There will be two completely different new implementations of irreducible Cartesian tensor products
-It is expected to bring about a significant increase in speed and possible improvement in accuracy
-'''
 
 import torch
-from torch import Tensor
 
-from string import ascii_letters
-
-
-LETTERS = list(ascii_letters)[3:]
-
-
-def rotate_cart(T: Tensor, R: Tensor):
-    r = T.ndim - 2 
-    if r > 0:
-        in_1 = 'b' + ''.join(LETTERS[0:2])
-        in_2 = 'bc' + ''.join(LETTERS[2:r+2])
-        in_2 = list(in_2)
-        in_2[-1] = in_1[-1]
-        in_2 = ''.join(in_2)
-        out = 'bc' + in_1[1] + in_2[2:-1]
-        einsum_str = in_1 + ',' + in_2 + '->' + out
-        for _ in range(r):
-            T = torch.einsum(einsum_str, R, T)
-    return T
+# def rotate_cart(T: Tensor, R: Tensor):
+#     r = T.ndim - 2 
+#     if r > 0:
+#         in_1 = 'b' + ''.join(LETTERS[0:2])
+#         in_2 = 'bc' + ''.join(LETTERS[2:r+2])
+#         in_2 = list(in_2)
+#         in_2[-1] = in_1[-1]
+#         in_2 = ''.join(in_2)
+#         out = 'bc' + in_1[1] + in_2[2:-1]
+#         einsum_str = in_1 + ',' + in_2 + '->' + out
+#         for _ in range(r):
+#             T = torch.einsum(einsum_str, R, T)
+#     return T
 
 
 # def init_edge_rot_mat(edge_vector) -> torch.Tensor:

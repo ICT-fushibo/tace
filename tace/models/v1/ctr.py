@@ -1,122 +1,69 @@
-################################################################################
+# ###############################################################################
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
-################################################################################
+# check: ✔
+# ###############################################################################
 
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 import torch
-from torch import nn, Tensor
+from torch import nn
+from cartnn.util import scatter_sum
 
 
-from .mlp import MLP
-from .paths import generate_combinations, TensorContractionUtils
+from .paths import count_irreps
 from .linear import Linear
-from .kernel.einsum import EinsumTC
-from .kernel.broadcast import BroadcastTC
-from .kernel.analytical import AnalyticalTC
-from .kernel.matrix import MatrixTC
+from .einsum import InterEinsumTC
+
 
 
 class Contraction(torch.nn.Module):
     def __init__(
         self,
+        combs: List[Tuple],
+        ictp_lw: bool = False,
+        ictc_lw: bool = False,
+        ictp_hw: bool = True,
+        ictc_hw: bool = True,
         num_channel: int = 64,
         num_channel_hidden: int = 64,
-        max_r_in: int = 3,
-        max_r_out: int = 3,
-        num_radial_basis: int = 8,
-        radial_mlp: Dict = {},
-        inter: Dict = {},
-        bias: bool = False,
-        layer: int = -1,
-        num_layers: int = -1,
-        ictd: Dict = {},
+        lmax_in: int = 3,
+        lmax_out: int = 3,
+        kernel: str = 'scatter',
     ):
         super().__init__()
 
-        max_paths = inter.get('max_paths', 1)
-        allow_nosym = inter.get('allow_nosym', True)
-        weight = ictd.get('weight', 'max')
-        kernel = inter.get('kernel', 'einsum')
-        combs = generate_combinations(
-            max_r_in,
-            max_r_out,
-            max_r_out,
-            restriction=None if layer == 0 else inter["restriction"][layer],
-            allow_nosym=allow_nosym,
-        )
-
-        # ==== tensor contraction ====
-        comb_paths = []  # every comb correspond to a list with multipahts
-        comb_path_counts = []
-        r_o_path_counts = {r: 0 for r in range(max_r_out + 1)}
+        # ==== ICTP + ICTC ====
         self.tcs = nn.ModuleList()
         for comb in combs:
-            (r_1, r_2, r_o) = comb
-            paths: List[str] = TensorContractionUtils.generate_paths(
-                r_1,
-                r_2,
-                r_o,
-                add_batch_and_channel=True,
-                allow_nosym=allow_nosym,
-                max_paths=max_paths,
-            )
-            comb_paths.append(paths)
-            r_o_path_counts[r_o] += len(paths)
-            comb_path_counts.append(len(paths))
-            if kernel == 'einsum':
-                self.tcs.append(EinsumTC(paths))
-            elif kernel == 'broadcast':
-                self.tcs.append(BroadcastTC(paths))
-            elif kernel == 'matrix':
-                self.tcs.append(MatrixTC(paths))  # not correct, should not be used 
-            elif kernel == 'analytical':
-                self.tcs.append(AnalyticalTC(paths))  # not correct, should not be used 
-            else:
-                raise ValueError(f"Unsupported kernel type: {kernel}")
+            self.tcs.append(InterEinsumTC(comb))
+        l3_count = count_irreps(
+            combs, 
+            ictp_lower_weight=ictp_lw, 
+            ictc_lower_weight=ictc_lw, 
+            ictp_highest_weight=ictp_hw,
+            ictc_highest_weight=ictc_hw,
+        )
 
-        if  weight != "all":
-            # ==== conv weight ====
-            if inter.get('add_source_target_embedding', False):
-                radial_in_dim = num_radial_basis + 2 * num_channel
-            else:
-                radial_in_dim = num_radial_basis
-            self.radial_net = MLP(
-                radial_in_dim,
-                num_channel * sum([len(paths) for paths in comb_paths]),
-                radial_mlp["hidden"][layer],
-                act=radial_mlp["act"],
-                bias=radial_mlp.get('bias', False),
-                forward_weight_init=radial_mlp.get("forward_weight_init", True),
-                enable_layer_norm=radial_mlp.get('enable_layer_norm', False),
-            )
-            # === slice ===
-            current = 0
-            self.weight_starts = []
-            for count in comb_path_counts:
-                self.weight_starts.append(current)
-                current += count * num_channel
-            self.enable_lower_weights = False
-        else:
-            # ==== path weight ====
-            self.path_weights = nn.Parameter(
-                torch.ones(
-                    num_channel * sum([len(paths) for paths in comb_paths]),
-                    dtype=torch.get_default_dtype()
-                ),
-                requires_grad=True,
-            )
-            # === slice ===
-            current = 0
-            self.weight_starts = []
-            for count in comb_path_counts:
-                self.weight_starts.append(current)
-                current += count * num_channel
-            self.enable_lower_weights = True
+        # === conv_weights slices ===
+        self.ws_slices = []
+        start = 0
+        for _ in combs:
+            stop = start + num_channel
+            self.ws_slices.append(slice(start, stop))
+            start = stop
 
+        # === linear slices ===
+        self.linear_slices = {}
+        for l3, count in l3_count.items():
+            self.linear_slices[l3] = []
+            start = 0
+            for _ in range(count):
+                stop = start + num_channel
+                self.linear_slices[l3].append(slice(start, stop))
+                start = stop
 
         # === linear ===
         self.linear_downs = nn.ModuleList(
@@ -124,95 +71,84 @@ class Contraction(torch.nn.Module):
                 Linear(
                     num_channel * count,
                     num_channel_hidden,
-                    bias=False,  # should not be True
+                    bias=False,
+                    l=l3,
+                    in_channel=num_channel,
+                    out_channel=num_channel_hidden,
                 )
-                for r_o, count in r_o_path_counts.items()
+                for l3, count in l3_count.items()
             ]
         )
 
         self.combs = combs
-        self.comb_path_counts = comb_path_counts
-        self.num_channel = num_channel
-        self.max_r_in = max_r_in
-        self.max_r_out = max_r_out
-        self.layer = layer
-        self.num_layers = num_layers
+        self.lmax_in = lmax_in
+        self.lmax_out = lmax_out
         self.kernel = kernel
-            
+        self.num_channel = num_channel
+        self.num_channel_hidden = num_channel_hidden
+
     def forward(
         self,
-        x: Dict[int, Tensor],
-        y: Dict[int, Tensor],
-        radial: Tensor,
-        cutoff: Tensor,
-    ) -> Dict[int, Tensor]:
+        x: Dict[int, torch.Tensor],
+        y: Dict[int, torch.Tensor],
+        ws: torch.Tensor,
+        edge_index: torch.Tensor,
+    ) -> Dict[int, torch.Tensor]:
+        
+        num_nodes = x[0].size(0)
+        for l1 in range(self.lmax_in + 1):
+            x[l1] = x[l1][edge_index[0]]
 
-        if self.enable_lower_weights:
-            path_weights = self.path_weights.unsqueeze(0)
-            B = path_weights.size(0)
-
-            buffer = torch.jit.annotate(
-                Dict[int, List[Tensor]], {r: [] for r in range(self.max_r_out + 1)}
-            )
-
+        if self.kernel == 'scatter':
+            buffer = {l3: [] for l3 in range(self.lmax_out + 1)}
             for i, tc in enumerate(self.tcs):
-                num_paths = self.comb_path_counts[i]
-                start_idx = self.weight_starts[i]
-                r_1, r_2, r_o = self.combs[i]
-                outs: List[Tensor] = tc(x[r_1], y[r_2])
-                weights = path_weights[
-                    :, start_idx : start_idx + num_paths * self.num_channel
-                ]
-                weights = weights.view(B, num_paths, self.num_channel)
-
-                # [P, B, C, ...]
-                stacked_outs = torch.stack(outs, dim=0)
-
-                # [1, B, C, 1, 1, ...] -> [P, B, C, ...]
-                expanded_weights = weights.permute(1, 0, 2)  # [P, B, C]
-                for _ in range(stacked_outs.ndim - 3):
-                    expanded_weights = expanded_weights.unsqueeze(-1)
-
-                # vectorized
-                weighted_outs = stacked_outs * expanded_weights
-                buffer[r_o].extend(torch.unbind(weighted_outs, dim=0))
+                l1, l2, l3, _ = self.combs[i]
+                out  = tc(x[l1], y[l2])
+                w = ws[:, self.ws_slices[i]]
+                for _ in range(out.ndim - 2):
+                    w = w.unsqueeze(-1)
+                w_out = w * out
+                buffer[l3].append(w_out)
+            m_ji = {}
+            for i, linear in enumerate(self.linear_downs):
+                m_ji[i] = linear(torch.cat(buffer[i], dim=1))
+            m_i = {}
+            for r in m_ji.keys():
+                m_i[r] = scatter_sum(
+                    src=m_ji[r],
+                    index=edge_index[1],
+                    dim=0,
+                    dim_size=num_nodes,
+                )
         else:
-            conv_weights = self.radial_net(radial)
-            if cutoff is not None:
-                conv_weights = conv_weights * cutoff
-            B = conv_weights.size(0)
-
-            buffer = torch.jit.annotate(
-                Dict[int, List[Tensor]], {r: [] for r in range(self.max_r_out + 1)}
-            )
-
+            dtype = x[0].dtype
+            device = x[0].device
+            m_i = {
+                l3: torch.zeros(
+                    num_nodes,
+                    self.num_channel_hidden,
+                    *((3,) * l3), 
+                    device=device,
+                    dtype=dtype,
+                )
+                for l3 in range(self.lmax_out + 1)
+            }
+            l3_count = {l3: 0 for l3 in range(self.lmax_out + 1)}
             for i, tc in enumerate(self.tcs):
-                num_paths = self.comb_path_counts[i]
-                start_idx = self.weight_starts[i]
-                r_1, r_2, r_o = self.combs[i]
-                outs: List[Tensor] = tc(x[r_1], y[r_2])
-                weights = conv_weights[
-                    :, start_idx : start_idx + num_paths * self.num_channel
-                ]
-                weights = weights.view(B, num_paths, self.num_channel)
+                l1, l2, l3, _ = self.combs[i]
+                out = tc(x[l1], y[l2])
+                w = ws[:, self.ws_slices[i]]
+                w = w.view(w.size(0), w.size(1), *((1,) * (out.ndim -2)))
+                w_out = w * out
+                tmp = self.linear_downs[l3](w_out, s=self.linear_slices[l3][l3_count[l3]])
+                scattered = scatter_sum(
+                    src=tmp,
+                    index=edge_index[1],
+                    dim=0,
+                    dim_size=num_nodes,
+                )
+                m_i[l3].add_(scattered)
+                l3_count[l3] += 1
 
-                # [P, B, C, ...]
-                stacked_outs = torch.stack(outs, dim=0)
+        return m_i
 
-                # [1, B, C, 1, 1, ...] -> [P, B, C, ...]
-                expanded_weights = weights.permute(1, 0, 2)  # [P, B, C]
-                for _ in range(stacked_outs.ndim - 3):
-                    expanded_weights = expanded_weights.unsqueeze(-1)
-
-                # vectorized
-                weighted_outs = stacked_outs * expanded_weights
-                buffer[r_o].extend(torch.unbind(weighted_outs, dim=0))
-
-        OUTS = torch.jit.annotate(Dict[int, Tensor], {})
-        for i, linear in enumerate(self.linear_downs):
-            t = buffer[i]
-            tmp = torch.cat(t, dim=1)
-            tmp = linear(tmp)
-            OUTS[i] = tmp
-
-        return OUTS

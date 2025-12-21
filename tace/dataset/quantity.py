@@ -1083,3 +1083,18 @@ class ComputeFlag:
     __annotations__ = {k: bool for k in fields} 
     locals().update(fields)
 
+
+def get_target_irreps(target_property: List[str], use_nolinear_tensor_readout: bool = True):
+    target_irreps = []
+    target_irreps.extend([0]) if "energy" in target_property else None
+    target_irreps.extend([0]) if "magmoms_0" in target_property else None
+    target_irreps.extend([1]) if "magmoms_1" in target_property else None
+    target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
+    target_irreps.extend([0, 2]) if "direct_stress" in target_property or "direct_virials" in target_property else None
+    if use_nolinear_tensor_readout:
+        target_irreps.extend([0, 1]) if "direct_dipole" in target_property else None
+        target_irreps.extend([0, 1]) if "direct_forces" in target_property else None
+    else:
+        target_irreps.extend([1]) if "direct_dipole" in target_property else None
+        target_irreps.extend([1]) if "direct_forces" in target_property else None
+    return sorted(list(set(target_irreps)))

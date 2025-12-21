@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from math import prod, sqrt
+from math import sqrt
 from typing import Optional, List
 
 
@@ -26,22 +26,20 @@ class MLP(torch.nn.Module):
         forward_weight_init: bool = True,
         enable_layer_norm: bool = False,
         num_levels: int = 1,
-        enable_multi_head: bool = False,
+        use_multi_head: bool = False,
     ):
         '''The parameter initialization method uses the earlier version of Allegro'''
         super().__init__()
-
         self.bias = bias
         self.dims = [in_dim] + hidden_dim + [out_dim]
         self.num_layers = len(self.dims) - 1
         assert self.num_layers >= 1
-        self.bias = bias
         act = ACT[act]()
         self.is_nonlinear = False
         self.enable_layer_norm = enable_layer_norm
         self.num_levels = num_levels
-        self.enable_multi_head = (enable_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
-        if self.enable_multi_head:
+        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
+        if self.use_multi_head:
             assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
 
         # === build the MLP + weight init ===
@@ -78,18 +76,14 @@ class MLP(torch.nn.Module):
                 mlp.append(act)
                 self.is_nonlinear = True
 
-        if (not self.is_nonlinear) and (not self.bias) and (self.num_layers > 1):
-            self.mlp = DeepLinearLayer(torch.nn.Sequential(*mlp))
-            del mlp
-        elif self.enable_multi_head: 
+        if self.use_multi_head: 
             self.mlp_1 = torch.nn.Sequential(*mlp[:-1]) 
             self.mlp_2 = torch.nn.Sequential(mlp[-1])   
         else:
             self.mlp = torch.nn.Sequential(*mlp)
 
-
     def forward(self, x, node_level=None):
-        if self.enable_multi_head:
+        if self.use_multi_head:
             x = self.mlp_1(x)
             x = select_corresponding_level_for_scalar(x, node_level, self.num_levels)
             return self.mlp_2(x)
@@ -97,27 +91,6 @@ class MLP(torch.nn.Module):
             return self.mlp(x)
 
 
-class DeepLinearLayer(torch.nn.Module):
-    def __init__(self, mlp) -> None:
-
-        super().__init__()
-        self.weights = torch.nn.ParameterList()
-        alphas = []
-        for this_idx, mlp_idx in enumerate(range(len(mlp))):
-            new_weight = torch.clone(mlp[mlp_idx].weight)
-            self.weights.append(new_weight)
-            del new_weight
-            alphas.append(mlp[mlp_idx].alpha)
-        self.alpha = prod(alphas)
-        del alphas
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        weight = torch.mul(
-            torch.linalg.multi_dot([weight for weight in self.weights]), self.alpha
-        )
-        return torch.mm(input, weight)
-
-    
 class LinearLayer(torch.nn.Module):
     def __init__(
         self,
@@ -147,3 +120,65 @@ class LinearLayer(torch.nn.Module):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self._bias}, alpha={self.alpha:.2f})"
+
+
+class LoRALinearLayer(torch.nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        alpha: float = 1.0,
+        bias: bool = False,
+        lora_r: int = 8,
+        lora_alpha: float = 8.0,
+        **kwargs,
+    ) -> None:
+        super().__init__()
+
+        self.use_lora = True
+        self.lora_alpha = lora_alpha
+        self.lora_r = lora_r
+        self.scaling = lora_alpha / lora_r
+
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.alpha = alpha
+        self.weight = torch.nn.Parameter(torch.empty((in_dim, out_dim)))
+        torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
+        self.weight.requires_grad_(False)
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
+            self.bias.requires_grad_(False)
+        else:
+            self.register_parameter("bias", None)
+
+        self.lora_A = nn.Parameter(torch.zeros(in_dim, lora_r))
+        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
+        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        nn.init.zeros_(self.lora_B)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        if self.use_lora:
+            delta_w = self.lora_A @ (self.lora_B * self.scaling)
+            W = self.weight + delta_w
+        else:
+            W = self.weight
+
+        W = W * self.alpha
+
+        if self.bias is None:
+            return torch.mm(input, W)
+        else:
+            return torch.addmm(self.bias, input, W)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(\n"
+            f"  in_dim      = {self.in_dim},\n"
+            f"  out_dim     = {self.out_dim},\n"
+            f"  bias        = {self.bias is not None},\n"
+            f"  alpha       = {self.alpha:.2f},\n"
+            f"  lora_r      = {self.lora_r},\n"
+            f"  lora_alpha  = {self.lora_alpha},\n"
+            f")"
+        )

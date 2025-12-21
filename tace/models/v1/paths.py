@@ -3,175 +3,94 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import itertools
-from typing import Optional, List, NamedTuple
 
-import torch
-import opt_einsum as oe
+from string import ascii_letters
+from typing import Optional, List, Tuple, Dict
+from collections import defaultdict
 
-from .utils import satisfy
+LETTERS = list(ascii_letters)[3:]
+
+
+def satisfy(l1: int, l2: int, restriction: Optional[str] = None) -> bool:
+    if restriction == None:
+        return True
+    elif restriction == "<":
+        return l1 < l2
+    elif restriction == "<=":
+        return l1 <= l2
+    elif restriction == ">":
+        return l1 > l2
+    elif restriction == ">=":
+        return l1 >= l2
+    elif restriction == "==":
+        return l1 == l2
+    elif restriction == "!=":
+        return l1 != l2
+    else:
+        raise ValueError(f"Unknown restriction: {restriction}")
+
 
 def generate_combinations(
-    max_r_1: int,
-    max_r_2: int,
-    max_r_o: int,
-    restriction: Optional[str] = None,
-    allow_nosym: bool = False,
-):
+    l1max: int,
+    l2max: int,
+    l3max: int,
+    l1l2: Optional[str] = None,
+    l2l3: Optional[str] = None,
+    l3l1: Optional[str] = None,
+) -> List[Tuple]:
     combs = []
-
-    for r_1 in range(max_r_1 + 1):
-        for r_2 in range(max_r_2 + 1):
-            if satisfy(r_1, r_2, restriction):
-                for r_o in range(abs(r_2 - r_1), min(max_r_o, r_2 + r_1) + 1, 2):
-                    k = (r_1 + r_2 - r_o) // 2
-                    if allow_nosym:
-                        combs.append((r_1, r_2, r_o))
-                    else:
-                        if k == r_1 or k == r_2:
-                            combs.append((r_1, r_2, r_o))
+    for l1 in range(l1max + 1):
+        for l2 in range(l2max + 1):
+            for l3 in range(abs(l1 - l2), min(l3max, l1 + l2) + 1, 2):
+                if (satisfy(l1, l2, l1l2) and satisfy(l2, l3, l2l3) and satisfy(l3, l1, l3l1)):
+                    k = (l1 + l2 - l3) // 2
+                    combs.append((l1, l2, l3, k))
     return combs
 
 
-class TC(NamedTuple):
-    r_1: int
-    r_2: int
-    r_o: int
-    k: int
-    axes_1: List[int]
-    axes_2: List[int]
+def generate_path(
+    l1: int,
+    l2: int,
+    l3: int,
+    k : int,
+    add_batch_and_channel: bool = True,
+) -> str:
+    assert isinstance(l1, int) and l1 >= 0, "l1 must be a non-negative integer"
+    assert isinstance(l2, int) and l2 >= 0, "l2 must be a non-negative integer"
+    assert isinstance(l3, int) and l3 >= 0, "l3 must be a non-negative integer"
+    assert isinstance(l3, int) and k >= 0, "k must be a non-negative integer"
+    assert (l1 + l2 - l3) % 2 == 0, "Illegal contraction combination"
 
+    in1_list = LETTERS[:l1]
+    in2_list = LETTERS[l1 : l1 + l2]
+    in1_list_copy = in1_list.copy()
+    in2_list_copy = in2_list.copy()
 
-def parse_einsum_expr(expr: str) -> TC:
+    in1_idx = list(range(l1 - k, l1))
+    in2_idx = list(range(k))
+    
+    for i in range(k):
+        in2_list_copy[in2_idx[i]] = in1_list_copy[in1_idx[i]]
 
-    inputs, output = expr.split("->")
-    in1, in2 = [x.strip() for x in inputs.split(",")]
+    in1 = "".join(in1_list_copy)
+    in2 = "".join(in2_list_copy)
+    out = "".join(
+        [l for i, l in enumerate(in1_list_copy) if i not in in1_idx] 
+        + 
+        [l for _, l in enumerate(in2_list_copy) if l not in in1_list_copy]
+    )
 
-    # exclude B and C
-    X = in1[2:]
-    Y = in2[2:]
-    Z = output[2:]
+    if add_batch_and_channel:
+        in1 = "bc" + in1
+        in2 = "bc" + in2
+        out = "bc" + out
 
-    common = set(X) & set(Y)
-    contracted = common - set(Z)
-
-    axes_1 = [X.index(c) for c in contracted]
-    axes_2 = [Y.index(c) for c in contracted]
-
-    return TC(axes_1=axes_1, axes_2=axes_2, r_1=len(X), r_2=len(Y), r_o=len(Z), k=len(axes_1))
-
-
-def return_tcs(exprs: List[str]) -> List[TC]:
-    return [parse_einsum_expr(expr) for expr in exprs]
-
-
-class TensorContractionUtils:
-
-    @staticmethod
-    def generate_paths(
-        r_1: int,
-        r_2: int,
-        r_o: int,
-        add_batch_and_channel: bool = True,
-        allow_nosym: bool = False,
-        max_paths: Optional[int] = None,
-    ):
-
-        assert isinstance(r_1, int) and r_1 >= 0, "r_1 must be a non-negative integer"
-        assert isinstance(r_2, int) and r_2 >= 0, "r_2 must be a non-negative integer"
-        assert isinstance(r_o, int) and r_o >= 0, "k must be a non-negative integer"
-        assert (r_1 + r_2 - r_o) % 2 == 0, "Incompatible target rank"
-
-        k = (r_1 + r_2 - r_o) // 2
-
-        einsum_str = list("defghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-        X_labels = einsum_str[:r_1]
-        Y_labels = einsum_str[r_1 : r_1 + r_2]
-
-        # === always first ===
-        target_X_idx = list(range(r_1 - k, r_1))
-        target_Y_idx = list(range(k))
-        target_X_copy = X_labels.copy()
-        target_Y_copy = Y_labels.copy()
-        for i in range(k):
-            target_Y_copy[target_Y_idx[i]] = target_X_copy[target_X_idx[i]]
-
-        X_str = "".join(target_X_copy)
-        Y_str = "".join(target_Y_copy)
-
-        Z_labels = [l for i, l in enumerate(target_X_copy) if i not in target_X_idx] + [
-            l for i, l in enumerate(target_Y_copy) if l not in target_X_copy
-        ]
-        Z_str = "".join(Z_labels)
-
-        if add_batch_and_channel:
-            X_str = "bc" + X_str
-            Y_str = "bc" + Y_str
-            Z_str = "bc" + Z_str
-
-        target_expr = f"{X_str},{Y_str}->{Z_str}"
-        einsum_exprs = [target_expr]
-
-        if allow_nosym:
-            for X_idx in itertools.combinations(range(r_1), k):
-                for Y_idx in itertools.combinations(range(r_2), k):
-                    for perm in itertools.permutations(range(k)):
-                        X_copy = X_labels.copy()
-                        Y_copy = Y_labels.copy()
-
-                        for i in range(k):
-                            Y_copy[Y_idx[perm[i]]] = X_copy[X_idx[i]]
-
-                        X_str = "".join(X_copy)
-                        Y_str = "".join(Y_copy)
-
-                        Z_labels = [
-                            l for i, l in enumerate(X_copy) if i not in X_idx
-                        ] + [l for i, l in enumerate(Y_copy) if l not in X_copy]
-                        Z_str = "".join(Z_labels)
-
-                        if add_batch_and_channel:
-                            X_str = "bc" + X_str
-                            Y_str = "bc" + Y_str
-                            Z_str = "bc" + Z_str
-
-                        einsum_str = f"{X_str},{Y_str}->{Z_str}"
-
-                        if einsum_str == target_expr:
-                            continue
-
-                        if max_paths is None:
-                            einsum_exprs.append(einsum_str)
-                        elif len(einsum_exprs) < max_paths:
-                            einsum_exprs.append(einsum_str)
-            return einsum_exprs
-        else:
-            return einsum_exprs
-
-    @staticmethod
-    def random_test(r_1, r_2, r_o, add_batch_and_channel=True, backend="oe"):
-
-        X_shape = [3] * r_1
-        Y_shape = [3] * r_2
-        X = torch.randn(6, 7, *X_shape)
-        Y = torch.randn(6, 7, *Y_shape)
-
-        einsum_exprs = TensorContractionUtils.generate_paths(
-            r_1, r_2, r_o, add_batch_and_channel, True
-        )
-
-        results = []
-        for expr in einsum_exprs:
-            if backend == "oe":
-                result = oe.contract(expr, X, Y, backend="torch")
-            else:
-                result = torch.einsum(expr, X, Y)
-            results.append((expr, result.shape, result))
-        return results
+    einsum_expr = f"{in1},{in2}->{out}"
+    return einsum_expr
 
 
 def generate_prod_paths(
-    max_left, max_right, max_hidden, max_rank_of_in, rank_of_out, correlation, allow_nosym, restriction
+    max_left, max_right, max_hidden, max_rank_of_in, rank_of_out, correlation, l1l2, l2l3, l3l1,
 ):
     paths_list_list = []
     exprs_list_list = []
@@ -182,42 +101,19 @@ def generate_prod_paths(
         exprs_list = []
         next_ranks = set()
 
-        for r_1 in current_ranks:
-            for r_2 in range(max_rank_of_in + 1):
-                r_min = abs(r_1 - r_2)
-                r_max = min(max_rank_of_in, r_1 + r_2)
-                for r_o in range(r_min, r_max + 1, 2):
-                        if satisfy(r_1, r_2, restriction, r_o):
-                            k = (r_1 + r_2 - r_o) // 2
-                            if allow_nosym:
-                                paths_list.append((r_1, r_2, r_o))
-                                next_ranks.add(r_o)
-                                exprs_list.append(
-                                    TensorContractionUtils.generate_paths(
-                                        r_1=r_1,
-                                        r_2=r_2,
-                                        r_o=r_o,
-                                        add_batch_and_channel=True,
-                                        allow_nosym=True,
-                                        max_paths=1,
-                                    )
-                                )
-                            else:
-                                if k == r_1 or k == r_2:
-                                    paths_list.append((r_1, r_2, r_o))
-                                    next_ranks.add(r_o)
-                                    exprs_list.append(
-                                        TensorContractionUtils.generate_paths(
-                                            r_1=r_1,
-                                            r_2=r_2,
-                                            r_o=r_o,
-                                            add_batch_and_channel=True,
-                                            allow_nosym=False,
-                                            max_paths=1,
-                                        )
-                                )
-
-                                        
+        for l1 in current_ranks:
+            for l2 in range(max_rank_of_in + 1):
+                lmin = abs(l1 - l2)
+                lmax = min(max_rank_of_in, l1 + l2)
+                for l3 in range(lmin, lmax + 1, 2):
+                    if satisfy(l1, l2, l1l2) and satisfy(l2, l3, l2l3) and satisfy(l3, l1, l3l1):
+                        k = (l1 + l2 - l3) // 2
+                        paths_list.append((l1, l2, l3, k))
+                        next_ranks.add(l3)
+                        exprs_list.append(
+                            generate_path(l1, l2, l3, k, True)
+                        )
+         
         paths_list_list.append(paths_list)
         exprs_list_list.append(exprs_list)
         current_ranks = next_ranks
@@ -228,11 +124,11 @@ def generate_prod_paths(
         filtered_exprs = []
         next_valid_ranks = set()
 
-        for (r_1, r_2, r_o), exprs in zip(
+        for (r_1, r_2, r_o, k), exprs in zip(
             paths_list_list[v], exprs_list_list[v]
         ):
             if r_o in valid_ranks:
-                filtered_paths.append((r_1, r_2, r_o))
+                filtered_paths.append((r_1, r_2, r_o, k))
                 filtered_exprs.append(exprs)
                 next_valid_ranks.update([r_1, r_2])
 
@@ -244,11 +140,11 @@ def generate_prod_paths(
     for v in (range(correlation - 1)):
         filtered_paths = []
         filtered_exprs = []
-        for (r_1, r_2, r_o), exprs in zip(
+        for (r_1, r_2, r_o, k), exprs in zip(
             paths_list_list[v], exprs_list_list[v]
         ):
             if r_1 <= max_left[v+1] and r_2 <= max_right[v+1] and r_o <= max_hidden[v+1]:
-                filtered_paths.append((r_1, r_2, r_o))
+                filtered_paths.append((r_1, r_2, r_o, k))
                 filtered_exprs.append(exprs) 
         paths_list_list[v] = filtered_paths
         exprs_list_list[v] = filtered_exprs
@@ -256,3 +152,30 @@ def generate_prod_paths(
     return paths_list_list, exprs_list_list
 
 
+
+def count_irreps(
+        combs: List[Tuple],
+        ictp_lower_weight: bool = False,
+        ictc_lower_weight: bool = False,
+        ictp_highest_weight: bool = True, 
+        ictc_highest_weight: bool = True, 
+    ):
+
+    l3_count = defaultdict(int) 
+    for comb in combs:
+        l1, l2, _, k = comb 
+        for l3 in range(abs(l1 - l2), l1 + l2 - 2 * k + 1):
+            hw = (l3 == l1 + l2 - 2 * k)
+            lw = (l3 <  l1 + l2 - 2 * k)
+            if k == 0:
+                if ictp_highest_weight and hw:
+                    l3_count[l3] += 1
+                if ictp_lower_weight and lw:
+                    l3_count[l3] += 1
+            else:
+                if ictc_highest_weight and hw:
+                    l3_count[l3] += 1
+                if ictc_lower_weight and lw:
+                    l3_count[l3] += 1
+                    
+    return dict(sorted(l3_count.items(), key=lambda x: x[0]))

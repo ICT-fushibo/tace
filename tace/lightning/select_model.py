@@ -35,7 +35,7 @@ def select_model(
     model_path = (
         cfg.get('model', {})
         .get('config', {})
-        .get('_target_', 'tace.models.TACEV2')
+        .get('_target_', 'tace.models.TACEV1')
     )
     if model_path == "tace.models.tace.TACE": # for compatible with earlier version
         model_path = "tace.models.TACEV1"
@@ -55,7 +55,6 @@ def select_model(
             MODEL_CLS(
                 **filtered_model_config,
                 statistics=statistics,
-                cutoff=cfg['misc']['cutoff'],
                 target_property=target_property,
                 embedding_property=embedding_property,
             )

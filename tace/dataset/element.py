@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, List, Set, Tuple, Union
+from typing import Dict, List, Set, Tuple, Union, Optional
 
 import torch
 from torch import Tensor
@@ -121,7 +121,8 @@ class TorchElement(Element):
         :param zs: shape (N,),
         :return: shape (N, num_classes), one-hot
         """
-        idxs = self.lookup_table[zs]  # shape (N,)
+        lookup_table = self.lookup_table.to(zs.device)
+        idxs = lookup_table[zs]  # shape (N,)
         return F.one_hot(idxs, num_classes=self.num_elements)
 
 

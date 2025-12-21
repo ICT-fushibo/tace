@@ -7,20 +7,18 @@ from typing import Dict, List, Tuple, Optional, Any
 
 import torch
 from torch import Tensor
-from cartnn.o3 import ICTD
+from cartnn.o3 import ICTD, expand_dims_to
+from cartnn.util import scatter_sum
 
 from .act import ACT
 from .mlp import MLP
+from .paths import generate_combinations
 from .linear import SelfInteraction, ElementLinear
 from .ctr import Contraction
-from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict, expand_dims_to
-from cartnn.util.torch_scatter import scatter_sum
+from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict
+
 
 class Interaction(torch.nn.Module):
-
-    Qs: List[Tensor]
-    num_weights: List[int] 
-    
     def __init__(
         self,
         atomic_numbers: int,
@@ -33,23 +31,25 @@ class Interaction(torch.nn.Module):
         num_radial_basis,
         radial_mlp={},
         inter: Dict = {},
-        ictd: Dict = {},
         bias: bool = False,
         layer: int = -1,
         num_layers: int = -1,
     ) -> None:
         super().__init__()
 
+        # combs
+        combs = generate_combinations(
+            max_r_in,
+            max_r_out,
+            max_r_out,
+            l1l2=inter["l1l2"][layer],
+        )
+
         # === arguments ===
-        weight = ictd.get('weight', 'max')
         enable_residual = inter.get('residual', False)
         enable_layer_norm = radial_mlp.get('enable_layer_norm', False)
         self.add_source_target_embedding = inter.get('add_source_target_embedding', False)
         normalizer = inter.get('normalizer', {})
-        normalizer_act_1 = normalizer.get('act_1', 'silu')
-        normalizer_act_2 = normalizer.get('act_2', 'tanh')
-        normalizer_hidden_dim = normalizer.get('hidden', [64])
-        normalizer_bias = normalizer.get('bias', False)
         self.normalizer_type = normalizer.get('type', 'fixed')
         self.normalizer_scale_shift_trainable = normalizer.get('scale_shift_trainable', False)
         self.register_buffer(
@@ -62,19 +62,22 @@ class Interaction(torch.nn.Module):
             rs=list(range(max_r_in + 1)),
             bias=bias,
         )
+
+        kernel = inter.get('kernel', 'scatter')
+        assert kernel in ['scatter', 'torch_fusion']
         self.tc = Contraction(
+            combs=combs,
+            ictp_lw=inter.get('ictp_lw', False), 
+            ictc_lw=inter.get('ictc_lw', False), 
+            ictp_hw=inter.get('ictp_hw', True),
+            ictc_hw=inter.get('ictc_hw', True),
             num_channel=num_channel,
             num_channel_hidden=num_channel_hidden,
-            max_r_in=max_r_in,
-            max_r_out=max_r_out,
-            num_radial_basis=num_radial_basis,
-            radial_mlp=radial_mlp,
-            inter=inter,
-            bias=bias,
-            layer=layer,
-            num_layers=num_layers,
-            ictd=ictd,
+            lmax_in=max_r_in,
+            lmax_out=max_r_out,
+            kernel=kernel,
         )
+
         self.enable_residual = enable_residual or layer > 0 or num_layers == 1
         if self.enable_residual:
             self.scs = torch.nn.ModuleDict()
@@ -84,46 +87,14 @@ class Interaction(torch.nn.Module):
                     num_channel,
                     bias=(r == 0 and bias),
                     atomic_numbers=atomic_numbers,
+                    l=r,
                 )
 
-        self.Qs  = []
-        self.num_weights = []
-
-        if weight == 'max':
-            self.decomposition = True
-            self.not_trainable = True
-            for r in range(max_r_out + 1):
-                PS, DS, CS, SS = ICTD(r, r)
-                num_weights = len(DS)
-                self.num_weights.append(num_weights)
-                self.Qs.append(DS[0].to(dtype=torch.get_default_dtype()))
-        elif weight == 'all':
-            self.decomposition = True
-            self.not_trainable = False
-            for r in range(max_r_out + 1):
-                PS, DS, CS, SS = ICTD(r)
-                num_weights = len(DS)
-                self.num_weights.append(num_weights)
-                self.Qs.append(
-                    torch.stack(DS, dim=0).to(dtype=torch.get_default_dtype())
-                )
-            self.radial_modulation = MLP(
-                num_radial_basis,
-                sum([num_channel * self.num_weights[r] for r in range(max_r_out + 1)]),
-                radial_mlp["hidden"][layer],
-                act=radial_mlp["act"],
-                bias=False,
-                forward_weight_init=True,
-            )
-        else:
-            self.decomposition = False
-            self.not_trainable = True
-            for r in range(max_r_out + 1):
-                PS, DS, CS, SS = ICTD(r, r)
-                num_weights = len(DS)
-                self.num_weights.append(num_weights)
-                self.Qs.append(DS[0].to(dtype=torch.get_default_dtype()))
-        del PS, DS, CS, SS
+        # === ICT ===
+        for r in range(max_r_out + 1):
+            DS = ICTD(r, r)[1]
+            self.register_buffer(f"D_{r}_{r}_1", DS[0].to(torch.get_default_dtype()))
+            del DS
 
         if self.add_source_target_embedding:
             self.source_embedding = MLP(
@@ -156,15 +127,15 @@ class Interaction(torch.nn.Module):
             self.density_normalizer = MLP(
                 normalizer_in_dim,
                 1,
-                normalizer_hidden_dim,
-                act=normalizer_act_1,
-                bias=normalizer_bias,
+                normalizer.get('hidden', [64]),
+                act=normalizer.get('act_1', 'silu'),
+                bias=normalizer.get('bias', False),
                 forward_weight_init=True,
                 enable_layer_norm=enable_layer_norm,
             )
-            self.normalizer_act_2 = ACT[normalizer_act_2]()
+            self.normalizer_act_2 = ACT[normalizer.get('act_2', 'tanh')]()
             if self.normalizer_scale_shift_trainable:
-                self.alpha = torch.nn.Parameter(torch.tensor(avg_num_neighbors), requires_grad=True)
+                self.alpha = torch.nn.Parameter(torch.tensor(20.0), requires_grad=True)
                 self.beta = torch.nn.Parameter(torch.tensor(0.0), requires_grad=True)
 
         self.r_sc = r_sc
@@ -174,6 +145,25 @@ class Interaction(torch.nn.Module):
         self.num_layers = num_layers
         self.num_channel = num_channel
 
+
+        # ==== conv weight ==== TODO for xzm move this to interaction
+        if inter.get('add_source_target_embedding', False):
+            radial_in_dim = num_radial_basis + 2 * num_channel
+        else:
+            radial_in_dim = num_radial_basis
+        self.radial_net = MLP(
+            radial_in_dim,
+            num_channel * len(combs),
+            radial_mlp["hidden"][layer],
+            act=radial_mlp["act"],
+            bias=radial_mlp.get('bias', False),
+            forward_weight_init=radial_mlp.get("forward_weight_init", True),
+            enable_layer_norm=radial_mlp.get('enable_layer_norm', False),
+        )
+
+    def D(self, l: int):
+        return dict(self.named_buffers())[f"D_{l}_{l}_1"]
+    
     def forward(
         self,
         node_feats: Dict[int, Tensor],
@@ -190,8 +180,6 @@ class Interaction(torch.nn.Module):
         lmp_data = graph.lmp_data
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
-        dtype = node_attrs_lmp.dtype
-        device = node_attrs_lmp.device
         node_feats = self.linear_up(node_feats)
         node_feats = self.handle_lammps(
             node_feats,
@@ -226,82 +214,30 @@ class Interaction(torch.nn.Module):
                 density = density + 1
             density = density.masked_fill(density == 0, 1e-9)
 
-        for r_1 in range(self.max_r_in + 1):
-            node_feats[r_1] = node_feats[r_1][edge_index[0]]
+
+        conv_weights = self.radial_net(edge_feats) # for compatiable
+        if cutoff is not None:
+            conv_weights = conv_weights * cutoff
+
+        tmp_m_i = self.tc(node_feats, edge_attrs, conv_weights, edge_index)
+        m_i = {}
 
 
-        m_ji = self.tc(node_feats, edge_attrs, edge_feats, cutoff)
-        m_i = torch.jit.annotate(Dict[int, Tensor], {})
-
-        if self.decomposition:
-            if self.not_trainable:
-                for r in m_ji.keys():
-                    T = scatter_sum(
-                        src=m_ji[r],
-                        index=edge_index[1],
-                        dim=0,
-                        dim_size=node_attrs_lmp.size(0),
-                    )
-                    if self.normalizer_type == 'dynamic':
-                        normalizer = expand_dims_to(density, T.ndim, dim=-1)
-                    else:
-                        normalizer = self.avg_num_neighbors
-                    T = T / normalizer
-                    B = T.size(0)
-                    C = T.size(1)
-                    REST = (3,) * r
-                    m_i[r] = (
-                        T.reshape(B, C, -1) @ self.Qs[r].to(device=device, dtype=dtype)
-                    ).reshape((B, C) + REST)
+        for r in tmp_m_i.keys():
+            T = tmp_m_i[r]
+            if self.normalizer_type == 'dynamic':
+                normalizer = expand_dims_to(density, T.ndim, dim=-1)
             else:
-                start_idx = 0
-                radial_weights = self.radial_modulation(edge_feats)
-
-                for r in range(self.max_r_out + 1):
-                    W = radial_weights[:, start_idx:start_idx+self.num_weights[r]*self.num_channel].reshape(-1, 
-                    self.num_weights[r], self.num_channel)
-                    start_idx += self.num_weights[r] * self.num_channel
-                    W = W.permute(1, 0, 2)
-                    for _ in range(r):
-                        W = W.unsqueeze(-1)
-                    T = m_ji[r]
-                    B = T.size(0)
-                    C = T.size(1)
-                    REST = (3,) * r
-                    T = T.reshape(B * C, -1).unsqueeze(0)
-                    T = T.repeat(self.num_weights[r], 1, 1)
-                    T = torch.bmm(T, self.Qs[r].to(device=device, dtype=dtype)) 
-                    T = T.reshape((-1,) + (B, C) + REST)
-                    T = T * W
-                    T = torch.sum(T, dim=0)
-                    T = scatter_sum(
-                        src=T,
-                        index=edge_index[1],
-                        dim=0,
-                        dim_size=node_attrs.size(0),
-                    )
-                    if self.normalizer_type == 'dynamic':
-                        normalizer = expand_dims_to(density, T.ndim, dim=-1)
-                    else:
-                        normalizer = self.avg_num_neighbors
-                    T = T / normalizer
-                    m_i[r] = T
-        else:
-            for r in m_ji.keys():
-                T = scatter_sum(
-                    src=m_ji[r],
-                    index=edge_index[1],
-                    dim=0,
-                    dim_size=node_attrs_lmp.size(0),
-                )
-                if self.normalizer_type == 'dynamic':
-                    normalizer = expand_dims_to(density, T.ndim, dim=-1)
-                else:
-                    normalizer = self.avg_num_neighbors
-                T = T / normalizer
-                m_i[r] = T
-
-        residual = torch.jit.annotate(Dict[int, Tensor], {})
+                normalizer = self.avg_num_neighbors
+            T = T / normalizer
+            B = T.size(0)
+            C = T.size(1)
+            REST = (3,) * r
+            m_i[r] = (
+                T.reshape(B, C, -1) @ self.D(r)
+            ).reshape((B, C) + REST)
+            
+        residual = {}
         if self.enable_residual:
             for nu, sc in self.scs.items():
                 nu = int(nu)
@@ -348,3 +284,4 @@ class Interaction(torch.nn.Module):
         self, t: Tensor, nlocal: Optional[int] = None
     ) -> Tensor:
         return t[:nlocal] if nlocal is not None else t
+

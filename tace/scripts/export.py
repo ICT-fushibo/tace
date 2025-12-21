@@ -9,8 +9,8 @@ import argparse
 import torch
 from e3nn.util.jit import compile
 
-from ..lightning.lit_model import LightningWrapperModel
-from ..interface.lammps.mliap import LAMMPS_MLIAP_TACE
+
+from ..lightning import load_tace
 
 
 def parse_args():
@@ -41,7 +41,7 @@ def parse_args():
         "--backend", 
         type=str, 
         default="lammps",
-        choices=["lammps", "ase", "torch"], 
+        choices=["lammps", "torch"], 
         help="Specify the backend to export"
     )
     return parser.parse_args()
@@ -56,18 +56,8 @@ DTYPE = {
 def main():
     args = parse_args()
     model_path = args.model
-    if model_path.endswith(".ckpt"):
-        model = LightningWrapperModel.load_from_checkpoint(
-            model_path,
-            map_location=args.device,
-            strict=True,
-            use_ema=1,
-        )
-    elif model_path.endswith(".pt") or model_path.endswith(".pth"):
-        model = torch.load(model_path, weights_only=False, map_location=args.device)
-    else:
-        raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
 
+    model = load_tace(model, args.device, strict=True, use_ema=True)
     model_dtype = model.readout_fn.cutoff.dtype
     args_dtype = DTYPE[args.dtype] or model_dtype
     if args_dtype != model_dtype:
@@ -76,15 +66,14 @@ def main():
     model.to(args_dtype)
     model.to(args.device)
     if args.backend == "lammps":
+        from ..interface.lammps.mliap import TACE_LAMMPS_MLIAP
         model.lmp = True
-        lammps_model = LAMMPS_MLIAP_TACE(model)
+        lammps_model = TACE_LAMMPS_MLIAP(model)
         torch.save(lammps_model, model_path + "-lmp_mliap.pt")
-    elif args.backend == "ase":
-        torch.save(model, model_path + "-ase.pt") 
     elif args.backend == "torch":
         torch.save(model, model_path + "-torch.pt") 
     else:
-        raise ValueError(f"Unsupported backend '{args.backend}'. Currently only 'lammps' and 'ase(python)' is available.")
+        raise ValueError(f"Unsupported backend '{args.backend}'. Currently only 'lammps' and 'torch' is available.")
 
 if __name__ == "__main__":
     main()

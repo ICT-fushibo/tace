@@ -32,11 +32,11 @@ def create_graphs_for_main_rank(atomsList, element, for_dataset, stage):
 def build_atomsList(
     cfg: dict,
     target_property: List[str],
-    keyspec: KeySpecification,
     embedding_property: List[str],
-    num_levels: int = 1,
+    keyspec: KeySpecification,
+    num_levels: int,
 ):
-    threeAtomsList = _read(cfg, target_property, keyspec, embedding_property)
+    threeAtomsList = _read(cfg, target_property, embedding_property, keyspec)
 
     # ==== read atomic_numbers and atomic_energy from dataset and cfg ===
     try:
@@ -67,17 +67,15 @@ def build_atomsList(
     # === multi-level atomic_energy ===
     atomic_energies= []
     if "energy" in target_property:
-        mixed_precision = cfg['model']['config'].get("mixed_precision", {})
-        level_names = mixed_precision.get('level_names', ['default']) or ['default']
-        atomic_energies_cfg = mixed_precision.get('atomic_energies', None) or None
 
-        assert isinstance(level_names, List)
+        num_levels = cfg['model']['config'].get("num_levels", {})
+        atomic_energies_cfg = cfg['model']['config'].get("atomic_energies", None)
         assert atomic_energies_cfg is None or isinstance(atomic_energies_cfg, List)
 
         if num_levels > 1 and atomic_energies_cfg is not None:
-            assert len(level_names) == len(atomic_energies_cfg)
+            assert num_levels == len(atomic_energies_cfg)
             for v in atomic_energies_cfg:
-                assert isinstance(v, Dict) or v is None, "If you want to use mixed_precision training, "
+                assert isinstance(v, Dict) or v is None, "If you want to use mixed precision training, "
                 "you must provide each level's atomic energy or set all level to null"
 
         if atomic_energies_cfg is None:
@@ -104,9 +102,9 @@ def build_atomsList(
                         )
                 atomic_energies.append(atomic_energy)
 
-        logging.info("Isolated Atomic Energies per level:")
+        logging.info("Isolated Atomic Energies per computational level:")
         for idx, energy in enumerate(atomic_energies):
-            logging.info(f"  Level {idx}: {energy} {(level_names[idx])}")
+            logging.info(f"  Level {idx}: {energy}")
 
     return element, threeAtomsList, atomic_energies
 
@@ -114,13 +112,13 @@ def build_atomsList(
 def compute_statistics(
     cfg: Dict,
     target_property: List[str],
-    keyspec: KeySpecification,
     embedding_property: List[str],
-    num_levels: int = 1,
+    keyspec: KeySpecification,
+    num_levels: int,
 ):
 
     element, threeAtomsList, atomic_energies = build_atomsList(
-        cfg, target_property, keyspec, embedding_property, num_levels
+        cfg, target_property, embedding_property, keyspec, num_levels
     )
 
     # dataloader_valid = None
@@ -170,8 +168,8 @@ def compute_statistics(
 
     if recompute:
         for_dataset = {
-            "cutoff": float(cfg.get("misc", {}).get("cutoff", 5.0)),
-            "max_neighbors": cfg.get("misc", {}).get("max_neighbors", None),
+            "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
+            "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
             "keyspec": keyspec,
             "target_property": target_property,
             "embedding_property": embedding_property,

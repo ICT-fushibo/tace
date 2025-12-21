@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import List, Optional, Dict
 
 
-import torch
 from torch.utils.data import Dataset
 from lightning.pytorch import LightningDataModule
 from lightning.pytorch.utilities.rank_zero import rank_zero_only, rank_zero_info
@@ -330,8 +329,8 @@ class GraphDataModule(LightningDataModule):
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
 
         self._for_dataset_config = {
-            "cutoff": float(self.cfg.get("misc", {}).get("cutoff", 5.0)),
-            "max_neighbors": self.cfg.get("misc", {}).get("max_neighbors", None),
+            "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
+            "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
             "keyspec": self.keyspec,
             "target_property": self.target_property,
             "embedding_property": self.embedding_property,
@@ -353,8 +352,8 @@ class GraphDataModule(LightningDataModule):
         self.threeAtomsList = _read(
             self.cfg,
             self.target_property,
-            self.keyspec,
             self.embedding_property,
+            self.keyspec,
             in_datamodule=True,
         )
 
@@ -478,11 +477,11 @@ class GraphDataModule(LightningDataModule):
 # === Datamodule Builder ===
 def build_datamodule(
     cfg: Dict,
-    statistics: List[Statistics],
     target_property: List[str],
-    keyspec: KeySpecification,
     embedding_property: List[str],
-    num_levels: int = 1,
+    keyspec: KeySpecification,
+    num_levels: int,
+    statistics: List[Statistics],
 ):
     element = build_element_lookup(statistics[0]['atomic_numbers'])
     datamodule = GraphDataModule(

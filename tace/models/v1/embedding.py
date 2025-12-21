@@ -8,10 +8,11 @@ from typing import List, Dict, Union
 
 import torch
 from torch import nn, Tensor
+from cartnn.o3 import expand_dims_to
 
 
 from .act import ACT
-from .utils import expand_dims_to
+
 
 
 class UniversalInvariantEmbedding(torch.nn.Module):

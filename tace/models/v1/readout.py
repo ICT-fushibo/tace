@@ -9,11 +9,12 @@ from typing import List, Optional
 
 import torch
 from torch import nn, Tensor
+from cartnn.o3 import expand_dims_to
 
 
 from .linear import Linear
 from .act import ACT
-from .utils import expand_dims_to, select_corresponding_level_for_tensor
+from .utils import select_corresponding_level_for_tensor
 
 
 class NodeLinearReadOut(torch.nn.Module):
@@ -23,7 +24,6 @@ class NodeLinearReadOut(torch.nn.Module):
         in_dim: int,
         out_dim: int,
         bias: bool = False,
-        atomic_numbers: List[int] = None,
     ) -> None:
         super().__init__()
 
@@ -31,7 +31,6 @@ class NodeLinearReadOut(torch.nn.Module):
             in_dim=in_dim,
             out_dim=out_dim,
             bias=bias,
-            atomic_numbers=atomic_numbers,
         )
 
     def forward(
@@ -58,13 +57,13 @@ class NodeNonLinearReadOut(torch.nn.Module):
         atomic_numbers: List[int] = None,
         gate: str = "silu",
         num_levels: int = 1,
-        enable_multi_head: bool = False,
+        use_multi_head: bool = False,
     ) -> None:
         super().__init__()
 
         self.num_levels = num_levels
-        self.enable_multi_head = (enable_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
-        if self.enable_multi_head:
+        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
+        if self.use_multi_head:
             assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
 
         self.layer0s = nn.ModuleList()
@@ -100,7 +99,7 @@ class NodeNonLinearReadOut(torch.nn.Module):
         for linear0, linearN in zip(self.layer0s, self.layerNs):
             T0 = self.gate(linear0(T0, node_attrs))
             TN = expand_dims_to(T0, TN.ndim) * linearN(TN)
-        if self.enable_multi_head:
+        if self.use_multi_head:
             out = self.output_layer(select_corresponding_level_for_tensor(TN, node_level, self.num_levels))
         else:
             out = self.output_layer(TN)

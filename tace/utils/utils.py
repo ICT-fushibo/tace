@@ -31,18 +31,6 @@ def set_global_seed(cfg: Dict) -> None:
     logging.info(f"Global seed: {seed}")
     logging.info(f"Split seed: {split_seed}")
 
-def set_global_seed(cfg: Dict) -> None:
-    seed = cfg["misc"].get("global_seed", 42)
-    split_seed = cfg["dataset"].get("split_seed", 42)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    logging.info(f"Global seed: {seed}")
-    logging.info(f"Split seed: {split_seed}")
-
 
 def set_precision(cfg: Dict) -> None:
     precision = cfg["trainer"]["precision"]
@@ -221,10 +209,3 @@ def voigt_to_matrix(t: Tensor, **kwargs):
     raise ValueError(
         f"Stress tensor must be of shape (6,) or (3, 3), or (9,) but has shape {t.shape}"
     )
-
-
-def expand_dims_to(T: Tensor, n_dim: int, dim: int = -1) -> Tensor:
-    '''jit-safe'''
-    while T.ndim < n_dim:
-        T = T.unsqueeze(dim)
-    return T

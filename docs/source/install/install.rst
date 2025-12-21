@@ -24,7 +24,7 @@ Install from Source (recommended)
 
 
 Install via pip (not recommended, may be have bug)
----------------
+--------------------------------------------------
 
 .. code-block:: bash
 

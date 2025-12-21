@@ -9,8 +9,9 @@ from typing import Dict, List
 import torch
 from torch import Tensor
 from torchmetrics import Metric
+from cartnn.o3 import expand_dims_to
 
-from .utils import expand_dims_to
+
 from ..dataset.quantity import (
     MAE_PROPERTY,
     RMSE_PROPERTY,

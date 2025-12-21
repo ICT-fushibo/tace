@@ -7,8 +7,6 @@ defaults:
 # finetune_from_model: "pretrained/*.pt" # Specify the model to be fine-tuned. Files must be end with .ckpt, .pt, or .pth.
 
 misc:
-  cutoff: 5.0
-  max_neighbors: 999999 # if set to null, it means no restrictions.
   project_name: 3bpa
   global_seed: 42 
   device: cuda # cpu or cuda

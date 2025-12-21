@@ -7,6 +7,7 @@ import torch
 from cartnn.math import perm
 from ._ictd import ICTD
 
+
 class Irrep(tuple):
     r"""Irreducible representation of :math:`O(3)`
 
@@ -34,7 +35,7 @@ class Irrep(tuple):
     >>> Irrep(2, -1)
     2o
 
-    Create a vector representation (:math:`l=1`) of the parity of the spherical harmonics (:math:`-1^l` gives odd parity).
+    Create a vector representation (:math:`l=1`) of the parity of the cartesian harmonics (:math:`-1^l` gives odd parity).
 
     >>> Irrep("1y")
     1o
@@ -377,22 +378,6 @@ class Irreps(tuple):
         """
         return Irreps([(1, (l, p**l)) for l in range(lmax + 1)])
     
-    def slices(self):
-        r"""List of slices corresponding to indices for each irrep.
-
-        Examples
-        --------
-
-        >>> Irreps('2x0e + 1e').slices()
-        [slice(0, 2, None), slice(2, 5, None)]
-        """
-        s = []
-        i = 0
-        for mul_ir in self:
-            s.append(slice(i, i + mul_ir.dim))
-            i += mul_ir.dim
-        return s
-
     def slices(self, cartesian: bool = True):
         r"""List of slices corresponding to indices for each irrep.
 
@@ -406,8 +391,8 @@ class Irreps(tuple):
         i = 0
         for mul_ir in self:
             if cartesian:
-                s.append(slice(i, i + mul_ir.cdim))
-                i += mul_ir.cdim
+                s.append(slice(i, i + mul_ir.dim))
+                i += mul_ir.dim
             else:
                 s.append(slice(i, i + mul_ir.sdim))
                 i += mul_ir.sdim
@@ -418,18 +403,17 @@ class Irreps(tuple):
         i = 0
         for _, ir in self:
             if cartesian:
-                s.append(slice(i, i + ir.cdim))
-                i += ir.cdim
+                s.append(slice(i, i + ir.dim))
+                i += ir.dim
             else:
                 s.append(slice(i, i + ir.sdim))
                 i += ir.sdim
         return s
-    
-
+       
     def randn(
         self, *size: int, normalization: str = "component", requires_grad: bool = False, dtype=None, device=None
-    ) -> torch.Tensor: # TODO for xzm
-        r"""Random tensor.
+    ) -> torch.Tensor:
+        r"""Random irreducible Cartesian tensor, which converted from e3nn spherical tensor.
 
         Parameters
         ----------
@@ -448,28 +432,38 @@ class Irreps(tuple):
 
         >>> Irreps("5x0e + 10x1o").randn(5, -1, 5, normalization='norm').shape
         torch.Size([5, 35, 5])
-
-        >>> random_tensor = Irreps("2o").randn(2, -1, 3, normalization='norm')
-        >>> random_tensor.norm(dim=1).sub(1).abs().max().item() < 1e-5
-        True
         """
+        
         di = size.index(-1)
         lsize = size[:di]
         rsize = size[di + 1 :]
 
+        xs: list[torch.Tensor] = []
         if normalization == "component":
-            return torch.randn(*lsize, self.dim, *rsize, requires_grad=requires_grad, dtype=dtype, device=device)
-        elif normalization == "norm":
-            x = torch.zeros(*lsize, self.dim, *rsize, requires_grad=requires_grad, dtype=dtype, device=device)
+            x = torch.randn(*lsize, self.sdim, *rsize, requires_grad=requires_grad, dtype=dtype, device=device)
             with torch.no_grad():
-                for s, (mul, ir) in zip(self.slices(), self):
-                    r = torch.randn(*lsize, mul, ir.dim, *rsize, dtype=dtype, device=device)
+                for s, (mul, ir) in zip(self.slices(False), self):
+                    S = ir.S.to(dtype, device)
+                    r = x.narrow(di, s.start, mul * ir.sdim)
+                    r = r.view(*lsize, mul, ir.sdim, *rsize)
+                    r = torch.tensordot(r, S, dims=([di+1], [0]))
+                    r = r.view(*lsize, mul*ir.dim, *rsize)
+                    xs.append(r)
+            return torch.cat(xs, dim=di)
+        elif normalization == "norm":
+            with torch.no_grad():
+                for s, (mul, ir) in zip(self.slices(False), self):
+                    S = ir.S.to(dtype, device)
+                    r = torch.randn(*lsize, mul, ir.sdim, *rsize, dtype=dtype, device=device)
                     r.div_(r.norm(2, dim=di + 1, keepdim=True))
-                    x.narrow(di, s.start, mul * ir.dim).copy_(r.reshape(*lsize, -1, *rsize))
-            return x
+                    r = torch.tensordot(r, S, dims=([di+1], [0]))
+                    r = r.view(*lsize, mul*ir.dim, *rsize)
+                    xs.append(r)
+            return torch.cat(xs, dim=di)
         else:
             raise ValueError("Normalization needs to be 'norm' or 'component'")
-
+        
+        
     def __getitem__(self, i) -> Union[_MulIr, "Irreps"]:
         x = super().__getitem__(i)
         if isinstance(i, slice):
@@ -715,7 +709,14 @@ class Irreps(tuple):
     
     def __repr__(self) -> str:
         return "+".join(f"{mul_ir}" for mul_ir in self)
-
+    
+    def to_highest_weight(self, x: torch.Tensor):
+        xis: list[torch.Tensor] = []
+        for s, mul, ir in zip(self.slices(), self):
+            xi = x[s].view(mul, ir.dim)
+            xi = xi @ ir.C
+            xis.append(xi)
+        return torch.cat(xis, dim=-1)
 
 class _MulIndexSliceHelper:
     irreps: Irreps

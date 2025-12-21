@@ -5,9 +5,7 @@
 'GATE not use in TACE now'
 import torch
 from torch import nn, Tensor
-
-
-from .utils import expand_dims_to
+from cartnn.o3 import expand_dims_to
 
 
 class TensorSilu(torch.nn.Module):
