@@ -9,6 +9,9 @@ from typing import List, Dict
 import torch
 from torch import nn, Tensor
 
+from .linear import Linear
+from .gate import NormGate, GatedGate
+
 
 class OneHotToAtomicEnergy(torch.nn.Module):
     def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
@@ -187,27 +190,75 @@ class ScaleShift(torch.nn.Module):
             shift_trainable=cfg["shift_trainable"],
         )
 
-from e3nn import o3
 
-
-class OneHotEmbedding(torch.nn.Module):
+class NormNonlinearity(torch.nn.Module):
     def __init__(
         self,
-        irreps_in: o3.Irreps,
-        irreps_out: o3.Irreps,
+        rmax: int,
+        in_dim: int,
+        gate: str = "silu",
     ) -> None:
-        """Not use in TACE"""
         super().__init__()
-        self.node_attrs = o3.Linear(
-            irreps_in=irreps_in,
-            irreps_out=irreps_out,
-            internal_weights=True,
-            shared_weights=True,
+        self.rmax = rmax
+        self.in_dim = in_dim
+        self.gate = gate
+        self.gates = torch.nn.ModuleList(
+            [NormGate[gate](r, in_dim) for r in range(rmax + 1)]
         )
-        self.num_channel = irreps_out.dim
 
-    def forward(
+    def forward(self, in_dict: Dict[int, torch.Tensor]) -> Dict[int, torch.Tensor]:
+        out_dict = {}
+        for r, gate in enumerate(self.gates):
+            if r in in_dict:
+                out_dict[r] = gate(in_dict[r])
+        return out_dict
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(rmax={self.rmax}, channel={self.in_dim}, gate={self.gate})"
+    
+    
+class GatedNonlinearity(torch.nn.Module):
+    def __init__(
         self,
-        x: Tensor,
-    ) -> Tensor:
-        return self.node_attrs(x)
+        rmax: int,
+        in_dim: int,
+        gate: str = "silu",
+    ) -> None:
+        super().__init__()
+        self.rmax = rmax
+        self.in_dim = in_dim
+        self.gate = gate
+        self.gates = torch.nn.ModuleList(
+            [GatedGate(r, gate) for r in range(rmax + 1)]
+        )
+
+        self.linears_1 = torch.nn.ModuleList()
+        for r in range(rmax+1):
+            out_dim = in_dim * (rmax+1) if r == 0 else in_dim
+            self.linears_1.append(
+                Linear(
+                    in_dim=in_dim,
+                    out_dim=out_dim,
+                    bias=False,
+                    l=r,
+                )
+            )
+
+    def forward(self, in_dict: Dict[int, torch.Tensor]) -> Dict[int, torch.Tensor]:
+
+        out_dict = {}
+        gates = self.linears_1[0](in_dict[0])
+        gate = gates[:, 0:self.in_dim]
+        out_dict[0] = self.gates[0](gate, gate)
+
+        start = self.in_dim
+        for r in range(1, self.rmax+1):
+            stop = start+self.in_dim
+            gate = gates[:, start:stop]
+            out_dict[r] = self.gates[r](gate, self.linears_1[r](in_dict[r]))
+            start=stop
+
+        return out_dict
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(rmax={self.rmax}, channel={self.in_dim}, gate={self.gate})"

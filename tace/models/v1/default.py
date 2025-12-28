@@ -83,8 +83,10 @@ LONG_RANGE = {
 }
 
 
-from typing import Dict, Any, List
-def check_config(cfg: Dict[str, Any]):
+from typing import Dict, Any, List, Tuple
+
+
+def check_model_config(cfg: Dict[str, Any]):
     assert isinstance(cfg['radial_basis'], Dict), "cfg.model.config.radial_basis must be a Dict"
     assert isinstance(cfg['radial_mlp'], Dict), "cfg.model.config.radial_mlp must be a Dict"
     assert isinstance(cfg['angular_basis'], Dict), "cfg.model.config.angular_basis must be a Dict"
@@ -95,7 +97,7 @@ def check_config(cfg: Dict[str, Any]):
     assert cfg['short_range'] is None or isinstance(cfg['short_range'], Dict), "cfg.model.config.short_range must be a Dict or None"
     assert cfg['long_range'] is None or isinstance(cfg['long_range'], Dict), "cfg.model.config.long_range must be a Dict or None"
     assert cfg['embedding_property'] is None or isinstance(cfg['embedding_property'], List), "embedding_property must be a List or None"
-    assert cfg['conservations'] is None or isinstance(cfg['conservations'], Dict), "cfg.model.config.conservations must be a Dict or None"
+    assert cfg['conservation'] is None or isinstance(cfg['conservation'], Dict), "cfg.model.config.conservations must be a Dict or None"
     assert cfg['universal_embedding'] is None or isinstance(cfg['universal_embedding'], Dict), "cfg.model.config.universal_embedding must be a Dict or None"
 
     # statistics
@@ -152,13 +154,6 @@ def check_config(cfg: Dict[str, Any]):
         cfg['use_zbl'] = True
     cfg['use_les'] = cfg['long_range'].get('les', LONG_RANGE['les']['use_les'])
 
-
-    # universal_embedding
-    cfg['universal_embedding'] = cfg['universal_embedding'] or {}
-
-    # conservations
-    cfg['conservations'] = cfg['conservations'] or {}
-
     # inter
     # if isinstance(cfg['inter'].get('restriction', None), List):
     #     cfg['inter']['l1l2'] = []
@@ -178,11 +173,40 @@ def check_config(cfg: Dict[str, Any]):
     #     cfg['prod']['l1l2'] = [cfg['prod']['restriction']['r_1_r_2']] * cfg['num_layers']
     # if 'r_o_r_1' in cfg['prod'].get('restriction', {}):
     #     cfg['prod']['l3l1'] = [cfg['prod']['restriction']['r_o_r_1']] * cfg['num_layers']
+    # normalizer
+    if isinstance(cfg['inter']['normalizer'], Dict):
+        legacy_normalizer = cfg['inter']['normalizer']
+        if legacy_normalizer['type'] == 'fixed':
+            cfg['inter']['normalizer'] = 'avg_num_neighbors'
+        else:
+            cfg['inter']['normalizer'] = 'density_v1'
+
+
     if isinstance(cfg['prod']['l1l2'], str) or cfg['prod']['l1l2'] == None:
         cfg['prod']['l1l2'] = [cfg['prod']['l1l2']] * cfg['num_layers']
     if isinstance(cfg['prod']['l3l1'], str) or cfg['prod']['l3l1'] == None:
         cfg['prod']['l3l1'] = [cfg['prod']['l3l1']] * cfg['num_layers']
     if isinstance(cfg['prod']['correlation'], int):
         cfg['prod']['correlation'] = [cfg['prod']['correlation']] * cfg['num_layers']
+
+
+
+    # === embedding ===
+    universal_embedding = cfg.get('universal_embedding', {})
+    universal_embedding['invariant'] = universal_embedding.get('invariant', {})
+    universal_embedding['equivariant'] = universal_embedding.get('equivariant', {})
+
+    universal_embedding['invariant_embedding_property'] = []
+    for k, v in universal_embedding['invariant'].items():
+        if v.get('enable', False):
+            universal_embedding['invariant_embedding_property'].append(k)
+    universal_embedding['equivariant_embedding_property'] = []
+    for k, v in universal_embedding['equivariant'].items():
+        if v.get('enable', False):
+            universal_embedding['equivariant_embedding_property'].append(k)
+
+    # === conservation ===
+    cfg['conservation'] = cfg.get('conservation', {})
+
 
     return cfg

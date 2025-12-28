@@ -11,6 +11,7 @@ from torch import Tensor, nn
 from cartnn import o3
 
 from .utils import add_to_left
+from .layers import NormNonlinearity
 from .linear import Linear, ElementLinear, CWLinear, ElementCWLinear, SelfInteraction
 from .paths import satisfy, generate_prod_paths
 from .einsum import ProdEinsumTC
@@ -19,7 +20,7 @@ PATH = 4
 BATCH = 5
 CHANNEL = 6
 
-LINEAR = {
+ProdLinear = {
     (False, True): Linear,
     (True, True): ElementLinear,
     (False, False): CWLinear,
@@ -116,7 +117,7 @@ class SelfContraction(torch.nn.Module):
             inner_dict = nn.ModuleDict()
             for l3 in rank_of_out:
                 if sum([nu_l3_count[nu][l3]]) > 0: # TODO for xzm, check if exists BUG
-                    linear_layer = LINEAR[linear_type[l3]](
+                    linear_layer = ProdLinear[linear_type[l3]](
                         num_channel_hidden * sum([nu_l3_count[nu][l3]]),
                         num_channel_hidden,
                         bias=(l3 == 0 and bias),

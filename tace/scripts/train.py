@@ -97,7 +97,6 @@ def main(cfg: DictConfig):
 
     if cfg.get('resume_from_model', None) is None:
         log_parameters(model)
-        
 
     train_arguments = {
         "cfg": cfg,
@@ -112,3 +111,7 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
+
+
+# from lightning.pytorch.callbacks import StochasticWeightAveraging
+# from lightning.pytorch.callbacks import ModelCheckpoint

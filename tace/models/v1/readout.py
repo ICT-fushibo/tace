@@ -4,103 +4,232 @@
 # Description: This file contains linear readout function for tensor rank > 0
 ################################################################################
 
+from math import sqrt
 from typing import List, Optional
 
 
 import torch
-from torch import nn, Tensor
-from cartnn.o3 import expand_dims_to
 
 
-from .linear import Linear
 from .act import ACT
-from .utils import select_corresponding_level_for_tensor
+from .linear import Linear
+from .mlp import LinearLayer
+from .gate import NormGate
+from .utils import select_corresponding_level
 
 
-class NodeLinearReadOut(torch.nn.Module):
-    """For tensor rank > 0"""
+class ScalarReadOut(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
         out_dim: int,
+        hidden_dim: List[int] = [],
+        act: Optional[str] = "silu",
         bias: bool = False,
-    ) -> None:
+        forward_weight_init: bool = True,
+        enable_layer_norm: bool = False,
+        num_levels: int = 1,
+        use_multi_head: bool = False,
+    ):
         super().__init__()
+        self.bias = bias
+        self.dims = [in_dim] + hidden_dim + [out_dim]
+        self.num_layers = len(self.dims) - 1
+        assert self.num_layers >= 1
+        act = ACT[act]()
+        self.is_nonlinear = False
+        self.enable_layer_norm = enable_layer_norm
+        self.num_levels = num_levels
+        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
+        if self.use_multi_head:
+            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
 
-        self.out = Linear(
-            in_dim=in_dim,
-            out_dim=out_dim,
-            bias=bias,
-        )
+        # === build the MLP + weight init ===
+        mlp = []
+        for layer, (h_in, h_out) in enumerate(zip(self.dims, self.dims[1:])):
 
-    def forward(
-        self,
-        TN: Tensor,
-        T0: Optional[Tensor] = None,
-        node_attrs: Optional[Tensor] = None,
-        node_level: Optional[Tensor] = None
-    ) -> Tensor:
-        return self.out(TN, node_attrs)
+            # === weight initialization ===
+            if forward_weight_init:
+                norm_dim = h_in
+                gain = 1.0 if act is None or (layer == 0) else sqrt(2)
+            else:
+                norm_dim = h_out
+                gain = (
+                    1.0 if act is None or (layer == self.num_layers - 1) else sqrt(2)
+                )
 
+            # === instantiate Linear ===
+            linear_layer = LinearLayer(
+                in_dim=h_in,
+                out_dim=h_out,
+                alpha=gain / sqrt(norm_dim),
+                bias=bias,
+            )
+            mlp.append(linear_layer)
 
-class NodeNonLinearReadOut(torch.nn.Module):
-    '''
-    Using MLP to produce rank-0 and rank-0-gated together may be better or not, 
-    But I'm too lazy to change it.
-    '''
+            # === optional LayerNorm ===
+            if enable_layer_norm:
+                if layer < len(self.dims) -2:
+                    mlp.append(torch.nn.LayerNorm(h_out))
+            del gain, norm_dim
+
+            # === act ===
+            if (layer != self.num_layers - 1) and (act is not None):
+                mlp.append(act)
+                self.is_nonlinear = True
+
+        if self.use_multi_head: 
+            self.mlp_1 = torch.nn.Sequential(*mlp[:-1]) 
+            self.mlp_2 = torch.nn.Sequential(mlp[-1])   
+        else:
+            self.mlp = torch.nn.Sequential(*mlp)
+
+    def forward(self, x, node_level=None):
+        if self.use_multi_head:
+            x = self.mlp_1(x)
+            x = select_corresponding_level(x, node_level, self.num_levels)
+            return self.mlp_2(x)
+        else:
+            return self.mlp(x)
+
+class TensorReadOut(torch.nn.Module):
     def __init__(
         self,
+        l: int,
         in_dim: int,
         hidden_dim: List[int],
         out_dim: int,
-        bias: bool = False,
-        atomic_numbers: List[int] = None,
         gate: str = "silu",
         num_levels: int = 1,
         use_multi_head: bool = False,
     ) -> None:
         super().__init__()
 
+        self.l = l
         self.num_levels = num_levels
         self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
         if self.use_multi_head:
-            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
+            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_emlp.hidden_dim must be only one neuron'
 
-        self.layer0s = nn.ModuleList()
-        self.layerNs = nn.ModuleList()
-        self.gate = ACT.get(gate, ACT['silu'])()
-
+        self.linears_1 = torch.nn.ModuleList()
         prev_dim = in_dim
         for h_dim in hidden_dim:
-            layer0 = Linear(
-                in_dim=prev_dim,
-                out_dim=h_dim,
-                bias=bias,
-                atomic_numbers=atomic_numbers,
+            self.linears_1.append(
+                Linear(
+                    in_dim=prev_dim,
+                    out_dim=h_dim,
+                    bias=False,
+                    l=self.l,
+                )
             )
-            layerN = Linear(
-                in_dim=prev_dim,
-                out_dim=h_dim,
-                bias=bias,
-                atomic_numbers=atomic_numbers,
-            )
-            self.layer0s.append(layer0)
-            self.layerNs.append(layerN)
             prev_dim = h_dim
 
-        self.output_layer = Linear(
+        self.gates = torch.nn.ModuleList()
+        for dim in hidden_dim:
+            self.gates.append(NormGate[gate](self.l, dim))
+            
+        self.linear_2= Linear(
             in_dim=prev_dim,
             out_dim=out_dim,
-            bias=bias,
-            atomic_numbers=atomic_numbers,
+            bias=False,
+            l=self.l,
         )
 
-    def forward(self, TN: Tensor, T0: Tensor,  node_attrs: Optional[Tensor] = None, node_level: Optional[Tensor] = None) -> Tensor:
-        for linear0, linearN in zip(self.layer0s, self.layerNs):
-            T0 = self.gate(linear0(T0, node_attrs))
-            TN = expand_dims_to(T0, TN.ndim) * linearN(TN)
+    def forward(self, t: torch.Tensor, node_level: torch.Tensor) -> torch.Tensor:
+        for idx, linear in enumerate(self.linears_1):
+            t = self.gates[idx](linear(t))
         if self.use_multi_head:
-            out = self.output_layer(select_corresponding_level_for_tensor(TN, node_level, self.num_levels))
+            t = select_corresponding_level(t, node_level, self.num_levels)
+        return self.linear_2(t)
+
+
+def build_scalar_readout(
+    in_dim: int,
+    hidden_dim: List[int],
+    act: int,
+    bias: bool,
+    num_levels: int,
+    use_multi_head: bool,
+    num_layers: int,
+    use_all_layer: bool,
+):
+    readouts = []
+    for idx in range(num_layers):
+        if idx == (num_layers-1):
+            if use_multi_head:
+                hidden_dim_ = [d * num_levels for d in hidden_dim]
+                out_dim_ = num_levels
+            else:
+                hidden_dim_ = hidden_dim
+                out_dim_ = 1
+            act_ = act
+            use_multi_head_ = use_multi_head
+            forward_weight_init = False
         else:
-            out = self.output_layer(TN)
-        return out
+            hidden_dim_ = []
+            out_dim_ = 1
+            act_ = None
+            use_multi_head_ = False
+            forward_weight_init = True
+
+        readouts.append(
+            ScalarReadOut(
+                in_dim=in_dim,
+                out_dim=out_dim_,
+                hidden_dim=hidden_dim_,
+                act=act_,
+                bias=bias,
+                forward_weight_init=forward_weight_init,
+                num_levels=num_levels,
+                use_multi_head=use_multi_head_,
+            )
+        )
+    if use_all_layer:
+        return torch.nn.ModuleList(readouts)
+    else:
+        return torch.nn.ModuleList([readouts[-1]])
+
+
+def build_tensor_readout(
+    l: int,
+    in_dim: int,
+    hidden_dim: int,
+    gate: int,
+    num_levels: int,
+    use_multi_head: bool,
+    num_layers: int,
+    use_all_layer: bool,
+):
+    readouts = []
+    for idx in range(num_layers):
+        if idx == num_layers - 1:
+            if use_multi_head:
+                hidden_dim_ = [d * num_levels for d in hidden_dim]
+                out_dim_ = num_levels
+            else:
+                hidden_dim_ = hidden_dim
+                out_dim_ = 1
+            gate_ = gate
+            use_multi_head_ = use_multi_head
+        else:
+            hidden_dim_ = []
+            out_dim_ = 1
+            gate_ = None
+            use_multi_head_ = False
+
+        readouts.append(
+            TensorReadOut(
+                l=l,
+                in_dim=in_dim,
+                hidden_dim=hidden_dim_,
+                out_dim=out_dim_,
+                gate=gate_,
+                num_levels=num_levels,
+                use_multi_head=use_multi_head_,
+            )
+        ) 
+    if use_all_layer:
+        return torch.nn.ModuleList(readouts)
+    else:
+        return torch.nn.ModuleList([readouts[-1]])
+

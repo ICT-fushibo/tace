@@ -4,9 +4,13 @@
 ################################################################################
 
 import packaging
-
+from pathlib import Path
 
 import torch
+
+CACHE_DIR = Path.home() / ".cache" / "tace"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 BOOL = {
     0: False,
@@ -46,3 +50,4 @@ DEVICE = {
 _TORCH_VERSION = packaging.version.parse(torch.__version__)
 _TORCH_GE_2_9 = _TORCH_VERSION >= packaging.version.parse("2.9")
 _GLOBAL_STATE_INITIALIZED = False
+

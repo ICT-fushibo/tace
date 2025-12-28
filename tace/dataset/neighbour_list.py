@@ -3,11 +3,22 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
+from ase.geometry import complete_cell
 
 import numpy as np
 from matscipy.neighbours import neighbour_list
+try:
+    from ase.neighborlist import primitive_neighbor_list
+    from vesin import NeighborList as vesin_nl
+except ImportError:
+    pass
+
+
+# self-interaction: ase
+# 1D, 2D: ase, matscipy
+NL_BACKEND = ["ase", "vesin", "matscipy"]
 
 
 def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf"):
@@ -36,76 +47,83 @@ def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf")
         shifts_sorted[mask],
     )
 
-
 def get_neighborhood(
     positions: np.ndarray,
     cutoff: float,
-    pbc: Optional[Tuple[bool, bool, bool]] = None,
+    pbc: Optional[bool | Tuple[bool, bool, bool]] = None,
     lattice: Optional[np.ndarray] = None,  # [3, 3]
-    max_neighbors: Union[str, int] = "inf",
+    max_neighbors: Optional[int] = None,
+    backend: str = "vesin" # "matscipy",
 ) -> Tuple[np.ndarray, np.ndarray]:
+    
+    assert backend in NL_BACKEND, f"Neighborlist backend should be in {NL_BACKEND}"
 
-    pbc = tuple(bool(i) for i in pbc)
-
-    if pbc is not None:
-        if not (all(pbc) or not any(pbc)):
-            raise ValueError(
-                "pbc must be either all True or all False, "
-                "for author not check for 1D and 2D Periodic systems' neighbor lists."
-            )
-
+    # === PBC ===
     if pbc is None:
-        pbc = None
-        lattice = None
+        pbc = (False, False, False)
+    elif isinstance(pbc, bool):
+        pbc = (pbc,) * 3
+    else:
+        pbc = tuple(bool(i) for i in pbc)
 
-    if pbc == (False, False, False):
-        pbc = None
-
-        if lattice is None:
-            lattice = None
-        elif lattice is not None:
-            if lattice.any() == np.zeros((3, 3)).any():
-                pbc = None
-                lattice = None
-        else:
-            pbc == (True, True, True)
-
-    if lattice is None:
-        pbc = None
-        lattice = None
-
-    if lattice is not None:
-        if lattice.any() == np.zeros((3, 3)).any():
-            pbc = None
-            lattice = None
-
-    if pbc == (True, True, True):
-        if lattice is None:
-            raise ValueError("Lattice is required for periodic boundary conditions.")
-        if np.allclose(lattice, np.zeros((3, 3))):
+    # === Lattiace ===
+    if any(pbc):
+        if lattice is None or np.allclose(lattice, 0.0):
             raise ValueError(
-                "Lattice matrix is zero, which is invalid for periodic systems."
+                "At least one direction is periodic, but lattice is None or zero."
             )
+    if not any(pbc):
+        lattice = None
+    else:
+        if lattice is None:
+            raise ValueError(
+                "At least one direction is periodic, but lattice is None."
+            )
+        
+    # === Neighborlist ===
+    if backend == "matscipy":
+        edges = neighbour_list(
+            quantities="ijSd",
+            pbc=pbc,
+            cell=lattice,
+            positions=positions,
+            cutoff=cutoff,
+        )
+    elif backend == "vesin":
+        # https://github.com/Luthaf/vesin/blob/main/python/vesin/src/vesin/_ase.py
+        if all(pbc):
+            is_3D = True
+        elif not any(pbc):
+            is_3D = False
+        else:
+            raise ValueError("vesin only support pbc=(F, F, F) or (T, T, T)")
+        if lattice is None:
+            box = np.zeros((3, 3), dtype=positions.dtype)
+        else:
+            box = lattice
+        edges = vesin_nl(
+            cutoff=cutoff, 
+            full_list=True
+        ).compute(points=positions, box=box, periodic=is_3D, quantities="ijSd")
+        edges = list(edges)
+        edges[0] = edges[0].astype(np.int64)
+        edges[1] = edges[1].astype(np.int64)
+        edges = tuple(edges)
+    elif backend == "ase":
+        if lattice is None:
+            cell = np.zeros((3, 3), dtype=positions.dtype)
+        else:
+            cell = lattice
+        edges = primitive_neighbor_list(
+            "ijSd",
+            pbc,
+            cell,
+            positions,
+            cutoff=cutoff,
+            self_interaction=False,
+            use_scaled_positions=False,
+        )
 
-    # pbc_x = pbc[0]
-    # pbc_y = pbc[1]
-    # pbc_z = pbc[2]
-    # identity = np.identity(3, dtype=float)
-    # max_positions = np.max(np.absolute(positions)) + 1
-    # if not pbc_x:
-    #     lattice[0, :] = max_positions * 5 * cutoff * identity[0, :]
-    # if not pbc_y:
-    #     lattice[1, :] = max_positions * 5 * cutoff * identity[1, :]
-    # if not pbc_z:
-    #     lattice[2, :] = max_positions * 5 * cutoff * identity[2, :]
-
-    edges = neighbour_list(
-        quantities="ijSd",
-        pbc=pbc,
-        cell=lattice,
-        positions=positions,
-        cutoff=cutoff,
-    )
     source, target, shifts = filter_max_neighbors(*edges, max_neighbors=max_neighbors)
 
     real_self_loop = source == target
@@ -118,6 +136,9 @@ def get_neighborhood(
     edge_shifts = shifts[keep_edge]
     edge_index = np.stack((source, target))
 
+    if lattice is None:
+        lattice = np.zeros((3, 3), dtype=positions.dtype)
+ 
     return edge_index, edge_shifts, pbc, lattice
 
 
@@ -126,7 +147,7 @@ def get_neighborhood_for_calculator(
     cutoff: float,
     pbc: Optional[Tuple[bool, bool, bool]] = None,
     lattice: Optional[np.ndarray] = None,  # [3, 3]
-    max_neighbors: Union[str, int] = "inf",
+    max_neighbors: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
 
     edges = neighbour_list(
@@ -149,3 +170,6 @@ def get_neighborhood_for_calculator(
     edge_index = np.stack((source, target))
 
     return edge_index, edge_shifts
+
+
+

@@ -176,6 +176,7 @@ def compute_statistics(
             "universal_embedding": cfg.get("model", {})
             .get("config", {})
             .get("universal_embedding", None),
+            "neighborlist_backend": cfg.get("dataset", {}).get("neighborlist_backend", "matscipy"),
         }
 
         dataloader_train = None

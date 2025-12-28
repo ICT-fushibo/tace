@@ -40,6 +40,7 @@ def parse_args():
     parser.add_argument("-b", "--batch_size", type=int, default=16, help="Batch size for inference")
     parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float64"], help="Tensor precision")
     parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"], help="Device for inference")
+    parser.add_argument("--nl_backend", type=str, default="matscipy", choices=["ase", "vesin", "matscipy"], help="nl_backend")
     # parser.add_argument("-c", "--compile", type=int, default=0, help="Compile to jit-model, not support know")
 
     # Keys for properties, if need print test metrics
@@ -114,6 +115,7 @@ def main():
             target_property=target_property,
             embedding_property=embedding_property,
             universal_embedding=getattr(model, 'universal_embedding', {}),
+            neighborlist_backend=args.nl_backend,
         )
         for atoms in check_keys(atomsList, target_property, key_spec, embedding_property, check)
     ]
@@ -165,19 +167,24 @@ def main():
             start, end = ptr[i], ptr[i + 1]
             atoms_i = atoms_list_copy[structure_index]
             for p in target_property:
-                p_type = PROPERTY[p]['type']
+                p_scope = PROPERTY[p]['scope']
                 p_rank = PROPERTY[p]['rank']
-                if p_type == 'graph':
+                if p_scope == 'per-system':
                     if p_rank == 0:
                         atoms_i.info[f"TACE_{p}"] = pred[p][i].item()
                     else:
                         atoms_i.info[f"TACE_{p}"] = pred[p][i].numpy().reshape(-1)
-                elif p_type == 'atom':
+                elif p_scope == 'per-atom':
                     atoms_i.arrays[f"TACE_{p}"] = pred[p][start:end].numpy().reshape(-1, 3**p_rank)
+                elif p_scope == 'edge':
+                    raise TypeError(
+                        f"Property '{p}' has unsupported scope '{p_scope}'. "
+                        "Only 'per-system' and 'per-atom' types are supported for writing to ASE files now."
+                    )
                 else:
                     raise TypeError(
-                        f"Property '{p}' has unsupported type '{p_type}'. "
-                        "Only 'graph' and 'atom' types are supported for writing to ASE files now."
+                        f"Property '{p}' has unsupported scope '{p_scope}'. "
+                        "Only 'per-system' and 'per-atom' types are supported for writing to ASE files now."
                     )
             pred_atoms_list.append(atoms_i)
             structure_index += 1  # move to next structure

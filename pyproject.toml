@@ -24,22 +24,25 @@ dependencies = [
     "configargparse",
     "lmdb",
     "pandas",
-    "torch-sim-atomistic" # interface with torch_sim
+    "torch-sim-atomistic" 
 ]
 
 [project.optional-dependencies]
 
-#les = [
-#    "les @ git+https://github.com/ChengUCB/les"
-#]
-
 lammps = [
+    "lammps",
     "cython",
     "cupy-cuda12x",
 ]
 
 d3 = [
     "torch_dftd",
+]
+
+nl = [
+    "ase",
+    "matscipy",
+    "vesin",
 ]
 
 dev = [
@@ -83,7 +86,7 @@ tace-split = "tace.scripts.split:main"
 tace-export = "tace.scripts.export:main"
 tace-graph = "tace.scripts.graph:main"
 tace-update = "tace.scripts.update:main"
-# tace-convert = "tace.scripts.convert:main"
+tace-modify = "tace.scripts.modify:main"
 tace-finetune_config = "tace.scripts.finetune_config:main"
 
 [tool.setuptools.packages.find]

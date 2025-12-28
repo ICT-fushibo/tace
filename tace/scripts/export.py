@@ -7,7 +7,6 @@
 import argparse
 
 import torch
-from e3nn.util.jit import compile
 
 
 from ..lightning import load_tace
@@ -55,23 +54,20 @@ DTYPE = {
 
 def main():
     args = parse_args()
-    model_path = args.model
-
-    model = load_tace(model, args.device, strict=True, use_ema=True)
+    model = load_tace(args.model, args.device, strict=True, use_ema=True)
     model_dtype = model.readout_fn.cutoff.dtype
     args_dtype = DTYPE[args.dtype] or model_dtype
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
     torch.set_default_dtype(args_dtype)
-    model.to(args_dtype)
-    model.to(args.device)
+    model.to(dtype=args_dtype, device=args.device)
     if args.backend == "lammps":
-        from ..interface.lammps.mliap import TACE_LAMMPS_MLIAP
+        from ..interface.lammps import TACELammpsCalc
         model.lmp = True
-        lammps_model = TACE_LAMMPS_MLIAP(model)
-        torch.save(lammps_model, model_path + "-lmp_mliap.pt")
+        lammps_model = TACELammpsCalc(model)
+        torch.save(lammps_model, args.model + "-lammps_mliap.pt")
     elif args.backend == "torch":
-        torch.save(model, model_path + "-torch.pt") 
+        torch.save(model, args.model + "-torch.pt") 
     else:
         raise ValueError(f"Unsupported backend '{args.backend}'. Currently only 'lammps' and 'torch' is available.")
 

@@ -112,34 +112,18 @@ def vec_to_skew(v: torch.Tensor) -> torch.Tensor:
     return skew
 
 
-def select_corresponding_level_for_scalar(
+def select_corresponding_level(
         x: torch.Tensor, node_level: torch.Tensor, num_levels: int
     ) -> torch.Tensor:
-    '''
-    For rank-0 tensor, 
-    '''
     B = x.size(0)
     C_LEVELS = x.size(1)
     mask = torch.zeros(B, num_levels, C_LEVELS // num_levels, device=x.device, dtype=x.dtype)
     idx = torch.arange(B, device=x.device, dtype=torch.int64)
     mask[idx, node_level, :] = 1
     mask = mask.reshape((B, C_LEVELS))
-    return x * mask
-
-def select_corresponding_level_for_tensor(
-        x: torch.Tensor, node_level: torch.Tensor, num_levels: int
-    ) -> torch.Tensor:
-    '''
-    For rank>0 tensor, 
-    '''
-    B = x.size(0)
-    C_LEVELS = x.size(1)
-
-    mask = torch.zeros(B, num_levels, C_LEVELS // num_levels, device=x.device, dtype=x.dtype)
-    idx = torch.arange(B, device=x.device, dtype=torch.int64)
-    mask[idx, node_level, :] = 1
-    mask = mask.reshape((B,C_LEVELS))
+    # return x * mask
     return x * expand_dims_to(mask, x.ndim, -1)
+
 
 class Graph(NamedTuple):
     lmp: bool

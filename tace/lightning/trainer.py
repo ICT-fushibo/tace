@@ -10,6 +10,8 @@ from datetime import datetime
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import StochasticWeightAveraging
+from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from hydra.utils import instantiate
 from torch_geometric.loader import DataLoader
 
@@ -47,15 +49,8 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
         except Exception as e:
             raise RuntimeError(f"Logger initialization failed: {str(e)}") from e
 
-    # === Callbacks Configuration ===
-    REQUIRED_CALLBACKS = {
-        "checkpoint": ModelCheckpoint,
-        # "early_stopping": pl.callbacks.EarlyStopping,
-    }
-
+    # === User Callbacks Configuration ===
     initialized_callbacks = []
-    remaining_required = dict(REQUIRED_CALLBACKS)
-
     for cb_name, cb_config in cfg.get("callbacks", {}).items():
         try:
             if cb_config.get("_target_") is None:
@@ -67,30 +62,36 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
             logging.debug(
                 f"Successfully loaded callback: {cb_name} ({type(callback).__name__})"
             )
-
-            # Track required callbacks, if succeed, delete field
-            for req_name, req_type in list(remaining_required.items()):
-                if isinstance(callback, req_type):
-                    del remaining_required[req_name]
-
         except Exception as e:
             error_msg = (
                 f"Callback '{cb_name}' initialization failed\n"
                 f"Config: {cb_config}\n"
                 f"Error: {str(e)}"
             )
-            if cb_name in REQUIRED_CALLBACKS:
-                raise RuntimeError(error_msg) from e
             logging.error(error_msg, exc_info=True)
-
-    # Validate required callbacks
-    if remaining_required:
-        missing = ", ".join(remaining_required.keys())
-        raise ValueError(f"Missing required callbacks: {missing}")
 
     # === Built-in callbacks ===
     initialized_callbacks += [PrintMetricsCallback()]
 
+    # === Put checkpoint at the end ===
+    other_cbs = [
+        cb for cb in initialized_callbacks if not isinstance(cb, ModelCheckpoint)
+    ]
+    checkpoint_cbs = [
+        cb for cb in initialized_callbacks if isinstance(cb, ModelCheckpoint)
+    ]
+    initialized_callbacks = other_cbs + checkpoint_cbs     
+    if checkpoint_cbs:
+        for cb in checkpoint_cbs:
+            logging.info(f"Model checkpoints will be saved to: {cb.dirpath}")
+            if not cb.monitor:
+                logging.warning(f"Checkpoint in {cb.dirpath} has no monitor metric specified")
+    else:
+        raise RuntimeError(
+            "No ModelCheckpoint callback configured. "
+            "You must provide at least one ModelCheckpoint to save the model checkpoints."
+        )
+    
     try:
         trainer_cfg = cfg["trainer"]
         filter_trainer_cfg = {}
@@ -113,26 +114,8 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
             f"Error: {str(e)}"
         )
         raise RuntimeError(error_detail) from e
-
-    # === Post-Initialization Checks ===
-    # Verify checkpoint configuration
-    checkpoint_cb = next(
-        (
-            cb
-            for cb in initialized_callbacks
-            if isinstance(cb, ModelCheckpoint)
-        ),
-        None,
-    )
-
-    if checkpoint_cb:
-        logging.info(f"Model checkpoints will be saved to: {checkpoint_cb.dirpath}")
-        if not checkpoint_cb.monitor:
-            logging.warning("ModelCheckpoint has no monitor metric specified")
-    else:
-        logging.warning(
-            "No ModelCheckpoint callback configured - models won't be saved"
-        )
+    
+    logging.info(f"Callbacks: {list(cfg.get("callbacks", {}))}")
 
     return trainer
 
@@ -175,6 +158,9 @@ def train(
             datamodule=datamodule,
         )
 
+    if lit_model.use_swa:
+        trainer.save_checkpoint('swa_final.ckpt', weights_only=False)
+    
     # TEST
     if cfg['dataset'].get('test_files', None) is not None:
         trainer.test(

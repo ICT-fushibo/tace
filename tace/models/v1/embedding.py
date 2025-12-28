@@ -11,73 +11,12 @@ from torch import nn, Tensor
 from cartnn.o3 import expand_dims_to
 
 
+
 from .act import ACT
+from ...dataset.quantity import PROPERTY, UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
 
 
-
-class UniversalInvariantEmbedding(torch.nn.Module):
-    def __init__(
-        self,
-        num_channel: int,
-        invariant_embeddings: List[Dict[str, Union[int, str]]],
-    ):
-        super().__init__()
-
-        self.invariant_embeddings = invariant_embeddings
-        self.num_channel = num_channel
-        self.embedding = nn.ModuleDict()
-
-        total_dim = 0
-        for k, v in invariant_embeddings.items():
-            p = k
-            type_ = v["type"]
-            in_dim = v["in_dim"]
-            out_dim = v["out_dim"]
-
-            if type_ == "discrete":
-                self.embedding[p] = nn.Embedding(v["num_classes"], out_dim)
-            elif type_ == "continuous":
-                act = v["act"]
-                bias = v["bias"]
-                self.embedding[p] = nn.Sequential(
-                    nn.Linear(in_dim, out_dim, bias=bias),
-                    ACT[act](),
-                    nn.Linear(out_dim, out_dim, bias=bias),
-                )
-            total_dim += out_dim
-
-        self.project = nn.Sequential(
-            nn.Linear(total_dim, num_channel, bias=False),
-            nn.SiLU(),
-        )
-
-    def forward(
-        self,
-        batch: Tensor,
-        attrs: Dict[str, Tensor],
-    ) -> Tensor:
-        embeddings = []
-
-        for p, _ in self.embedding.items():
-            ie_info = self.invariant_embeddings[p]
-            _type = ie_info['type']
-            per = ie_info["per"]
-            in_dim = ie_info["in_dim"]
-            attr = attrs[p]
-
-            if per == "graph":
-                attr = attr[batch]
-
-            if _type == 'continuous' and in_dim == 1:
-                attr = attr.unsqueeze(-1)
-    
-            embedding = self.embedding[p](attr)
-            embeddings.append(embedding)
-
-        return self.project(torch.cat(embeddings, dim=-1))
-
-
-def add_rank1_to_left(T: Dict[int, Tensor], rank1: Tensor) -> Dict[int, torch.Tensor]:
+def add_rank1_to_left(T: Dict[int, torch.Tensor], rank1: torch.Tensor) -> Dict[int, torch.Tensor]:
     if 1 in T:
         T[1] = T[1] + rank1
     else:
@@ -85,7 +24,7 @@ def add_rank1_to_left(T: Dict[int, Tensor], rank1: Tensor) -> Dict[int, torch.Te
     return T
 
 
-def add_rank2_to_left(T: Dict[int, Tensor], rank2: Tensor) -> Dict[int, torch.Tensor]:
+def add_rank2_to_left(T: Dict[int, torch.Tensor], rank2: torch.Tensor) -> Dict[int, torch.Tensor]:
     if 2 in T:
         T[2] = T[2] + rank2
     else:
@@ -93,7 +32,7 @@ def add_rank2_to_left(T: Dict[int, Tensor], rank2: Tensor) -> Dict[int, torch.Te
     return T
 
 
-def add_rank3_to_left(T: Dict[int, Tensor], rank3: Tensor) -> Dict[int, torch.Tensor]:
+def add_rank3_to_left(T: Dict[int, torch.Tensor], rank3: torch.Tensor) -> Dict[int, torch.Tensor]:
     if 3 in T:
         T[3] = T[3] + rank3
     else:
@@ -108,16 +47,72 @@ ADD_FN = {
 }
 
 
+class UniversalInvariantEmbedding(torch.nn.Module):
+    def __init__(
+        self,
+        out_dim: int,
+        invariant_embedding: Dict[str, bool | str | int],
+    ):
+        super().__init__()
+
+        self.embeddings = nn.ModuleDict()
+
+        total_dim = 0
+        for k, v in invariant_embedding.items():
+            if v.get('enable', False) and PROPERTY[k]['rank'] == 0:
+                p_type = PROPERTY[k]["type"]
+                if p_type == "int":
+                    self.embedding[k] = nn.Embedding(v["num_classes"], out_dim)
+                elif p_type == "float":
+                    act = v.get("act", "silu")
+                    self.embedding[k] = nn.Sequential(
+                        nn.Linear(1, out_dim, bias=False),
+                        ACT[act](),
+                        nn.Linear(out_dim, out_dim, bias=False),
+                    )
+                total_dim += out_dim
+
+        self.project = nn.Sequential(
+            nn.Linear(total_dim, out_dim, bias=False),
+            nn.SiLU(),
+        )
+
+    def forward(
+        self,
+        batch: Tensor,
+        attrs: Dict[str, Tensor],
+    ) -> Tensor:
+        embeddings = []
+
+        for p, module in self.embeddings.items():
+            attr = attrs[p]
+
+            type_ = PROPERTY[p]['type']
+            scope = PROPERTY[p]['scope']
+
+            if scope == "per-system":
+                attr = attr[batch]
+
+            if type_ == 'float':
+                attr = attr.unsqueeze(-1)
+    
+            embedding = module[p](attr)
+            embeddings.append(embedding)
+
+        return self.project(torch.cat(embeddings, dim=-1))
+
+
 class EquivariantEmbedding(torch.nn.Module):
     def __init__(
         self,
         p: str,
         rank: int,
-        per: str,
+        scope: str,
         atomic_numbers: List,
         num_channel: int,
         element_trainable: bool = True,
         channel_trainable: bool = True,
+        normalizer: float = 1.0
     ):
         super().__init__()
         num_elements = len(atomic_numbers)
@@ -141,8 +136,9 @@ class EquivariantEmbedding(torch.nn.Module):
             )
         self.p = p
         self.add_fn = ADD_FN[rank]
-        self.per = per
+        self.scope = scope
         self.rank = rank
+        self.normalizer = normalizer
 
     def forward(
         self,
@@ -152,8 +148,8 @@ class EquivariantEmbedding(torch.nn.Module):
         data: Dict[str, Tensor],
     ):
         element_idx = torch.argmax(node_attrs, dim=-1)
-        label = data[self.p]
-        if self.per == "graph":
+        label = data[self.p] * self.normalizer # TODO
+        if self.scope == "per-system":
             label = label[batch].unsqueeze(1)
         else:
             label = label.unsqueeze(1)
@@ -171,38 +167,29 @@ class EquivariantEmbedding(torch.nn.Module):
 class UniversalEquivariantEmbedding(torch.nn.Module):
     def __init__(
         self,
-        equivariant_embeddings: List[Dict[str, Union[int, str]]],
+        equivariant_embedding: Dict[str, bool | str | int],
         atomic_numbers: List,
         num_channel: int,
     ):
         super().__init__()
 
-        self.equivariant_embeddings = equivariant_embeddings
+        self.equivariant_embedding = equivariant_embedding
         self.embeddings = nn.ModuleDict()
-        for k, v in equivariant_embeddings.items():
-            p = k
-            per = v["per"]
-            rank = v["rank"]
-            element_trainable = v["element_trainable"]
-            channel_trainable = v["channel_trainable"]
-
-            self.embeddings[p] = EquivariantEmbedding(
-                p,
-                rank,
-                per,
+        for k, v in equivariant_embedding.items():
+            self.embeddings[k] = EquivariantEmbedding(
+                k,
+                PROPERTY[k]["rank"],
+                PROPERTY[k]["scope"],
                 atomic_numbers,
                 num_channel,
-                element_trainable,
-                channel_trainable,
+                element_trainable=True,
+                channel_trainable=True,
+                normalizer=float(v.get('normalizer', 1.0))
             )
 
-    def forward(
-        self,
-        node_feats,
-        data: Dict[str, Tensor],
-    ) -> Tensor:
-        batch = data["batch"]
+    def forward(self, in_dict, data: Dict[str, torch.Tensor]) -> torch.Tensor:
+        batch = data["batch"] # TODO, BUG, replace data
         node_attrs = data["node_attrs"]
-        for p, _ in self.equivariant_embeddings.items():
-            node_feats = self.embeddings[p](batch, node_feats, node_attrs, data)
-        return node_feats
+        for _, module in self.embeddings.items():
+            out_dict = module(batch, in_dict, node_attrs, data)
+        return out_dict

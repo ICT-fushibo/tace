@@ -2,261 +2,78 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-
+"""
+So far, all the functions have been concentrated within one interaction module,
+and LAMMPS utils are from MACE
+"""
+import abc
 from typing import Dict, List, Tuple, Optional, Any
+
 
 import torch
 from torch import Tensor
 from cartnn.o3 import ICTD, expand_dims_to
 from cartnn.util import scatter_sum
 
-from .act import ACT
+
 from .mlp import MLP
 from .paths import generate_combinations
-from .linear import SelfInteraction, ElementLinear
+from .linear import SelfInteraction, ElementLinear, Linear
 from .ctr import Contraction
-from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict
+from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict, add_to_left
+from .layers import NormNonlinearity, GatedNonlinearity
 
+InterLinear = {
+    False: Linear,
+    True: ElementLinear,
+}
 
-class Interaction(torch.nn.Module):
+class InteractionBase(torch.nn.Module):
     def __init__(
         self,
-        atomic_numbers: int,
+        layer: int,
+        num_layers: int,
         num_channel: int,
         num_channel_hidden: int,
-        max_r_in: int,
-        r_sc: List[int],
-        max_r_out: int,
+        bias: bool,
+        lmax_in: int,
+        lmax_out: int,
+        ls_sc: List[int],
+        atomic_numbers: int,
         avg_num_neighbors,
         num_radial_basis,
-        radial_mlp={},
-        inter: Dict = {},
-        bias: bool = False,
-        layer: int = -1,
-        num_layers: int = -1,
+        radial_mlp,
+        inter: Dict,
     ) -> None:
         super().__init__()
-
-        # combs
-        combs = generate_combinations(
-            max_r_in,
-            max_r_out,
-            max_r_out,
-            l1l2=inter["l1l2"][layer],
-        )
-
-        # === arguments ===
-        enable_residual = inter.get('residual', False)
-        enable_layer_norm = radial_mlp.get('enable_layer_norm', False)
-        self.add_source_target_embedding = inter.get('add_source_target_embedding', False)
-        normalizer = inter.get('normalizer', {})
-        self.normalizer_type = normalizer.get('type', 'fixed')
-        self.normalizer_scale_shift_trainable = normalizer.get('scale_shift_trainable', False)
+        self.layer = layer
+        self.num_layers = num_layers
+        self.num_channel = num_channel
+        self.num_channel_hidden = num_channel_hidden
+        self.bias = bias
+        self.lmax_in = lmax_in
+        self.lmax_out = lmax_out
+        self.ls_sc = ls_sc
+        self.atomic_numbers = atomic_numbers
+        self.num_radial_basis = num_radial_basis
+        self.radial_mlp = radial_mlp
+        self.inter = inter
         self.register_buffer(
             "avg_num_neighbors",
             torch.tensor(avg_num_neighbors, dtype=torch.get_default_dtype()),
         )
-        self.linear_up = SelfInteraction(
-            in_channel=num_channel,
-            out_channel=num_channel,
-            rs=list(range(max_r_in + 1)),
-            bias=bias,
-        )
-
-        kernel = inter.get('kernel', 'scatter')
-        assert kernel in ['scatter', 'torch_fusion']
-        self.tc = Contraction(
-            combs=combs,
-            ictp_lw=inter.get('ictp_lw', False), 
-            ictc_lw=inter.get('ictc_lw', False), 
-            ictp_hw=inter.get('ictp_hw', True),
-            ictc_hw=inter.get('ictc_hw', True),
-            num_channel=num_channel,
-            num_channel_hidden=num_channel_hidden,
-            lmax_in=max_r_in,
-            lmax_out=max_r_out,
-            kernel=kernel,
-        )
-
-        self.enable_residual = enable_residual or layer > 0 or num_layers == 1
-        if self.enable_residual:
-            self.scs = torch.nn.ModuleDict()
-            for r in r_sc:
-                self.scs[str(r)] = ElementLinear(
-                    num_channel_hidden,
-                    num_channel,
-                    bias=(r == 0 and bias),
-                    atomic_numbers=atomic_numbers,
-                    l=r,
-                )
-
-        # === ICT ===
-        for r in range(max_r_out + 1):
+        for r in range(lmax_out + 1):
             DS = ICTD(r, r)[1]
             self.register_buffer(f"D_{r}_{r}_1", DS[0].to(torch.get_default_dtype()))
             del DS
-
-        if self.add_source_target_embedding:
-            self.source_embedding = MLP(
-                len(atomic_numbers),
-                num_channel,
-                hidden_dim=[],
-                act=None,
-                bias=False,
-                forward_weight_init=True,
-                enable_layer_norm=False,
-            )
-            self.target_embedding = MLP(
-                len(atomic_numbers),
-                num_channel,
-                hidden_dim=[],
-                act=None,
-                bias=False,
-                forward_weight_init=True,
-                enable_layer_norm=False,
-            )
-            torch.nn.init.uniform_(self.source_embedding.mlp[0].weight, a=-0.001, b=0.001)
-            torch.nn.init.uniform_(self.target_embedding.mlp[0].weight, a=-0.001, b=0.001)
-
-        if self.normalizer_type == 'dynamic':
-            # this normalizer_type is based on mace, for UMLIP
-            if self.add_source_target_embedding:
-                normalizer_in_dim = num_radial_basis + 2 * num_channel
-            else:
-                normalizer_in_dim = num_radial_basis
-            self.density_normalizer = MLP(
-                normalizer_in_dim,
-                1,
-                normalizer.get('hidden', [64]),
-                act=normalizer.get('act_1', 'silu'),
-                bias=normalizer.get('bias', False),
-                forward_weight_init=True,
-                enable_layer_norm=enable_layer_norm,
-            )
-            self.normalizer_act_2 = ACT[normalizer.get('act_2', 'tanh')]()
-            if self.normalizer_scale_shift_trainable:
-                self.alpha = torch.nn.Parameter(torch.tensor(20.0), requires_grad=True)
-                self.beta = torch.nn.Parameter(torch.tensor(0.0), requires_grad=True)
-
-        self.r_sc = r_sc
-        self.max_r_in = max_r_in
-        self.max_r_out = max_r_out
-        self.layer = layer
-        self.num_layers = num_layers
-        self.num_channel = num_channel
-
-
-        # ==== conv weight ==== TODO for xzm move this to interaction
-        if inter.get('add_source_target_embedding', False):
-            radial_in_dim = num_radial_basis + 2 * num_channel
-        else:
-            radial_in_dim = num_radial_basis
-        self.radial_net = MLP(
-            radial_in_dim,
-            num_channel * len(combs),
-            radial_mlp["hidden"][layer],
-            act=radial_mlp["act"],
-            bias=radial_mlp.get('bias', False),
-            forward_weight_init=radial_mlp.get("forward_weight_init", True),
-            enable_layer_norm=radial_mlp.get('enable_layer_norm', False),
-        )
+        self._setup()
 
     def D(self, l: int):
         return dict(self.named_buffers())[f"D_{l}_{l}_1"]
     
-    def forward(
-        self,
-        node_feats: Dict[int, Tensor],
-        node_attrs: Tensor,
-        node_attrs_lmp: Tensor,
-        edge_feats: Tensor,
-        edge_attrs: Dict[int, Tensor],
-        edge_index: Tensor,
-        cutoff: Tensor,
-        graph: Graph,
-    ) -> Tuple[Dict[int, Tensor], Dict[int, Tensor]]:
-
-        lmp = graph.lmp
-        lmp_data = graph.lmp_data
-        lmp_natoms = graph.lmp_natoms
-        nlocal = lmp_natoms[0] if lmp_data is not None else None
-        node_feats = self.linear_up(node_feats)
-        node_feats = self.handle_lammps(
-            node_feats,
-            lmp_data=lmp_data,
-            lmp_natoms=lmp_natoms,
-            layer=self.layer,
-        )
-
-        if self.add_source_target_embedding:
-            source_embedding = self.source_embedding(node_attrs)
-            target_embedding = self.target_embedding(node_attrs) # TODO BUG check which node_attrs in lmp
-            edge_feats = torch.cat(
-                [
-                    edge_feats,
-                    source_embedding[edge_index[0]],
-                    target_embedding[edge_index[1]],
-                ],
-                dim=-1,
-            )
-        if hasattr(self, 'density_normalizer'):
-            edge_density = self.normalizer_act_2(self.density_normalizer(edge_feats) ** 2)
-            if cutoff is not None:
-                edge_density = edge_density * cutoff
-            density = scatter_sum(
-                src=edge_density, index=edge_index[1], dim=0, dim_size=node_attrs_lmp.shape[0]
-            )
-            # if lmp:
-            #     density = self.truncate_ghosts(density, nlocal) 
-            if self.normalizer_scale_shift_trainable:
-                density = density * self.beta + self.alpha
-            else:
-                density = density + 1
-            density = density.masked_fill(density == 0, 1e-9)
-
-
-        conv_weights = self.radial_net(edge_feats) # for compatiable
-        if cutoff is not None:
-            conv_weights = conv_weights * cutoff
-
-        tmp_m_i = self.tc(node_feats, edge_attrs, conv_weights, edge_index)
-        m_i = {}
-
-
-        for r in tmp_m_i.keys():
-            T = tmp_m_i[r]
-            if self.normalizer_type == 'dynamic':
-                normalizer = expand_dims_to(density, T.ndim, dim=-1)
-            else:
-                normalizer = self.avg_num_neighbors
-            T = T / normalizer
-            B = T.size(0)
-            C = T.size(1)
-            REST = (3,) * r
-            m_i[r] = (
-                T.reshape(B, C, -1) @ self.D(r)
-            ).reshape((B, C) + REST)
-            
-        residual = {}
-        if self.enable_residual:
-            for nu, sc in self.scs.items():
-                nu = int(nu)
-                residual[nu] = sc(m_i[nu], node_attrs_lmp)
-
-        if lmp:
-            node_attrs_lmp = self.truncate_ghosts(node_attrs_lmp, nlocal)
-            max_r = max(m_i.keys())
-            m_i = dict2flatten(max_r, m_i)
-            m_i = self.truncate_ghosts(m_i, nlocal)
-            m_i = flatten2dict(max_r, m_i, self.num_channel)
-
-            if len(residual) > 0:
-                max_r = max(residual.keys())                
-                residual = dict2flatten(max_r, residual)
-                residual = self.truncate_ghosts(residual, nlocal)
-                residual = flatten2dict(max_r, residual, self.num_channel)
-        return m_i, residual
-
+    @abc.abstractmethod
+    def _setup(self) -> None:
+        raise NotImplementedError
 
     def handle_lammps(
         self,
@@ -281,7 +98,241 @@ class Interaction(torch.nn.Module):
         return flatten2dict(max_r, node_feats, self.num_channel)
     
     def truncate_ghosts(
-        self, t: Tensor, nlocal: Optional[int] = None
-    ) -> Tensor:
+        self, t: torch.Tensor, nlocal: Optional[int] = None
+    ) -> torch.Tensor:
         return t[:nlocal] if nlocal is not None else t
+    
+    def truncate_ghosts_dict(
+        self, t: Dict[int, torch.Tensor], nlocal: Optional[int] = None
+    ) -> Dict[int, torch.Tensor]:
+        lmax = max(t.keys())
+        t = dict2flatten(lmax, t)
+        t = self.truncate_ghosts(t, nlocal)
+        t = flatten2dict(lmax, t, self.num_channel)
+        return t
+    
+class Interaction(InteractionBase):
+    def _setup(self) -> None:
+        # === resnet === 
+        if self.inter.get('use_resnet', False):
+            self.resnet = SelfInteraction(
+                self.num_channel,
+                self.num_channel,
+                rs=list(range(self.lmax_in + 1)),
+                bias=self.bias,
+                atomic_numbers=self.atomic_numbers,
+            )    
+
+        # === linear up ===  
+        self.linear_up = SelfInteraction(
+            self.num_channel,
+            self.num_channel,
+            rs=list(range(self.lmax_in + 1)),
+            bias=self.bias,
+        )
+
+        # === ICTP and ICTC
+        combs = generate_combinations(
+            self.lmax_in,
+            self.lmax_out,
+            self.lmax_out,
+            l1l2=self.inter["l1l2"][self.layer],
+        )
+        self.tc = Contraction(
+            combs=combs,
+            num_channel=self.num_channel,
+            num_channel_hidden=self.num_channel_hidden,
+            lmax_in=self.lmax_in,
+            lmax_out=self.lmax_out,
+        )
+
+        # === self / skip connection ===
+        self.sc_from = None
+        if self.inter.get('sc', {}).get('use_first_sc', False) \
+        or self.layer > 0 \
+        or self.num_layers == 1:
+            self.sc_from = self.inter.get('sc', {}).get('from', "current_message") 
+            self.scs = torch.nn.ModuleDict()
+            for l in self.ls_sc:
+                    self.scs[str(l)] = InterLinear[True](
+                    self.num_channel if self.sc_from == 'last_product' else self.num_channel_hidden,
+                    self.num_channel,
+                    bias=(l == 0 and self.bias),
+                    atomic_numbers=self.atomic_numbers,
+                    l=l,
+                )
+
+        # ==== conv weights ====
+        conv_weights_type = self.inter.get('conv_weights', ['edge_ij'])
+        assert 'edge_ij' in conv_weights_type, 'edge_ij must be in conv_weights' 
+        radial_in_dim = self.num_radial_basis + self.num_channel * (len(conv_weights_type)-1)
+        need_layer_norm = radial_in_dim != self.num_radial_basis
+        self.radial_net = MLP(
+            radial_in_dim,
+            self.tc.weight_numel,
+            self.radial_mlp["hidden"][self.layer],
+            act=self.radial_mlp["act"],
+            bias=self.radial_mlp.get('bias', False),
+            forward_weight_init=True,
+            enable_layer_norm=need_layer_norm,
+        )
+        if 'node_j' in conv_weights_type:
+            self.source_embedding = MLP(
+                len(self.atomic_numbers),
+                self.num_channel,
+                hidden_dim=[],
+                act=None,
+                bias=False,
+                forward_weight_init=True,
+                enable_layer_norm=False,
+            )
+            torch.nn.init.uniform_(self.source_embedding.mlp[0].weight, a=-0.001, b=0.001)
+        if 'node_i' in conv_weights_type:
+            self.target_embedding = MLP(
+                len(self.atomic_numbers),
+                self.num_channel,
+                hidden_dim=[],
+                act=None,
+                bias=False,
+                forward_weight_init=True,
+                enable_layer_norm=False,
+            )
+            torch.nn.init.uniform_(self.target_embedding.mlp[0].weight, a=-0.001, b=0.001)
+
+        # ==== normalizer ====
+        self.normalizer = self.inter.get('normalizer', 'avg_num_neighbors')
+        assert self.normalizer in ["avg_num_neighbors", "density_v1"]
+        if self.normalizer == 'density_v1': # density_v1 are from mace
+            self.density_normalizer = MLP(
+                radial_in_dim,
+                1,
+                [64],
+                act='silu',
+                bias=True,
+                forward_weight_init=True,
+                enable_layer_norm=need_layer_norm,
+            )
+            self.alpha = torch.nn.Parameter(torch.tensor(20.0), requires_grad=True)
+            self.beta = torch.nn.Parameter(torch.tensor(0.0), requires_grad=True)
+
+        # === nonlinearity ===
+        nonlinearity_type = self.inter.get('nonlinearity', {}).get('type', None)
+        nonlinearity_gate = self.inter.get('nonlinearity', {}).get('gate', 'silu')
+        if nonlinearity_type is not None:
+            if nonlinearity_type == 'gated':
+                self.nonlinearity_gate = GatedNonlinearity(
+                    rmax=self.lmax_out,
+                    in_dim=self.num_channel_hidden,
+                    gate=nonlinearity_gate,
+                )  
+            else:
+                self.nonlinearity_gate = NormNonlinearity(
+                    rmax=self.lmax_out,
+                    in_dim=self.num_channel_hidden,
+                    gate=nonlinearity_gate,
+                )
+            self.nonlinearity_linear = SelfInteraction(
+                in_channel=self.num_channel_hidden,
+                out_channel=self.num_channel_hidden,
+                rs=list(range(self.lmax_out + 1)),
+                bias=self.bias,
+            )
+    
+    def forward(
+        self,
+        node_feats: Dict[int, Tensor],
+        node_attrs_total: Tensor,
+        node_attrs_slice: Tensor,
+        edge_feats: Tensor,
+        edge_attrs: Dict[int, Tensor],
+        edge_index: Tensor,
+        cutoff: Tensor,
+        graph: Graph,
+    ) -> Tuple[Dict[int, Tensor], Dict[int, Tensor]]:
+
+        # === LAMMPS pretreatment ===
+        lmp = graph.lmp
+        lmp_data = graph.lmp_data
+        lmp_natoms = graph.lmp_natoms
+        nlocal = lmp_natoms[0] if lmp_data is not None else None
+
+        scs = {}
+        # === self connection / skip connection ===
+        if self.sc_from == 'last_product':
+            for r in self.ls_sc:
+                scs[r] = self.scs[str(r)](m_i[r], node_attrs_total)
+
+        # === residual === 
+        residual = {}
+        if hasattr(self, 'resnet'):
+            residual = self.resnet(node_feats, node_attrs_slice)
+            residual = self.handle_lammps(
+                residual,
+                lmp_data=lmp_data,
+                lmp_natoms=lmp_natoms,
+                layer=self.layer,
+            )
+
+        # === linear up === 
+        node_feats = self.linear_up(node_feats)
+        node_feats = self.handle_lammps( 
+            node_feats,
+            lmp_data=lmp_data,
+            lmp_natoms=lmp_natoms,
+            layer=self.layer,
+        )
+
+        # === conv_weights === 
+        edge_embedding: list[torch.Tensor] = [edge_feats]
+        if hasattr(self, 'source_embedding'):
+            edge_embedding.append(self.source_embedding(node_attrs_total)[edge_index[0]])
+        if hasattr(self, 'target_embedding'):
+            edge_embedding.append(self.target_embedding(node_attrs_total)[edge_index[1]])
+        full_edge_feats = torch.cat(edge_embedding, dim=-1)
+        conv_weights = self.radial_net(full_edge_feats)
+        if cutoff is not None:
+            conv_weights = conv_weights * cutoff
+
+        # === normalizer ===
+        if hasattr(self, 'density_normalizer'):
+            edge_density = torch.tanh(self.density_normalizer(full_edge_feats) ** 2)
+            if cutoff is not None:
+                edge_density = edge_density * cutoff
+            density = scatter_sum(edge_density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0)) 
+            density = density * self.beta + self.alpha
+            density = density.masked_fill(density == 0, 1e-9)
+
+        # === ICTP and ICTC ===
+        r_m_i: Dict[int, torch.Tensor] = self.tc(node_feats, edge_attrs, conv_weights, edge_index)
+        m_i = {}
+        for r, t in r_m_i.items():
+            B = t.size(0)
+            C = t.size(1)
+            REST = (3,) * r
+            if self.normalizer == 'density_v1':
+                normalizer = expand_dims_to(density, r+2, dim=-1)
+            else:
+                normalizer = self.avg_num_neighbors
+            t = t / normalizer
+            m_i[r] = (t.reshape(B, C, -1) @ self.D(r)).reshape((B, C) + REST)
+        add_to_left(m_i, residual)
+
+        # === nonlinearity ===
+        if hasattr(self, 'nonlinearity_gate'):
+            m_i = self.nonlinearity_linear(self.nonlinearity_gate(m_i))
+
+        # === self connection / skip connection ===
+        if self.sc_from == 'current_message':
+            for r in self.ls_sc:
+                scs[r] = self.scs[str(r)](m_i[r], node_attrs_total)
+
+        # === LAMMPS postprocessing ===
+        if lmp:
+            m_i = self.truncate_ghosts_dict(m_i, nlocal)
+            if len(scs) > 0:
+                scs = self.truncate_ghosts_dict(scs, nlocal)
+ 
+        return m_i, scs
+
+
 

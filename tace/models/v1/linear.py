@@ -12,8 +12,6 @@ import torch
 from torch import Tensor, nn
 
 
-BATCH_ = 100
-
 
 class Linear(torch.nn.Module):
     def __init__(
@@ -43,19 +41,27 @@ class Linear(torch.nn.Module):
         out = 'bC' + ''.join(letters[:self.l])
         self.expr = f'{in1}, {in2} -> {out}'
         
-    def forward(
-            self, 
-            t: torch.Tensor, 
-            node_attrs: Optional[torch.Tensor] = None, 
-            s: Optional[slice] = None,
-            bias: bool = True,
-        ) -> torch.Tensor:
-        W = self.weight if s is None else self.weight[s, :]
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
+        W = self.weight 
         W = W * self.alpha
         t = torch.einsum(self.expr, t, W)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             t = t + self.bias.unsqueeze(0)
         return t
+    
+    # def forward(
+    #         self, 
+    #         t: torch.Tensor, 
+    #         node_attrs: Optional[torch.Tensor] = None, 
+    #         s: Optional[slice] = None,
+    #         bias: bool = True,
+    #     ) -> torch.Tensor:
+    #     W = self.weight if s is None else self.weight[s, :]
+    #     W = W * self.alpha
+    #     t = torch.einsum(self.expr, t, W)
+    #     if self.bias is not None and bias:
+    #         t = t + self.bias.unsqueeze(0)
+    #     return t
 
     def __repr__(self):
         return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim}, bias={self.bias is not None}, l={self.l})"
@@ -121,17 +127,10 @@ class ElementLinear(torch.nn.Module):
         #         self.register_parameter("bias", None)
 
 
-    def forward(
-            self, 
-            t: torch.Tensor, 
-            node_attrs: Optional[torch.Tensor] = None, 
-            s: Optional[slice] = None,
-            bias: bool = True,
-        ) -> torch.Tensor:
-
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         W = self.weights * self.alpha
         t = torch.einsum(self.expr, node_attrs, W, t)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
             t = t + b
         return t
@@ -172,16 +171,10 @@ class CWLinear(nn.Module):
             f'bc{"".join(letters[:self.l])}'
         )
 
-    def forward(
-            self, 
-            t: torch.Tensor, 
-            node_attrs: Optional[torch.Tensor] = None, 
-            s: Optional[slice] = None,
-            bias: bool = True,
-        ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         W = self.weight * self.alpha
         t = torch.einsum(self.expr, t, W)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             t = t + self.bias.unsqueeze(0)
         return t
 
@@ -227,16 +220,10 @@ class ElementCWLinear(nn.Module):
             f'bc{"".join(letters[:self.l])}'
         )
 
-    def forward(
-            self, 
-            t: torch.Tensor, 
-            node_attrs: Optional[torch.Tensor] = None, 
-            s: Optional[slice] = None,
-            bias: bool = True,
-        ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         W = self.weights * self.alpha
         t = torch.einsum(self.expr, node_attrs, W, t)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             b = torch.einsum('bz, zC -> bC')
             t = t + b
         return t
@@ -253,31 +240,44 @@ class SelfInteraction(torch.nn.Module):
         out_channel: int,
         rs: List[int],
         bias: bool = False,
+        atomic_numbers: Optional[List[int]] = None,
     ) -> None:
         super().__init__()
 
         self.rs = rs
         self.in_channel = in_channel
         self.out_channel = out_channel
-        self.linears = nn.ModuleDict(
-            {
-                str(r): Linear(
-                    in_channel,
-                    out_channel,
-                    bias=(r == 0 and bias),
-                    l=r,
-                    in_channel=in_channel,
-                    out_channel=out_channel,
-                )
-                for r in rs
-            }
-        )
+        if atomic_numbers is None:
+            self.linears = nn.ModuleDict(
+                {
+                    str(r): Linear(
+                        in_channel,
+                        out_channel,
+                        bias=(r == 0 and bias),
+                        l=r,
+                    )
+                    for r in rs
+                }
+            )
+        else:
+            self.linears = nn.ModuleDict(
+                {
+                    str(r): ElementLinear(
+                        in_channel,
+                        out_channel,
+                        bias=(r == 0 and bias),
+                        l=r,
+                        atomic_numbers=atomic_numbers,
+                    )
+                    for r in rs
+                }
+            )
 
-    def forward(self, ins: Dict[int, Tensor]) -> Dict[int, Tensor]:
-        outs = torch.jit.annotate(Dict[int, torch.Tensor], {})
+    def forward(self, ins: Dict[int, Tensor], node_attrs: Optional[Tensor]=None) -> Dict[int, Tensor]:
+        outs = {}
         for r, linear in self.linears.items():
             r = int(r)
-            outs[r] = linear(ins[r])
+            outs[r] = linear(ins[r], node_attrs)
         return outs
 
     # def __repr__(self):
@@ -324,13 +324,7 @@ class LoRALinear(nn.Module):
         out = 'bC' + ''.join(letters[:self.l])
         self.expr = f'{in1}, {in2} -> {out}'
 
-    def forward(
-        self,
-        t: torch.Tensor,
-        node_attrs: Optional[torch.Tensor] = None,
-        s: Optional[slice] = None,
-        bias: bool = True,
-    ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
 
         if self.use_lora:
             delta_w = self.lora_A @ (self.lora_B * self.scaling)
@@ -338,13 +332,10 @@ class LoRALinear(nn.Module):
         else:
             W = self.weight
 
-        if s is not None:
-            W = W[s, :]
-
         W = W * self.alpha
         t = torch.einsum(self.expr, t, W)
 
-        if self.bias is not None and bias:
+        if self.bias is not None:
             t = t + self.bias.unsqueeze(0)
 
         return t
@@ -413,13 +404,7 @@ class LoRAElementLinear(nn.Module):
             f'bC{"".join(letters[:self.l])}'
         )
 
-    def forward(
-        self,
-        t: torch.Tensor,
-        node_attrs: Optional[torch.Tensor] = None,
-        s: Optional[slice] = None,
-        bias: bool = True,
-    ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.use_lora:
             if self.element_aware:
                 delta_w = torch.einsum(
@@ -435,7 +420,7 @@ class LoRAElementLinear(nn.Module):
             W = self.weights
         W = W * self.alpha
         t = torch.einsum(self.expr, node_attrs, W, t)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
             t = t + b
         return t
@@ -499,13 +484,7 @@ class LoRACWLinear(nn.Module):
             f'bc{"".join(letters[:self.l])}'
         )
 
-    def forward(
-        self,
-        t: torch.Tensor,
-        node_attrs: Optional[torch.Tensor] = None,
-        s: Optional[slice] = None,
-        bias: bool = True,
-    ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.use_lora:
             delta_w = (self.lora_A @ self.lora_B.T) * self.scaling
             W = self.weight + delta_w
@@ -513,7 +492,7 @@ class LoRACWLinear(nn.Module):
             W = self.weight
         W = W * self.alpha
         t = torch.einsum(self.expr, t, W)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             t = t + self.bias.unsqueeze(0)
         return t
 
@@ -579,13 +558,7 @@ class LoRAElementCWLinear(nn.Module):
             f'bc{"".join(letters[:self.l])}'
         )
 
-    def forward(
-        self,
-        t: torch.Tensor,
-        node_attrs: Optional[torch.Tensor] = None,
-        s: Optional[slice] = None,
-        bias: bool = True,
-    ) -> torch.Tensor:
+    def forward(self, t: torch.Tensor, node_attrs: Optional[torch.Tensor] = None) -> torch.Tensor:
         if self.use_lora:
             delta_w = (self.lora_B.T @ self.lora_A.T) * self.scaling
             W = self.weights + delta_w.unsqueeze(0)
@@ -593,7 +566,7 @@ class LoRAElementCWLinear(nn.Module):
             W = self.weights
         W = W * self.alpha
         t = torch.einsum(self.expr, node_attrs, W, t)
-        if self.bias is not None and bias:
+        if self.bias is not None:
             b = torch.einsum('bz, zC -> bC', node_attrs, self.bias)
             t = t + b
         return t

@@ -24,12 +24,11 @@ class WrapModelV1(torch.nn.Module):
         target = set(readout_fn.target_property)
         self.target_property = readout_fn.target_property
         self.embedding_property = readout_fn.embedding_property
-        self.conservations = readout_fn.conservations
         self.universal_embedding = readout_fn.universal_embedding
-        self.enable_electric_field = readout_fn.enable_electric_field
-        self.enable_magnetic_field = readout_fn.enable_magnetic_field
         self.readout_fn = readout_fn
         self.lmp = False
+
+        # === Compute Flag ===
         self.flags = ComputeFlag()
         for k in self.target_property:
             setattr(self.flags, f"compute_{k}", k in self.target_property)
@@ -44,18 +43,19 @@ class WrapModelV1(torch.nn.Module):
             if PROPERTY[p]['second_derivative']:
                 self.compute_second_derivative = True
 
-        self.retain_graph = self.compute_second_derivative
-        self.create_graph = self.compute_second_derivative
-
-        # === force to predit ===
         if target & {"forces", "hessians"}:
             self.flags.compute_forces = True
-        if self.enable_electric_field:
+        if 'electric_field' in self.universal_embedding['equivariant_embedding_property']:
             if target & {"polarization", "conservative_dipole", "conservative_polarizability", "born_effective_charges"}:
                 self.flags.compute_polarization = True
+        if 'magnetic_field' in self.universal_embedding['equivariant_embedding_property']:
             if target & {"magnetization", "magnetic_susceptibility"}:
                 self.flags.compute_magnetization = True
 
+        self.retain_graph = self.compute_second_derivative
+        self.create_graph = self.compute_second_derivative
+
+  
     def forward(self, data: Dict[str, Tensor]) -> Dict[str, Optional[Tensor]]:
         # === pre processing ===
         graph = self.prepare_graph(data)
@@ -71,8 +71,8 @@ class WrapModelV1(torch.nn.Module):
             "charges": RESULTS["charges"],
             "forces": FIRST["forces"],
             "edge_forces": FIRST["edge_forces"],
-            "magnetic_forces_0": FIRST["magnetic_forces_0"],
-            "magnetic_forces_1": FIRST["magnetic_forces_1"],
+            "collinear_magnetic_forces": FIRST["collinear_magnetic_forces"],
+            "noncollinear_magnetic_forces": FIRST["noncollinear_magnetic_forces"],
             "virials": FIRST["virials"],
             "stress": FIRST["stress"],
             "atomic_virials":FIRST["atomic_virials"],
@@ -88,16 +88,10 @@ class WrapModelV1(torch.nn.Module):
             "magnetic_susceptibility": SECOND["magnetic_susceptibility"],
             "les_latent_charges": RESULTS["les_latent_charges"],
             "les_born_effective_charges": RESULTS["les_born_effective_charges"],
-            "descriptors": RESULTS['descriptors'],
+            "scalar_descriptor": RESULTS['scalar_descriptor'],
             "direct_forces": RESULTS["direct_forces"],
             "direct_virials": RESULTS["direct_virials"],
             "direct_stress": RESULTS["direct_stress"],
-            # "nuclear_shielding": RESULTS["nuclear_shielding"],
-            # "nuclear_chemical_shift": RESULTS["nuclear_chemical_shift"],
-            # "elasticity_tensor": RESULTS["elasticity_tensor"],
-            # "hill_bulk_modulus": RESULTS["hill_bulk_modulus"],
-            # "hill_shear_modulus": RESULTS["hill_shear_modulus"],
-            # "hill_young_modulus": RESULTS["hill_young_modulus"],
         }
 
     def first_derivative_fn(
@@ -110,8 +104,8 @@ class WrapModelV1(torch.nn.Module):
         S = None
         P = None
         M = None
-        MAG_F_0 = None
-        MAG_F_1 = None
+        C_MAG_F = None
+        NC_MAG_F = None
         EDGE_F = None
         A_V = None
         A_S = None
@@ -125,10 +119,10 @@ class WrapModelV1(torch.nn.Module):
             inputs.append(data["electric_field"])
         if self.flags.compute_magnetization:
             inputs.append(data["magnetic_field"])
-        if self.flags.compute_magnetic_forces_0:
-            inputs.append(data["magmoms_0"])
-        if self.flags.compute_magnetic_forces_1:
-            inputs.append(data["magmoms_1"])
+        if self.flags.compute_collinear_magnetic_forces:
+            inputs.append(data["collinear_magmoms"])
+        if self.flags.compute_noncollinear_magnetic_forces:
+            inputs.append(data["noncollinear_magmoms"])
         if self.flags.compute_edge_forces:
             inputs.append(graph.edge_vector)
             
@@ -159,11 +153,11 @@ class WrapModelV1(torch.nn.Module):
         if self.flags.compute_magnetization:
             M = -grads[idx]
             idx += 1
-        if self.flags.compute_magnetic_forces_0:
-            MAG_F_0 = -grads[idx]
+        if self.flags.compute_collinear_magnetic_forces:
+            C_MAG_F = -grads[idx]
             idx += 1
-        if self.flags.compute_magnetic_forces_1:
-            MAG_F_1 = -grads[idx]
+        if self.flags.compute_noncollinear_magnetic_forces:
+            NC_MAG_F = -grads[idx]
             idx += 1
         if self.flags.compute_edge_forces:
             EDGE_F = grads[idx] # consistency with LAMMPS
@@ -182,8 +176,8 @@ class WrapModelV1(torch.nn.Module):
             "stress": S,
             "polarization": P,
             "magnetization": M,
-            "magnetic_forces_0": MAG_F_0,
-            "magnetic_forces_1": MAG_F_1,
+            "collinear_magnetic_forces": C_MAG_F,
+            "noncollinear_magnetic_forces": NC_MAG_F,
             "edge_forces": EDGE_F,
             "atomic_virials": A_V,
             "atomic_stresses": A_S,
@@ -360,7 +354,7 @@ class WrapModelV1(torch.nn.Module):
             data['level'][data['batch']]
             if "level" in data
             else torch.full_like(data['batch'], self.level, dtype=torch.int64)
-        )  # multi-fidelity and multi-head
+        )  # used for multi-fidelity and multi-head
 
         if self.lmp:
             for p in self.target_property:

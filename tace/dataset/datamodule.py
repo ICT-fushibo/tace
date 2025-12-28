@@ -327,7 +327,7 @@ class GraphDataModule(LightningDataModule):
         self.avg_graph_size_in_KB = cfg.get("dataset", {}).get("avg_graph_size_in_KB", 200)
         self.lmdb_wait_timeout = cfg.get("dataset", {}).get("lmdb_wait_timeout", 86400)
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
-
+        self.neighborlist_backend = self.cfg.get("dataset", {}).get("neighborlist_backend", "matscipy")
         self._for_dataset_config = {
             "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
             "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
@@ -335,7 +335,10 @@ class GraphDataModule(LightningDataModule):
             "target_property": self.target_property,
             "embedding_property": self.embedding_property,
             "universal_embedding": self.cfg.get("model", {}).get("config", {}).get("universal_embedding", None),
+            "neighborlist_backend": self.neighborlist_backend,
         }
+        logging.info(f"Neighborlist backend is {self.neighborlist_backend}")
+
 
     @rank_zero_only
     def prepare_data(self):

@@ -54,7 +54,7 @@ all related metadata, allowing the training process to be resumed.
 
    # Currently, only the use of LAMMPS requires mandatory model export.  
    # For other backends, you may also export the model if you wish to reduce its storage size.
-   tace-export -m *.ckpt --dtype float32 --backend lammps --device cuda
+   tace-export -m *.ckpt --backend lammps 
 
 
 4. **tace-clean**  

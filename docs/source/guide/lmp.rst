@@ -51,7 +51,7 @@ To convert this checkpoint into a format readable by LAMMPS, execute the followi
 .. code-block:: bash
 
    # tace-export -h 
-   tace-export -i .ckpt --backend lammps 
+   tace-export -m .ckpt --backend lammps 
 
 After running `tace-export`, you will get a file with extension `*.pt`.  
 This is the exported model file that you will use in LAMMPS.  
@@ -100,6 +100,6 @@ This is the exported model file that you will use in LAMMPS.
    ./lmp -k on g 1 -sf kk -pk kokkos newton on neigh half -in in.lmp
 
    
-.. autoclass:: tace.interface.lammps.mliap.TACE_LAMMPS_MLIAP
+.. autoclass:: tace.interface.lammps.mliap.TACELammpsCalc
    :no-members:
    :show-inheritance:

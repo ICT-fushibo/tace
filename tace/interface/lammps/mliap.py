@@ -4,8 +4,8 @@
 ################################################################################
 '''
 This interface is general. As long as you have successfully compiled LAMMPS 
-with any one of the models ``TACE, MACE, NequIP, or Allegro ...``
-then all MLIPs that have an interface with LAMMPS-MLIAP can be used.
+with any one of the models TACE, MACE, NequIP, or Allegro ...
+then all MLIPs that have an interface with LAMMPS-ML-IAP can be used.
 '''
 
 
@@ -15,7 +15,6 @@ from typing import Dict, Tuple
 import torch
 from torch import Tensor
 from ase.data import chemical_symbols
-from e3nn.util.jit import compile_mode
 from lammps.mliap.mliap_unified_abc import MLIAPUnified
 
 
@@ -53,7 +52,7 @@ class EdgeForcesWrapper(torch.nn.Module):
         return total_energy, node_energy, pair_forces
 
 
-class TACE_LAMMPS_MLIAP(MLIAPUnified):
+class TACELammpsCalc(MLIAPUnified):
     '''Not test for cpu running, only cuda devices are tested by author'''
     def __init__(self, model, **kwargs):
         super().__init__()

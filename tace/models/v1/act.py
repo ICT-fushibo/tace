@@ -6,7 +6,6 @@
 import torch
 
 
-# only act, in TACE, tensors are not gated
 ACT = {
     None: torch.nn.Identity,
     "identity": torch.nn.Identity,
@@ -50,4 +49,3 @@ You can specify the key to use these activation functions in TACE.
 - hardsigmoid: ``torch.nn.Hardsigmoid``
 - tanhshrink: ``torch.nn.Tanhshrink``
 """
-GATE=ACT

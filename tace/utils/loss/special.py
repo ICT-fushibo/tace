@@ -110,7 +110,7 @@ class OMat24sAlexMPtrjLoss(torch.nn.Module):
         energy_huber_delta=0.01,
         forces_huber_delta=0.01,
         stress_huber_delta=0.1,
-        normalize: bool = True,
+        normalize: bool = False,
         **kwargs,
     ) -> None:
         "Modify code From MACE, see same logic as NequIP"

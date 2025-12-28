@@ -62,10 +62,12 @@ class TACETorchSimCalc(ModelInterface):
         self._memory_scales_with = "n_atoms_x_density"
 
         # Load TACE model
-        self.model = load_tace(model, self._device, strict=True, use_ema=True) 
-        self.model.level = level    
-        self.model = self.model.eval()
-
+        model = load_tace(model, self._device, strict=True, use_ema=True) 
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad = False
+        model.level = level
+        self.model = model
         if self.dtype is not None:
             self.model = self.model.to(dtype=self.dtype)
 

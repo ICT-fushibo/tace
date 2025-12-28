@@ -3,8 +3,8 @@ Tensor Atomic Cluster Expansion
 .. = - ~ ^ "
 
 This is the official repository for TACE atomistic machine learning, 
-and it also temporarily hosts the `cartnn` package. 
-In the future, once ICTP and ICTC are fully developed, `cartnn` will be moved to a repository forked from `e3nn`.
+and it also temporarily hosts the ``cartnn`` package. 
+In the future, if ICTP and ICTC are fully developed, ``cartnn`` will be moved to a repository forked from ```e3nn``.
 You can use Cartesian-3j and ICTD like ``from cartnn.o3 import cartesian-3j, ICTD``.
 
 .. image:: arch.png
@@ -25,7 +25,7 @@ In principle, the framework supports any tensorial properties (either direct or 
 Currently, the officially supported properties include:
 
 - Energy
-- Forces (conservative | direct) *(Direct pretrained follow conservative finetuning not test by us)*
+- Forces (conservative | direct)
 - Hessians (conservative, predict only)
 - Stress (conservative | direct)
 - Virials (conservative | direct)
@@ -34,33 +34,26 @@ Currently, the officially supported properties include:
 - Polarization (conservative, multi-value for PBC systems)
 - Polarizability (conservative | direct)
 - Born effective charges (conservative, under electric field or LES)  *(LES not tested by us)*
-- Magnetic forces 0 (collinear, rank-0)
-- Magnetic forces 1 (non-collinear, rank-1)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
+- Noncollinear magnetic forces (conservative)
+- Collinear magnetic forces (conservative) *(not tested by us)*
 - Magnetization (conservative) *(not tested by us)*
 - Magnetic susceptibility (conservative) *(not tested by us)*
-- Elastic constant (coming soon)
-- Nuclear chemical shift (coming soon)
-- Nuclear shielding (coming soon)
-
 
 For embedding property, we support:
 
-invariant quantities:
-
-- Charges
-- Total charge
-- Spin multiplicity
-- Level (different computational levels)
-- Magmoms 0 (collinear, rank-0)
-- Electron temperature *(not tested by us)*
-
-equivariant quantities:
-
+- level (different computational levels)
+- charges
+- total charge
 - electric field
+- noncollinear magmoms (not time reversal)
+- collinear magmoms *(not tested by us)*
+- total collinear magmoms *(not tested by us)*
+- spin multiplicity *(not tested by us)*
+- electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*
-- Magmoms_1 (non-collinear, rank-1)
+- total noncollinear magmoms *(not tested by us)*
 
 
 Plugins

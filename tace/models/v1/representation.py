@@ -2,7 +2,7 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Any
 
 
 import torch
@@ -16,7 +16,6 @@ from .inter import Interaction
 from .prod import SelfContraction
 from .embedding import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .utils import Graph
-from ...dataset.quantity import get_target_irreps
 
 
 class TACEDescriptor(torch.nn.Module):
@@ -36,26 +35,19 @@ class TACEDescriptor(torch.nn.Module):
         radial_mlp: Dict = {},
         inter: Dict = {},
         prod: Dict = {},
-        universal_embedding: Optional[List[Dict[str, Union[int, str]]]] = None,
-        use_nolinear_tensor_readout: bool = True,
-        target_property: Dict = {},
+        universal_embedding: Dict[str, Dict[str, bool | int | float |str]] = {},
+        target_irreps: List[str] = [],
         **kwargs,
     ):
         super().__init__()
 
         # === init ===
+        self.invariant_embeddings = universal_embedding.get("invariant", {})
+        self.equivariant_embeddings = universal_embedding.get("equivariant", {})
         self.register_buffer("num_layers", torch.tensor(num_layers, dtype=torch.int64))
         self.register_buffer("atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64))
         self.register_buffer("cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype()))
 
-        # === target_irreps ===
-        target_irreps = get_target_irreps(target_property, use_nolinear_tensor_readout)
-        if max(Lmax) < max(target_irreps):
-            raise ValueError(
-                f"cfg.model.config.Lmax {max(Lmax)} should be greatet than"
-                f"the tensor property you want to predict {max(target_property)}."
-            )
-    
         # input, hiiden, output irreps
         ls_in = []      # in of inter
         ls_hidden = []  # out of inter and in of prod
@@ -73,27 +65,25 @@ class TACEDescriptor(torch.nn.Module):
             act=None,
             bias=False,
             forward_weight_init=True,
+            enable_layer_norm=False,
         )
 
         # === universal embedding ===
-        if universal_embedding is not None:
-            self.invariant_embeddings = universal_embedding.get("invariant", None)
-            self.equivariant_embeddings = universal_embedding.get("equivariant", None)
-            if self.invariant_embeddings is not None:
-                self.uie_embedding = UniversalInvariantEmbedding(
-                    num_channel,
-                    self.invariant_embeddings,
-                )
-            if self.equivariant_embeddings is not None:
-                self.uee_embeddings = nn.ModuleList()
-                for _ in range(num_layers):
-                    self.uee_embeddings.append(
-                        UniversalEquivariantEmbedding(
-                            self.equivariant_embeddings,
-                            atomic_numbers,
-                            num_channel,
-                        )
+        if len(universal_embedding['invariant_embedding_property']) > 0:
+            self.uie_embedding = UniversalInvariantEmbedding(
+                num_channel,
+                self.invariant_embeddings,
+            )
+        if len(universal_embedding['equivariant_embedding_property']) > 0:
+            self.uee_embeddings = nn.ModuleList()
+            for _ in range(num_layers):
+                self.uee_embeddings.append(
+                    UniversalEquivariantEmbedding(
+                        self.equivariant_embeddings,
+                        atomic_numbers,
+                        num_channel,
                     )
+                )
 
         # === radial basis ===
         self.radial_embedding = RadialBasis(
@@ -118,19 +108,19 @@ class TACEDescriptor(torch.nn.Module):
         self.interactions = nn.ModuleList(
             [
                 Interaction(
-                    atomic_numbers,
+                    idx,
+                    num_layers,
                     num_channel,
                     num_channel_hidden,
+                    bias,
                     max(ls_in[idx]),
-                    ls_out[idx],
                     max(ls_hidden[idx]),
+                    ls_out[idx],
+                    atomic_numbers,
                     avg_num_neighbors,
                     self.radial_embedding.out_dim,
                     radial_mlp,
                     inter,
-                    bias,
-                    layer=idx,
-                    num_layers=num_layers,
                 )
                 for idx in range(num_layers)
             ]
@@ -158,41 +148,39 @@ class TACEDescriptor(torch.nn.Module):
 
         lmp = graph.lmp
         nlocal, _ = graph.lmp_natoms
-        edge_vector = graph.edge_vector
-        edge_length = graph.edge_length
-
-        # === radial and angular ===
-        edge_feats, cutoff = self.radial_embedding(
-            edge_length,
-            data['node_attrs'],
-            data['edge_index'],
-            self.atomic_numbers,
-        )
-        edge_attrs = {}
-        normed_edge_vector = edge_vector / edge_length
-        edge_attrs = self.angular_embedding(normed_edge_vector)
-
+  
         # === node initialize (element and uie) ===
         node_feats = {0: self.node_embedding(data['node_attrs'])}
         uie_feats = None
         if hasattr(self, "uie_embedding"):
             uie_data = {}
             for k, _ in self.invariant_embeddings.items():
-                p = k
-                uie_data.update({p: data[p]})
+                uie_data.update({k: data[k]})
             uie_feats = self.uie_embedding(data["batch"], uie_data)
             node_feats[0] = node_feats[0] + uie_feats
+
+        # === edge initialize (radial and angular) ===
+        edge_feats, cutoff = self.radial_embedding(
+            graph.edge_length,
+            data['node_attrs'],
+            data['edge_index'],
+            self.atomic_numbers,
+        )
+        edge_attrs = {}
+        normed_edge_vector = graph.edge_vector / graph.edge_length
+        edge_attrs = self.angular_embedding(normed_edge_vector)
 
         # === representation Learning ===
         descriptors = []
         for idx, (inter, prod) in enumerate(zip(self.interactions, self.products)):
-            node_attrs_lmp = data['node_attrs']
+            node_attrs_total = data['node_attrs']
+            node_attrs_slice = data['node_attrs']
             if lmp and idx > 0:
-                node_attrs_lmp = node_attrs_lmp[:nlocal]
+                node_attrs_slice = node_attrs_slice[:nlocal] 
             node_feats, sc = inter(
                 node_feats,
-                data['node_attrs'], 
-                node_attrs_lmp, 
+                node_attrs_total, 
+                node_attrs_slice, 
                 edge_feats, 
                 edge_attrs, 
                 data['edge_index'],
@@ -202,8 +190,8 @@ class TACEDescriptor(torch.nn.Module):
             if hasattr(self, 'uee_embeddings'):
                 node_feats = self.uee_embeddings[idx](node_feats, data)
             if lmp and idx == 0:
-                node_attrs_lmp = node_attrs_lmp[:nlocal]
-            node_feats = prod(node_feats, node_attrs_lmp, sc)
+                node_attrs_slice = node_attrs_slice[:nlocal] # nlocal
+            node_feats = prod(node_feats, node_attrs_slice, sc)
             descriptors.append(node_feats)
 
         return {

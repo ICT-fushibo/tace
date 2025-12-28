@@ -9,8 +9,6 @@ Example
 .. code-block:: yaml
   
   misc:
-    cutoff: 6.0
-    max_neighbors: 999999 # if set to null, it means no restrictions.
     project_name: omat24_large
     global_seed: 42 
     device: cuda # cpu or cuda

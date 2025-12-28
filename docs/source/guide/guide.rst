@@ -1,12 +1,6 @@
 Tutorials
 =========
 
-Before officially starting to read the following tutorial and use TACE, please ensure that the following requirements are satisfied:
-
-- You have basis knowledge of the ``Python`` programming language.  
-
-- You are familiar with the general workflow of ``Deep Learning`` models, such as data preprocessing and training process.  
-
 Our model is developed based on three major Python packages: 
 `PyTorch <https://pytorch.org/>`_, 
 `PyTorch Lightning <https://lightning.ai/docs/pytorch/stable/>`_, 

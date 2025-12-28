@@ -90,3 +90,7 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
+
+
+
+from lightning.pytorch.callbacks import StochasticWeightAveraging

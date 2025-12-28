@@ -26,11 +26,10 @@ trainer:
   max_epochs: 20000
   min_epochs: 1        # null or int > 1
   precision: 32        # 64 or 32
-  strategy: auto
-  # strategy:
-  #   _target_: tace.utils.strategy.SimpleDDPStrategy  # Recommended for multi-GPU training. 
-  #                                                    # For single-GPU training, simply use `auto`.
-  gradient_clip_val: 10.0    
+  strategy: auto # For single-GPU training, use auto
+  # strategy: # Recommended for multi-GPU training. 
+  #   _target_: tace.utils.strategy.SimpleDDPStrategy                                                  
+  gradient_clip_val: 10.0 
   enable_progress_bar: true # If you don't want to see the progress bar, you can turn it off
   log_every_n_steps: 50
 
@@ -52,9 +51,16 @@ callbacks:
     # min_delta: 1e-5 
     patience: 100
 
+  # swa:
+  #   _target_: lightning.pytorch.callbacks.StochasticWeightAveraging
+  #   swa_lrs: 1e-4
+  #   swa_epoch_start: 0.8 # int (>=1) or float (0.0~1.0)
+  #   annealing_epochs: 1
+  #   annealing_strategy: linear
+
   ema: # ema is always recommended
     _target_: tace.utils.callbacks.EMACallback
-    decay: 0.99 # typically >= 0.99
+    decay: 0.99 # 0.99 - 0.999
     use_num_updates: true
 
   checkpoint: # at leas one checkpoint and key=checkpoint is required
@@ -83,14 +89,9 @@ callbacks:
   #   save_weights_only: false
   #   auto_insert_metric_name: false
   
-  # swa:
-  # _target_: lightning.pytorch.callbacks.StochasticWeightAveraging
-  # swa_lrs: 1e-4
-  # swa_epoch_start: 1
-  # annealing_epochs: 1
-  # annealing_strategy: linear
 
 dataset:
+  neighborlist_backend: matscipy # [ase, vesin, matscipy] recommend matscipy
   storage_mode: memory # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
   shard_dirs: # if lmdb model, specify a list of path where you save you graph
     - graphCache
@@ -103,8 +104,8 @@ dataset:
   force_dtype: null # 32 or 64, if your data grapg saved in lmdb, but original float64, you can force to float32 for convenience
   type: ase # ase or ase-db
   split_seed: ${misc.global_seed} # this random seed is useful if auto split
-  train_file: dataset/train_300K.xyz 
-  valid_file: null                  
+  train_file: dataset/train_300K.xyz
+  valid_file: null                
   #test_files: # list of test file or null
   #   - dataset/test_300K.xyz
   #   - dataset/test_600K.xyz
@@ -114,34 +115,34 @@ dataset:
   valid_from_index: false # split train and val from train.index and valid.index in current directory
   no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
   keys: # all default key name is the property name
+    level_key: level
     energy_key: energy
     forces_key: forces
-    direct_forces_key: forces
     stress_key: stress
-    direct_stress_key: direct_stress
     virials_key: virials
-    direct_virials_key: direct_virials
-    conservative_dipole_key: conservative_dipole
-    direct_dipole_key: ditect_dipole
-    polarization_key: polarization
-    conservative_polarizability_key: conservative_polarizability
-    direct_polarizability_key: direct_polarizability
-    electric_field_key: electric_field
-    born_effective_charges_key: born_effective_charges
     charges_key: charges
     total_charge_key: total_charge
     spin_multiplicity_key: spin_multiplicity
+    temperature_key: temperature
+    electron_temperature_key: electron_temperature
+    direct_forces_key: forces
+    direct_stress_key: stress
+    direct_virials_key: virials
+    polarization_key: polarization
+    direct_dipole_key: dipole
+    conservative_dipole_key: dipole
+    direct_polarizability_key: polarizability
+    conservative_polarizability_key: polarizability
+    born_effective_charges_key: born_effective_charges
+    electric_field_key: electric_field
     magnetic_field_key: magnetic_field
-    magmoms_0_key: magmoms_0
-    magmoms_1_key: magmoms_1
-    total_magmom_0_key: total_magmom_0
-    total_magmom_1_key: total_magmom_1
-    magnetic_forces_0_key: magnetic_forces_0
-    magnetic_forces_1_key: magnetic_forces_1
-    nuclear_shielding_key: nuclear_shielding
-    nuclear_chemical_shift_key: nuclear_chemical_shift
-    elastic_constant_key: elastic_constant # not support now
-    level_key: level
+    collinear_magmoms_key: collinear_magmoms
+    noncollinear_magmoms_key: noncollinear_magmoms
+    total_collinear_magmoms_key: total_collinear_magmoms
+    total_noncollinear_magmoms_key: total_noncollinear_magmoms
+    collinear_magnetic_forces_key: collinear_magnetic_forces
+    noncollinear_magnetic_forces_key: noncollinear_magnetic_forces
+
   train_dataloader:
     _target_: torch_geometric.loader.DataLoader
     batch_size: 5
@@ -158,17 +159,18 @@ dataset:
 
   test_dataloader: ${dataset.valid_dataloader}
 
-optimizer:
-  _target_: torch.optim.Adam
-  lr: 1e-2
-  weight_decay: 0.0
-  amsgrad: true
-
 # optimizer:
-#  _target_: torch.optim.AdamW
-#  lr: 1e-3
-#  weight_decay: 1e-8 # 1e-3, 1e-8
-#  amsgrad: false
+#   _target_: torch.optim.Adam
+#   lr: 1e-3
+#   weight_decay: 0.0
+#   amsgrad: true
+
+optimizer:
+ _target_: torch.optim.Adam
+ lr: 1e-2
+ weight_decay: 0.0 # 1e-3, 1e-8
+ amsgrad: true
+
 
 scheduler: # validaton-based
   _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -182,7 +184,7 @@ scheduler: # validaton-based
     interval: epoch
     frequency: 1
 
-# support resolver like add, sub, mul, float, ceil, floor
+# # support resolver like add, sub, mul, float, ceil, floor
 # scheduler: # fixed-step
 #   _target_: tace.utils.lr_scheduler.CosineAnnealingWarmupRestarts
 #   first_cycle_steps: 400000 # total step, one batch = one step
@@ -199,6 +201,7 @@ scheduler: # validaton-based
 synth_metric: 
   monitor_metric_name: val/forces_rmse # use for variable interpolation
 
+# # recommended for actual production and use
 # synth_metric: 
 #   # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
 #   # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
@@ -224,7 +227,7 @@ loss:
   loss_property_weights: [1.0, 10.0] # [1.0, 5.0, 0.1]
   normalize: false
 
-# huber loss used for outliers, used to train uMLIPs
+# # huber loss, recommended for actual production and use
 # loss:
 #   _target_: tace.utils.loss.OMat24sAlexMPtrjLoss
 #   loss_property: [energy, forces, stress]

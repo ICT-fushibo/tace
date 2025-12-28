@@ -614,14 +614,15 @@ class GaussianBasis(torch.nn.Module):
 
 class ZBLBasis(torch.nn.Module):
     """
-    From MACE
+    Metal units
+    From LAMMPS pair_zbl_const.h, code from MACE
     Implementation of the Ziegler-Biersack-Littmark (ZBL) potential
     with a polynomial cutoff envelope.
     """
 
     p: torch.Tensor
 
-    def __init__(self, p=6, trainable=False, **kwargs):
+    def __init__(self, p:int = 6, trainable: bool = False, **kwargs):
         super().__init__()
         # Pre-calculate the p coefficients for the ZBL potential
         self.register_buffer(

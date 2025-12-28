@@ -12,7 +12,6 @@ from torch import nn
 
 
 from .act import ACT
-from .utils import select_corresponding_level_for_scalar
 
 
 class MLP(torch.nn.Module):
@@ -25,8 +24,6 @@ class MLP(torch.nn.Module):
         bias: bool = False,
         forward_weight_init: bool = True,
         enable_layer_norm: bool = False,
-        num_levels: int = 1,
-        use_multi_head: bool = False,
     ):
         '''The parameter initialization method uses the earlier version of Allegro'''
         super().__init__()
@@ -37,10 +34,6 @@ class MLP(torch.nn.Module):
         act = ACT[act]()
         self.is_nonlinear = False
         self.enable_layer_norm = enable_layer_norm
-        self.num_levels = num_levels
-        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
-        if self.use_multi_head:
-            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
 
         # === build the MLP + weight init ===
         mlp = []
@@ -76,19 +69,10 @@ class MLP(torch.nn.Module):
                 mlp.append(act)
                 self.is_nonlinear = True
 
-        if self.use_multi_head: 
-            self.mlp_1 = torch.nn.Sequential(*mlp[:-1]) 
-            self.mlp_2 = torch.nn.Sequential(mlp[-1])   
-        else:
-            self.mlp = torch.nn.Sequential(*mlp)
+        self.mlp = torch.nn.Sequential(*mlp)
 
-    def forward(self, x, node_level=None):
-        if self.use_multi_head:
-            x = self.mlp_1(x)
-            x = select_corresponding_level_for_scalar(x, node_level, self.num_levels)
-            return self.mlp_2(x)
-        else:
-            return self.mlp(x)
+    def forward(self, x):
+        return self.mlp(x)
 
 
 class LinearLayer(torch.nn.Module):
@@ -119,7 +103,7 @@ class LinearLayer(torch.nn.Module):
             return torch.addmm(self.bias, input, weight)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self._bias}, alpha={self.alpha:.2f})"
+        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self._bias})"
 
 
 class LoRALinearLayer(torch.nn.Module):

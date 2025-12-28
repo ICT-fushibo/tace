@@ -4,7 +4,7 @@
 ################################################################################
 
 import warnings
-from typing import Optional, List
+from typing import Optional
 
 
 import torch
@@ -28,39 +28,26 @@ from ...dataset.quantity import (
 from ...utils._global import DTYPE, DEVICE
 
 
-
 class TACEAseCalc(Calculator):
     """
     Initialize a TACEAseCalc. We support the most fundamental potential energy surface property and multi-fidelity, 
-    multi-head, etc. For some advanced features, you need to modify the code yourself and store the attributes that need 
-    to be embedded in atoms.info or atmoity.arrays. If you only need to predict, you can directly use the `tace-eval` 
+    multi-head, etc. For some advanced features, you need to store the attributes that need to be embedded in atoms.info, 
+    atmos.arrays or add a funciton by yourself. If you only need to predict, you can directly use the `tace-eval` 
     command. It will output the predicted files, and if you add the `--test` option, it will also output the errors.
 
     Parameters
     ----------
     model_path : str
-        Path to the trained model, file ends with ``pt, .pth or .ckpt``.
-    device : str, default='cpu'
-        The device to run computations on, e.g., ``cpu`` or ``cuda``.
+        Path to the trained model, file ends with pt, .pth or .ckpt.
+    device : str | torch.device, optional
+        The device to run computations on, e.g., cpu or cuda.
+        If None, the device is automatically inferred.
     dtype : str, optional, default=None
-        Data type for computations, e.g., ``float32`` or ``float64``.
-    extra_compute_first_derivative : list[str], optional, default=None
-        If you wand to predict property not trained in your model, 
-        You need to provide the names of the first-order derivative physical quantities for additional predictions.
-        For example, if model trained on energy only, you colud also predict forces, and stress.
-    extra_compute_second_derivative : list[str], optional, default=None
-        If you wand to predict property not trained in your model, 
-        You need to provide the names of the second-order derivative physical quantities for additional predictions.
-        For example, if model trained on energy forces only, you colud also predict hessians.
-        One another example is that if model trained on conservative_dipole under electric_field, you colud also predict 
-        conservative_polarizability.
-    dispersion : bool, default=False
-        You can first create TACEAseCalc with no dispersion, 
-        and then use tace.interface.ase.add_dispersion_to_calc to obtain a calculator with dispersion correction.
-        This argument must always be False.
+        Data type for computations, e.g., float32 or float64.
     level : int
-        Specify which fidelity level to use. The default is a single head,
-        i.e., the index of fidelity `level` defaults to 0.
+        Specify which fidelity level to use. The default is the first calculation level.
+    neighborlist_backend: str
+        Support backend in one of [ase, matscipy, vesin], recommend matscipy
     **kwargs
         Additional keyword arguments passed to the ASE Calculator base class.
     """
@@ -68,89 +55,44 @@ class TACEAseCalc(Calculator):
     def __init__(
         self,
         model: str,
-        device: str = "cpu",
+        device: Optional[str] = None,
         dtype: Optional[str] = None,
-        extra_compute_first_derivative: Optional[List[str]] = None,
-        extra_compute_second_derivative: Optional[List[str]] = None,
-        dispersion: bool = False,
         level: int = 0,
+        neighborlist_backend: str = "matscipy",
         **kwargs,
     ):
         super().__init__(**kwargs)
-        
-        if dispersion:
-            raise (
-                'You can first create TACEAseCalc with no dispersion, '
-                'and then use tace.interface.ase.add_dispersion to obtain '
-                'a calculator with dispersion correction, argument dispersion in '
-                'TACEAseCalc sholud always be set to False.'
-            )
-        self.extra_compute_first_derivative = extra_compute_first_derivative or []
-        self.extra_compute_second_derivative = extra_compute_second_derivative or []        
+        # === init ===
         model = load_tace(model, device, strict=True, use_ema=True)
-        
         model_dtype = model.readout_fn.cutoff.dtype
-        if dtype is not None:
-            if dtype == "float64":
-                torch.set_default_dtype(torch.float64)
-                model = model.double()
-                if model_dtype != torch.float64:
-                    warnings.warn(
-                        f"Model dtype {model_dtype} != default dtype {dtype}. "
-                        f"This may cause silent type conversions."
-                    )
-            elif dtype == "float32":
-                torch.set_default_dtype(torch.float32)
-                model = model.float()
-                if model_dtype != torch.float32:
-                    warnings.warn(
-                        f"Model dtype {model_dtype} != default dtype {dtype}. "
-                        f"This may cause silent type conversions."
-                    )
-            else:
-                raise ValueError(f"Unknown dtype {dtype}")
-        else:
-            torch.set_default_dtype(model_dtype)
-
-        target_property = model.target_property
-        compute_flags = {}
-        for p in self.extra_compute_first_derivative:
-            model.compute_first_derivative = True
-            compute_flags.update(
-                {
-                    p: True
-                }
+        dtype = dtype or model_dtype
+        self.dtype = DTYPE[dtype]
+        self.device = DEVICE[device or torch.device("cuda" if torch.cuda.is_available() else "cpu")]
+        torch.set_default_dtype(self.dtype)
+        if DTYPE[dtype] != DTYPE[model_dtype]:
+            warnings.warn(
+                f"Model dtype {model_dtype} != default dtype {dtype}. "
+                f"This may cause silent type conversions."
             )
-        for p in self.extra_compute_second_derivative:
-            model.compute_second_derivative = True
-            compute_flags.update(
-                {
-                    p: True
-                }
-            )
-        for p, flag in compute_flags.items():
-            if flag:
-                setattr(model.flags, f"compute_{p}", True)
-                target_property.append(p)
-        self.target_property = list(set(target_property))
+        model = model.to(dtype=self.dtype)
+        self.target_property = list(set(model.target_property))
         self.embedding_property = model.embedding_property
         self.implemented_properties = self.target_property + ["free_energy"]
         self.universal_embedding = model.universal_embedding
         self.max_neighbors = getattr(model.readout_fn, "max_neighbors", None)
         self.cutoff = float(model.readout_fn.cutoff.item())
         self.element = TorchElement([int(z) for z in model.readout_fn.atomic_numbers.cpu().tolist()])
-
+        self.neighborlist_backend = neighborlist_backend
+        model.eval()
         for param in model.parameters():
             param.requires_grad = False
 
         self.keySpecification = KeySpecification()
         update_keyspec_from_kwargs(self.keySpecification, KEYS)
-
-        self.dtype = DTYPE[dtype or model_dtype]
-        self.device = DEVICE[device]
+  
         self.level = level
-        model.level = level    
-        self.model = model.to(device)
+        model.level = self.level 
+        self.model = model.to(self.device)
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)
@@ -167,6 +109,7 @@ class TACEAseCalc(Calculator):
                 keyspec=self.keySpecification,
                 universal_embedding=self.universal_embedding,
                 training=False,
+                neighborlist_backend=self.neighborlist_backend,
             ) 
         ]
         dataloader = DataLoader(
@@ -186,10 +129,10 @@ class TACEAseCalc(Calculator):
         # === update ===
         self.results = {}
         for p in self.target_property:
-            p_type = PROPERTY[p]['type']
+            p_scope = PROPERTY[p]['scope']
             p_rank = PROPERTY[p]['rank']
             prop = outs[p]
-            if p_type == 'graph':
+            if p_scope == 'per-system':
                 if p_rank == 0:
                     if p == 'energy':
                         energy = prop.detach().cpu().item()
@@ -203,79 +146,83 @@ class TACEAseCalc(Calculator):
                     self.results[p] = prop
                 else:
                     self.results[p] = outs[p].detach().cpu().numpy().squeeze(0)
-            elif p_type == 'atom':
+            elif p_scope == 'per-atom':
                 self.results[p] = prop.detach().cpu().numpy()
+            elif p_scope == 'per-edge':
+                raise
             else:
                 raise
 
-            
-    def get_hessians(self, atoms=None):
-        self.target_property = list(set(self.target_property+'hessians'))
-        self.model.compute_forces = True
-        self.model.compute_hessians = True
-        self.model.compute_first_derivative = True
+        
+    # def get_hessians(self, atoms=None):
+    #     self.target_property = list(set(self.target_property+'hessians'))
+    #     self.model.compute_forces = True
+    #     self.model.compute_hessians = True
+    #     self.model.compute_first_derivative = True
 
-        data = [
-            from_atoms(
-                self.element,
-                atoms,
-                self.cutoff,
-                max_neighbors=self.max_neighbors,
-                target_property=self.target_property,
-                embedding_property=self.embedding_property,
-                keyspec=self.keySpecification,
-                universal_embedding=self.universal_embedding,
-                training=False,
-            ) 
-        ]
+    #     data = [
+    #         from_atoms(
+    #             self.element,
+    #             atoms,
+    #             self.cutoff,
+    #             max_neighbors=self.max_neighbors,
+    #             target_property=self.target_property,
+    #             embedding_property=self.embedding_property,
+    #             keyspec=self.keySpecification,
+    #             universal_embedding=self.universal_embedding,
+    #             training=False,
+    #             neighborlist_backend=self.neighborlist_backend,
+    #         ) 
+    #     ]
 
-        dataloader = DataLoader(
-            dataset=data,
-            batch_size=1,
-            shuffle=False,
-            drop_last=False,
-        )
+    #     dataloader = DataLoader(
+    #         dataset=data,
+    #         batch_size=1,
+    #         shuffle=False,
+    #         drop_last=False,
+    #     )
 
-        batch = next(iter(dataloader))
-        batch.to(self.device)
-        for p in self.target_property:
-            for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-                batch[requires_grad_p].requires_grad_(True)
-        outs = self.model(batch)
+    #     batch = next(iter(dataloader))
+    #     batch.to(self.device)
+    #     for p in self.target_property:
+    #         for requires_grad_p in PROPERTY[p]['requires_grad_with']:
+    #             batch[requires_grad_p].requires_grad_(True)
+    #     outs = self.model(batch)
 
-        return outs["hessians"].detach().cpu().numpy() 
+    #     return outs["hessians"].detach().cpu().numpy() 
 
 
-    def get_direct_polarizability(self, atoms=None):
-        self.target_property = list(set(self.target_property+'direct_polarizability'))
-        data = [
-            from_atoms(
-                self.element,
-                atoms,
-                self.cutoff,
-                max_neighbors=self.max_neighbors,
-                target_property=self.target_property,
-                embedding_property=self.embedding_property,
-                keyspec=self.keySpecification,
-                universal_embedding=self.universal_embedding,
-                training=False,
-            ) 
-        ]
+    # def get_direct_polarizability(self, atoms=None):
+    #     self.target_property = list(set(self.target_property+'direct_polarizability'))
+    #     data = [
+    #         from_atoms(
+    #             self.element,
+    #             atoms,
+    #             self.cutoff,
+    #             max_neighbors=self.max_neighbors,
+    #             target_property=self.target_property,
+    #             embedding_property=self.embedding_property,
+    #             keyspec=self.keySpecification,
+    #             universal_embedding=self.universal_embedding,
+    #             training=False,
+    #             neighborlist_backend=self.neighborlist_backend,
+    #         ) 
+    #     ]
 
-        dataloader = DataLoader(
-            dataset=data,
-            batch_size=1,
-            shuffle=False,
-            drop_last=False,
-        )
+    #     dataloader = DataLoader(
+    #         dataset=data,
+    #         batch_size=1,
+    #         shuffle=False,
+    #         drop_last=False,
+    #     )
 
-        batch = next(iter(dataloader))
-        batch.to(self.device)
-        for p in self.target_property:
-            for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-                batch[requires_grad_p].requires_grad_(True)
-        outs = self.model(batch)
-        return outs['direct_polarizability'] .detach().cpu().numpy() 
+    #     batch = next(iter(dataloader))
+    #     batch.to(self.device)
+    #     for p in self.target_property:
+    #         for requires_grad_p in PROPERTY[p]['requires_grad_with']:
+    #             batch[requires_grad_p].requires_grad_(True)
+    #     outs = self.model(batch)
+    #     return outs['direct_polarizability'] .detach().cpu().numpy() 
 
 
 def add_dispersion(

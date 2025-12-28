@@ -5,7 +5,7 @@
 
 import logging
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
 
@@ -29,15 +29,34 @@ from .utils import (
 # TODO BUG only update exist keys, keep the default keys
 
 PROPERTY = {
-    "energy": {
+    "level": {
+        'type': 'int',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
+        "abbreviation": "LEVEL",
+        "shape": {
+            "in_data": (1,),
+            "shape_fn": None,
+        },
+        "default_value_fn": default_value_for_rank0_graph,
+        "must_be_with": {},
+        "conflict_with": {},
+        "enable_prediction": False,   
+        "enable_embedding": True,
+        "first_derivative": False,
+        "second_derivative": False,
+        "requires_grad_with": [],
+    },
+    "energy": {
+        'type': 'float',
+        "scope": "per-system",
+        "rank": 0,
         "abbreviation": "E",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'float',
+
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -48,14 +67,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "forces": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 1,
-        "type": "atom",
         "abbreviation": "F",
         "shape": {
             "in_data": (-1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_atom,
         "must_be_with": {
             1: ['energy'],
@@ -67,15 +86,32 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": ['positions'],
     },
-    "direct_forces": {
+    "edge_forces": {
+        'type': 'float',
+        "scope": "per-edge",
         "rank": 1,
-        "type": "atom",
+        "abbreviation": "EDGE_F",
+        "shape": {
+            "in_data": (-1, 3),
+            "shape_fn": None,
+        },
+        "default_value_fn": default_value_for_rank1_atom, # placeholder
+        "conflict_with": {},
+        "enable_prediction": False,   
+        "enable_embedding": False, # can be embedded through uee to achice DeNs
+        "first_derivative": True,
+        "second_derivative": False,
+        "requires_grad_with": ['edge_vector'],
+    },
+    "direct_forces": {
+        'type': 'float',
+        "scope": "per-atom",
+        "rank": 1,
         "abbreviation": "D_F",
         "shape": {
             "in_data": (-1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -85,32 +121,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "edge_forces": {
-        "rank": 1,
-        "type": "edge",
-        "abbreviation": "EDGE_F",
-        "shape": {
-            "in_data": (-1, 3),
-            "shape_fn": None,
-        },
-        'class': 'float',
-        "default_value_fn": default_value_for_rank1_atom, # placeholder
-        "conflict_with": {},
-        "enable_prediction": False,   
-        "enable_embedding": False, # can be embedded through uee to achice DeNs
-        "first_derivative": True,
-        "second_derivative": False,
-        "requires_grad_with": ['edge_vector'],
-    },
     "hessians": {
+        'type': 'float',
+        "scope": "per-edge",
         "rank": 2,
-        "type": "graph", # type indeed is atom_atom, assume it belongs to graph
         "abbreviation": "HESSIAN",
         "shape": {
             "in_data": (-1, 3, 3),
             "shape_fn": shape_fn_for_hessians,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_hessians,
         "must_be_with": {
             1: ['energy', 'forces'],
@@ -123,14 +142,14 @@ PROPERTY = {
         "requires_grad_with": ['positions'],
     },
     "direct_hessians": {
+        'type': 'float',
+        "scope": "per-edge",
         "rank": 2,
-        "type": "graph", # type indeed is atom_atom, assume it belongs to graph
         "abbreviation": "D_HESSIAN",
         "shape": {
             "in_data": (-1, 3, 3),
             "shape_fn": shape_fn_for_hessians,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_hessians,
         "must_be_with": {},
         "conflict_with": {},
@@ -141,14 +160,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "stress": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "S",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": voigt_to_matrix,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -160,14 +179,14 @@ PROPERTY = {
         "requires_grad_with": [], # manual set
     },
     "direct_stress": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "D_S",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": voigt_to_matrix,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -178,14 +197,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "virials": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "V",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": voigt_to_matrix,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -197,14 +216,14 @@ PROPERTY = {
         "requires_grad_with": [], # manual set
     },
     "direct_virials": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "D_V",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": voigt_to_matrix,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -215,14 +234,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "atomic_stresses": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 2,
-        "type": "atom",
         "abbreviation": "A_S",
         "shape": {
             "in_data": (-1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -233,14 +252,14 @@ PROPERTY = {
         "requires_grad_with": ['edge_vector'],
     },
     "atomic_virials": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 2,
-        "type": "atom",
         "abbreviation": "A_V",
         "shape": {
             "in_data": (-1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -251,14 +270,14 @@ PROPERTY = {
         "requires_grad_with": ['edge_vector'],
     },
     "direct_dipole": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "D",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {
             1: ['charges'],
@@ -273,14 +292,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "conservative_dipole": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "D",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {
@@ -293,14 +312,14 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "polarization": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "P",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": [], 
         "must_be_with": {},
@@ -314,14 +333,14 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "direct_polarizability": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "ALPHA",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -332,14 +351,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "conservative_polarizability": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "ALPHA",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {
             1: ["direct_dipole"],
@@ -354,14 +373,14 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "born_effective_charges": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 2,
-        "type": "atom",
         "abbreviation": "BEC",
         "shape": {
             "in_data": (-1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_atom,
         "must_be_with": {
             1: ["direct_dipole"],
@@ -376,14 +395,14 @@ PROPERTY = {
         "requires_grad_with": ['electric_field', 'positions'],
     },
     "magnetization": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "M",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -394,14 +413,14 @@ PROPERTY = {
         "requires_grad_with": ['magnetic_field'],
     },
     "magnetic_susceptibility": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 2,
-        "type": "graph",
         "abbreviation": "CHI_M",
         "shape": {
             "in_data": (1, 3, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank2_graph,
         "must_be_with": {
             1: ['magnetization']
@@ -414,14 +433,14 @@ PROPERTY = {
         "requires_grad_with": ['magnetic_field'],
     },
     "charges": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 0,
-        "type": "atom",
         "abbreviation": "C",
         "shape": {
             "in_data": (-1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -432,6 +451,8 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "total_charge": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 0,
         "type": "graph",
         "abbreviation": "TC",
@@ -439,7 +460,6 @@ PROPERTY = {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -450,14 +470,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "spin_multiplicity": {
+        'type': 'int',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
         "abbreviation": "SM",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'int',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -467,15 +487,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "magmoms_0": {
+    "collinear_magmoms": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 0,
-        "type": "atom",
-        "abbreviation": "MAG_0",
+        "abbreviation": "C_MAG",
         "shape": {
             "in_data": (-1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -485,15 +505,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "magmoms_1": {
+    "noncollinear_magmoms": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 1,
-        "type": "atom",
-        "abbreviation": "MAG_1",
+        "abbreviation": "NC_MAG",
         "shape": {
             "in_data": (-1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_atom,
         "must_be_with": {},
         "conflict_with": {},
@@ -503,15 +523,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "magnetic_forces_0": {
+    "collinear_magnetic_forces": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 0,
-        "type": "atom",
-        "abbreviation": "MAG_F_0",
+        "abbreviation": "C_MAG_F",
         "shape": {
             "in_data": (-1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_atom,
         "must_be_with": {
             1: ["magmoms_0"]
@@ -523,15 +543,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": ['magmoms_0'],
     },
-    "magnetic_forces_1": {
+    "noncollinear_magnetic_forces": {
+        'type': 'float',
+        "scope": "per-atom",
         "rank": 1,
-        "type": "atom",
-        "abbreviation": "MAG_F_1",
+        "abbreviation": "NC_MAG_F",
         "shape": {
             "in_data": (-1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_atom,
         "must_be_with": {
             1: ["magmoms_1"]
@@ -543,15 +563,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": ['magmoms_1'],
     },
-    "total_magmom_0": {
+    "total_collinear_magmoms": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
-        "abbreviation": "TM_0",
+        "abbreviation": "TCM",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -561,15 +581,15 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "total_magmom_1": {
+    "total_noncollinear_magmoms": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
-        "abbreviation": "TM",
+        "abbreviation": "TNCM",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -580,14 +600,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "electric_field": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "EF",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -598,14 +618,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "magnetic_field": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 1,
-        "type": "graph",
         "abbreviation": "MF",
         "shape": {
             "in_data": (1, 3),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -616,14 +636,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "level": {
+        'type': 'int',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
         "abbreviation": "LEVEL",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'int',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -634,14 +654,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "temperature": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
         "abbreviation": "TEMP",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -652,14 +672,14 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "electron_temperature": {
+        'type': 'float',
+        "scope": "per-system",
         "rank": 0,
-        "type": "graph",
         "abbreviation": "E_TEMP",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
         },
-        'class': 'float',
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
@@ -669,144 +689,10 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    # "nuclear_shielding": {
-    #     "rank": 2,
-    #     "type": "atom",
-    #     "abbreviation": "NS",
-    #     "shape": {
-    #         "in_data": (-1, 3, 3),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank2_atom,
-    #     "must_be_with": {},
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "nuclear_chemical_shift": {
-    #     "rank": 0,
-    #     "type": "atom",
-    #     "abbreviation": "NCS",
-    #     "shape": {
-    #         "in_data": (-1,),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank0_atom,
-    #     "must_be_with": {},
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "elasticity_tensor": {
-    #     "rank": 4,
-    #     "type": "graph",
-    #     "abbreviation": "ET",
-    #     "shape": {
-    #         "in_data": (1, 3, 3, 3, 3),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank4_graph,
-    #     "must_be_with": {},
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "crystal_system": {
-    #     "rank": 0,
-    #     "type": "graph",
-    #     "abbreviation": "CS",
-    #     "shape": {
-    #         "in_data": (1,),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'int',
-    #     "default_value_fn": default_value_for_rank0_graph,
-    #     "must_be_with": {},
-    #     "conflict_with": {},
-    #     "enable_prediction": False,   
-    #     "enable_embedding": True,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "hill_bulk_modulus": {
-    #     "rank": 0,
-    #     "type": "graph",
-    #     "abbreviation": "HILL_K",
-    #     "shape": {
-    #         "in_data": (1,),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank0_graph,
-    #     "must_be_with": {
-    #         1: ['elasticity_tensor'],
-    #     },
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "hill_shear_modulus": {
-    #     "rank": 0,
-    #     "type": "graph",
-    #     "abbreviation": "HILL_G",
-    #     "shape": {
-    #         "in_data": (1,),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank0_graph,
-    #     "must_be_with": {
-    #         1: ['elasticity_tensor'],
-    #     },
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
-    # "hill_young_modulus": {
-    #     "rank": 0,
-    #     "type": "graph",
-    #     "abbreviation": "HILL_E",
-    #     "shape": {
-    #         "in_data": (1,),
-    #         "shape_fn": None,
-    #     },
-    #     'class': 'float',
-    #     "default_value_fn": default_value_for_rank0_graph,
-    #     "must_be_with": {
-    #         1: ['elasticity_tensor'],
-    #     },
-    #     "conflict_with": {},
-    #     "enable_prediction": True,   
-    #     "enable_embedding": False,
-    #     "first_derivative": False,
-    #     "second_derivative": False,
-    #     "requires_grad_with": [],
-    # },
 }
 
 SUPPORT_PREDICT_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_prediction']]
 UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_embedding']]
-EXTERNAL_FIELD_ALLOWED_PROPERTY = SUPPORT_PREDICT_PROPERTY  # not check
-
 
 KEYS = {f"{k}_key": k for k in PROPERTY}
 
@@ -827,7 +713,6 @@ class DefaultKeys(Enum):
     # NUCLEAR_SHIELDING = "nuclear_shielding"
     # NUCLEAR_CHEMICAL_SHIFT = "nuclear_chemical_shift"
     # ELASTICITY_TENSOR = "elasticity_tensor"
-
     DIRECT_FORCES = "direct_forces"
     DIRECT_STRESS = "direct_stress"
     DIRECT_VIRIALS = "direct_virials"
@@ -848,20 +733,20 @@ class DefaultKeys(Enum):
     MAGNETIZATION = "magnetization"
     MAGNETIC_SUSCEPTIBILITY = "magnetic_susceptibility"
     POLARIZATION = "polarization"
+    COLLINEAR_MAGNETIC_FORCES = "collinear_magnetic_forces"
+    NONCOLLINEAR_MAGNETIC_FORCES = "noncollinear_magnetic_forces"
 
-    # magnetic systems
-    MAGMOMS_0 = "magmoms_0"
-    MAGMOMS_1 = "magmoms_1"
-    TOTAL_MAGMOM_0 = "total_magmom_0"
-    TOTAL_MAGMOM_1 = "total_magmom_1"
-    MAGNETIC_FORCES_0 = "magnetic_forces_0"
-    MAGNETIC_FORCES_1 = "magnetic_forces_1"
 
     # only for embedding
     LEVEL = 'level'
     TEMPERATURE = "temperature"
     ELECTRON_TEMPERATURE = "electron_temperature"
     SPIN_MULTIPLICITY = "spin_multiplicity"
+    COLLINEAR_MAGMOMS = "collinear_magmoms"
+    NONCOLLINEAR_MAGMOMS = "noncollinear_magmoms"
+    TOTAL_COLLINEAR_MAGMOM = "total_collinear_magmom"
+    TOTAL_NONCOLLINEAR_MAGMOM = "total_noncollinear_magmom"
+
 
     @staticmethod
     def keydict() -> dict[str, str]:
@@ -899,8 +784,8 @@ def update_keyspec_from_kwargs(
     keyspec: KeySpecification, keydict: Dict[str, str]
 ) -> KeySpecification:
     '''Modify from MACE to simplify reading property'''
-    infos = [f"{k}_key" for k, v in PROPERTY.items() if (v['type'] == 'graph')]
-    arrays = [f"{k}_key" for k, v in PROPERTY.items() if (v['type'] != 'graph')] # not correct,but for convenience now
+    infos = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] == 'per-system')]
+    arrays = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] != 'per-system')] # not correct,but for convenience now
     info_keys = {}
     arrays_keys = {}
     for key in infos:
@@ -950,107 +835,24 @@ def get_target_property(cfg: Dict) -> List[str]:
     return loss_property
 
 
-INVARIANT_DISCRETE_PROPERTY_REQUIRED_FIELD = [
-    "type",
-    "per",
-    "in_dim",
-    "out_dim",
-    "num_classes",
-]
-
-INVARIANT_CONTINUOUS_PROPERTY_REQUIRED_FIELD = [
-    "type",
-    "per",
-    "in_dim",
-    "out_dim",
-    "bias",
-    "act",
-]
-
-EQUIVARIANT_PROPERTY_REQUIRED_FIELD = [
-    "per",
-    "rank",
-    "element_trainable",
-    "channel_trainable",
-]
-
-def get_embedding_property(cfg: Dict) -> Dict[str, List[str]]:
-
-    universal_embedding = cfg["model"]["config"].get("universal_embedding", None)
-
+def get_embedding_property(cfg: Dict, separate: bool = False) -> List[str] | Tuple[List[str]]:
+    invariant = cfg["model"]["config"].get("universal_embedding", {}).get("invariant", {})
     invariant_embedding_property = []
+    for k, v in invariant.items():
+        if v.get('enable', False):
+            invariant_embedding_property.append(k)
+
+    equivariant = cfg["model"]["config"].get("universal_embedding", {}).get("equivariant", {})
     equivariant_embedding_property = []
+    for k, v in equivariant.items():
+        if v.get('enable', False):
+            equivariant_embedding_property.append(k)
 
-    if universal_embedding is not None:
-        invariant = universal_embedding.get("invariant", None)
-        equivariant = universal_embedding.get("equivariant", None)
+    if separate:
+        return invariant_embedding_property, equivariant_embedding_property
+    else:
+        return invariant_embedding_property + equivariant_embedding_property
 
-        if invariant is not None:
-            assert isinstance(invariant, Dict)
-
-            for k, v in invariant.items():
-                p = k
-                assert (
-                    p in UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
-                ), f"universal_embedding allowed property are {UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY}, "
-                f"if not enough, please contact the author or write by yourself."
-                invariant_embedding_property.append(p)
-
-                assert (
-                    "type" in v
-                ), f"Missing 'type' in cfg.model.config.universal_embedding.{p}."
-
-                _type = v["type"]
-
-                # Validate required fields
-                REQUIRED_FIELDS = (
-                    INVARIANT_DISCRETE_PROPERTY_REQUIRED_FIELD
-                    if _type == "discrete"
-                    else (
-                        INVARIANT_CONTINUOUS_PROPERTY_REQUIRED_FIELD
-                        if _type == "continuous"
-                        else None
-                    )
-                )
-                assert (
-                    REQUIRED_FIELDS is not None
-                ), f"Invalid type '{_type}', got {_type}, allowed type are [continuous, discrete]'"
-
-                missing_fields = [f for f in REQUIRED_FIELDS if f not in v]
-                extra_fields = [f for f in v if f not in REQUIRED_FIELDS]
-
-                assert (
-                    not missing_fields
-                ), f"Missing required fields {missing_fields} for property '{p}'"
-                assert (
-                    not extra_fields
-                ), f"Unexpected fields {extra_fields} for property '{p}'"
-
-        if equivariant is not None:
-            assert isinstance(equivariant, Dict)
-
-            for k, v in equivariant.items():
-                p = k
-                assert (
-                    p in UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
-                ), f"universal_embedding allowed property are {UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY}, "
-                f"if not enough, please contact the author or write by yourself."
-                equivariant_embedding_property.append(p)
-
-                # Validate required fields
-                REQUIRED_FIELDS = EQUIVARIANT_PROPERTY_REQUIRED_FIELD
-
-                missing_fields = [f for f in REQUIRED_FIELDS if f not in v]
-                extra_fields = [f for f in v if f not in REQUIRED_FIELDS]
-
-                assert (
-                    not missing_fields
-                ), f"Missing required fields {missing_fields} for property '{p}'"
-                assert (
-                    not extra_fields
-                ), f"Unexpected fields {extra_fields} for property '{p}'"
-
-    return invariant_embedding_property + equivariant_embedding_property
 
 # For Metrics
 MAE_PROPERTY = [
@@ -1063,14 +865,14 @@ RMSE_PROPERTY = [
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
-    if v["type"] == "graph" 
+    if v["scope"] == "per-system" 
     and p != "polarization"
     and p != "stress"   
     and p != "direct_stress"  
 ]
 RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
-    if v["type"] == "graph" 
+    if v["scope"] == "per-system" 
     and p != "polarization" 
     and p != "stress"    
     and p != "direct_stress"    
@@ -1084,17 +886,13 @@ class ComputeFlag:
     locals().update(fields)
 
 
-def get_target_irreps(target_property: List[str], use_nolinear_tensor_readout: bool = True):
+def get_target_irreps(target_property: List[str]):
     target_irreps = []
     target_irreps.extend([0]) if "energy" in target_property else None
-    target_irreps.extend([0]) if "magmoms_0" in target_property else None
-    target_irreps.extend([1]) if "magmoms_1" in target_property else None
+    target_irreps.extend([0]) if "collinear_magmoms" in target_property else None
+    target_irreps.extend([1]) if "noncollinear_magmoms" in target_property else None
     target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
     target_irreps.extend([0, 2]) if "direct_stress" in target_property or "direct_virials" in target_property else None
-    if use_nolinear_tensor_readout:
-        target_irreps.extend([0, 1]) if "direct_dipole" in target_property else None
-        target_irreps.extend([0, 1]) if "direct_forces" in target_property else None
-    else:
-        target_irreps.extend([1]) if "direct_dipole" in target_property else None
-        target_irreps.extend([1]) if "direct_forces" in target_property else None
+    target_irreps.extend([1]) if "direct_dipole" in target_property else None
+    target_irreps.extend([1]) if "direct_forces" in target_property else None
     return sorted(list(set(target_irreps)))

@@ -46,6 +46,7 @@ def from_atoms(
     embedding_property: List[str] = [],
     universal_embedding: Optional[List[Dict[str, Dict[int, str]]]] = None,
     training: bool = True,
+    neighborlist_backend: str = "matscipy",
 ):
     # === The basic structure of chemical substances ===
     try:
@@ -68,17 +69,16 @@ def from_atoms(
     except Exception as e:
         raise RuntimeError(f"Failed to get positions from atoms: {e}")
 
-    try:
-        edge_index, edge_shifts, pbc, lattice = get_neighborhood(
-            positions=positions,
-            cutoff=cutoff,
-            pbc=deepcopy(pbc),
-            lattice=deepcopy(lattice),
-            max_neighbors=max_neighbors,
-        )
-    except Exception as e:
-        raise RuntimeError(f"Failed to compute neighborhood graph: {e}")
+    edge_index, edge_shifts, pbc, lattice = get_neighborhood(
+        positions=positions,
+        cutoff=cutoff,
+        pbc=deepcopy(pbc),
+        lattice=deepcopy(lattice),
+        max_neighbors=max_neighbors,
+        backend=neighborlist_backend,
+    )
 
+    
     atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.int64)
     onehot = element.z2onehot(atomic_numbers).to(dtype=torch.get_default_dtype())
 
@@ -128,26 +128,26 @@ def from_atoms(
         in_data = PROPERTY[name]["shape"]["in_data"]
         shape_fn = PROPERTY[name]["shape"].get("shape_fn", None)
         default_value_fn = PROPERTY[name]["default_value_fn"]
-        class_ = PROPERTY[name]["class"]
+        type_ = PROPERTY[name]["type"]
         try:
             p = properties.get(name)
             if p is None:
-                if class_ == 'float':
+                if type_ == 'float':
                     p = torch.tensor(
-                        default_value_fn(num_atoms, class_),
+                        default_value_fn(num_atoms, type_),
                         dtype=torch.get_default_dtype(),
                     )
-                elif class_ == 'int':
+                elif type_ == 'int':
                     p = torch.tensor(
-                        np.round(default_value_fn(num_atoms, class_)),
+                        np.round(default_value_fn(num_atoms, type_)),
                         dtype=torch.int64,
                     )
                 else:
                     raise
             else:
-                if class_ == 'float':
+                if type_ == 'float':
                     p = torch.tensor(p, dtype=torch.get_default_dtype())
-                elif class_ == 'int':
+                elif type_ == 'int':
                     p = torch.tensor(np.round(p), dtype=torch.int64)
                 else:
                     raise

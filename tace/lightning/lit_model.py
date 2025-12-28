@@ -18,7 +18,7 @@ from torchmetrics import MetricCollection
 from .select_model import select_model
 from ..dataset.quantity import get_target_property, get_embedding_property
 from ..utils.metrics import build_metrics, update_metrics
-from .. utils._global import DTYPE
+from .. utils._global import DTYPE, DEVICE
 
 from .lora import inject_lora_into_model
 
@@ -55,9 +55,9 @@ class LightningWrapperModel(L.LightningModule):
                 self._create_metrics(f"test_{i}")
         self.force_dtype = DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
         self.model = model
+        self.use_swa = 'swa' in cfg["callbacks"]
         self.init_finetune()
  
-
     def setup(self, stage: Optional[str] = None):
         self.sync_dist = self.trainer.num_devices > 1
         if self.ema is not None:
@@ -279,6 +279,8 @@ class LightningWrapperModel(L.LightningModule):
         dominant_dtype = counts.most_common(1)[0][0]
         torch.set_default_dtype(dominant_dtype)
         cfg = checkpoint['hyper_parameters']['cfg']
+        use_swa = 'swa' in cfg['callbacks']
+
         target_property = get_target_property(cfg)
         embedding_property = get_embedding_property(cfg)
         statistics = checkpoint['hyper_parameters']['statistics']
@@ -294,6 +296,11 @@ class LightningWrapperModel(L.LightningModule):
         }
         model.load_state_dict(filtered_state_dict, strict=strict)
 
+        # === SWA ===
+        if use_swa:
+            logging.debug("Since swa is enabled, skip trying load ema.")
+            return model.to(map_location)
+        
         # === EMA ===
         if bool(use_ema) and "ema_state_dict" in checkpoint:
             ema_params = checkpoint['ema_state_dict']['shadow_params']
@@ -321,32 +328,6 @@ class LightningWrapperModel(L.LightningModule):
 
         return model.to(map_location)
 
-
-def finetune(cfg: Dict) -> torch.nn.Module:
-
-    ckpt_path: str = cfg.get("finetune_from_model", None)
-    assert ckpt_path is not None
-
-    if ckpt_path.endswith(".ckpt"):
-        MODEL = LightningWrapperModel.load_from_checkpoint(
-            ckpt_path,
-            map_location="cpu",
-            strict=True,
-            use_ema=1,
-        )
-    elif ckpt_path.endswith(".pt") or ckpt_path.endswith(".pth"):
-        MODEL = torch.load(ckpt_path, weights_only=False, map_location="cpu")
-        precision = cfg['trainer']['precision']
-        if precision == 32:
-            MODEL.float()
-        else:
-            MODEL.double()
-    else:
-        raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
-    logging.info(f"Load model for Fine-tunning")
-    
-    return MODEL
-
 def load_tace(
     model: str | Path | torch.nn.Module,
     device: Optional[str | torch.device] = None,
@@ -355,9 +336,7 @@ def load_tace(
     # backend: str = 'torch',
     **kwargs: Any,
 ):
-    device = device or torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
-    )
+    device = DEVICE[device]
     if isinstance(model, str | Path):
         model_path = str(model)
         if model_path.endswith(".ckpt"):
@@ -378,9 +357,33 @@ def load_tace(
             )
         else:
             raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
-    elif isinstance(torch.nn.Module):
+    elif isinstance(model, torch.nn.Module):
         model = model.to(device)
     else:
         raise TypeError("Model must be a path or torch.nn.Module")
 
     return model
+
+def finetune(cfg: Dict) -> torch.nn.Module:
+
+    model = load_tace(
+        cfg["finetune_from_model"],
+        device='cpu',
+        strict=True,
+        use_ema=True,
+    )
+
+    precision = cfg['trainer']['precision']
+    dtype = DTYPE.get(precision, torch.float64)
+
+    if dtype == torch.float16:
+        model.half()      
+    elif dtype == torch.float32:
+        model.float()   
+    else:
+        model.double()
+
+    logging.info(f"Load model for Fine-tunning")
+    
+    return model
+
