@@ -136,8 +136,10 @@ dataset:
     born_effective_charges_key: born_effective_charges
     electric_field_key: electric_field
     magnetic_field_key: magnetic_field
-    collinear_magmoms_key: collinear_magmoms
-    noncollinear_magmoms_key: noncollinear_magmoms
+    initial_collinear_magmoms_key: initial_collinear_magmoms
+    initial_noncollinear_magmoms_key: initial_noncollinear_magmoms
+    final_collinear_magmoms_key: final_collinear_magmoms
+    final_noncollinear_magmoms_key: final_noncollinear_magmoms
     total_collinear_magmoms_key: total_collinear_magmoms
     total_noncollinear_magmoms_key: total_noncollinear_magmoms
     collinear_magnetic_forces_key: collinear_magnetic_forces

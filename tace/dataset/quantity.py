@@ -487,11 +487,11 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "collinear_magmoms": {
+    "initial_collinear_magmoms": {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
-        "abbreviation": "C_MAG",
+        "abbreviation": "I_C_MAG",
         "shape": {
             "in_data": (-1,),
             "shape_fn": None,
@@ -505,11 +505,11 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "noncollinear_magmoms": {
+    "initial_noncollinear_magmoms": {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
-        "abbreviation": "NC_MAG",
+        "abbreviation": "I_NC_MAG",
         "shape": {
             "in_data": (-1, 3),
             "shape_fn": None,
@@ -519,6 +519,42 @@ PROPERTY = {
         "conflict_with": {},
         "enable_prediction": False,   
         "enable_embedding": True,
+        "first_derivative": False,
+        "second_derivative": False,
+        "requires_grad_with": [],
+    },
+    "final_collinear_magmoms": {
+        'type': 'float',
+        "scope": "per-atom",
+        "rank": 0,
+        "abbreviation": "F_C_MAG",
+        "shape": {
+            "in_data": (-1,),
+            "shape_fn": None,
+        },
+        "default_value_fn": default_value_for_rank0_atom,
+        "must_be_with": {},
+        "conflict_with": {},
+        "enable_prediction": True,   
+        "enable_embedding": False,
+        "first_derivative": False,
+        "second_derivative": False,
+        "requires_grad_with": [],
+    },
+    "final_noncollinear_magmoms": {
+        'type': 'float',
+        "scope": "per-atom",
+        "rank": 1,
+        "abbreviation": "F_NC_MAG",
+        "shape": {
+            "in_data": (-1, 3),
+            "shape_fn": None,
+        },
+        "default_value_fn": default_value_for_rank1_atom,
+        "must_be_with": {},
+        "conflict_with": {},
+        "enable_prediction": True,   
+        "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": False,
         "requires_grad_with": [],
@@ -563,7 +599,7 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": ['magmoms_1'],
     },
-    "total_collinear_magmoms": {
+    "total_collinear_magmom": {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
@@ -575,13 +611,13 @@ PROPERTY = {
         "default_value_fn": default_value_for_rank0_graph,
         "must_be_with": {},
         "conflict_with": {},
-        "enable_prediction": False,   
-        "enable_embedding": True,
+        "enable_prediction": True,   
+        "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "total_noncollinear_magmoms": {
+    "total_noncollinear_magmom": {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -593,8 +629,8 @@ PROPERTY = {
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": {},
         "conflict_with": {},
-        "enable_prediction": False,   
-        "enable_embedding": True,
+        "enable_prediction": True,   
+        "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": False,
         "requires_grad_with": [],
@@ -710,9 +746,6 @@ class DefaultKeys(Enum):
     ATOMIC_STRESSES = "atomic_stresses"
     
     # direct property
-    # NUCLEAR_SHIELDING = "nuclear_shielding"
-    # NUCLEAR_CHEMICAL_SHIFT = "nuclear_chemical_shift"
-    # ELASTICITY_TENSOR = "elasticity_tensor"
     DIRECT_FORCES = "direct_forces"
     DIRECT_STRESS = "direct_stress"
     DIRECT_VIRIALS = "direct_virials"
@@ -733,20 +766,22 @@ class DefaultKeys(Enum):
     MAGNETIZATION = "magnetization"
     MAGNETIC_SUSCEPTIBILITY = "magnetic_susceptibility"
     POLARIZATION = "polarization"
+
+    # MAG
+    INITIAL_COLLINEAR_MAGMOMS = "initial_collinear_magmoms"
+    INITIAL_NONCOLLINEAR_MAGMOMS = "initial_noncollinear_magmoms"
+    FINAL_COLLINEAR_MAGMOMS = "final_collinear_magmoms"
+    FINAL_NONCOLLINEAR_MAGMOMS = "final_noncollinear_magmoms"
     COLLINEAR_MAGNETIC_FORCES = "collinear_magnetic_forces"
     NONCOLLINEAR_MAGNETIC_FORCES = "noncollinear_magnetic_forces"
-
+    TOTAL_COLLINEAR_MAGMOM = "total_collinear_magmom"
+    TOTAL_NONCOLLINEAR_MAGMOM = "total_noncollinear_magmom"
 
     # only for embedding
     LEVEL = 'level'
     TEMPERATURE = "temperature"
     ELECTRON_TEMPERATURE = "electron_temperature"
     SPIN_MULTIPLICITY = "spin_multiplicity"
-    COLLINEAR_MAGMOMS = "collinear_magmoms"
-    NONCOLLINEAR_MAGMOMS = "noncollinear_magmoms"
-    TOTAL_COLLINEAR_MAGMOM = "total_collinear_magmom"
-    TOTAL_NONCOLLINEAR_MAGMOM = "total_noncollinear_magmom"
-
 
     @staticmethod
     def keydict() -> dict[str, str]:
@@ -889,10 +924,11 @@ class ComputeFlag:
 def get_target_irreps(target_property: List[str]):
     target_irreps = []
     target_irreps.extend([0]) if "energy" in target_property else None
-    target_irreps.extend([0]) if "collinear_magmoms" in target_property else None
-    target_irreps.extend([1]) if "noncollinear_magmoms" in target_property else None
+    target_irreps.extend([0]) if "final_collinear_magmoms" in target_property else None
+    target_irreps.extend([1]) if "final_noncollinear_magmoms" in target_property else None
     target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
-    target_irreps.extend([0, 2]) if "direct_stress" in target_property or "direct_virials" in target_property else None
+    target_irreps.extend([0, 2]) if "direct_stress" in target_property or \
+        "direct_virials" in target_property else None
     target_irreps.extend([1]) if "direct_dipole" in target_property else None
     target_irreps.extend([1]) if "direct_forces" in target_property else None
     return sorted(list(set(target_irreps)))

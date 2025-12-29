@@ -7,7 +7,7 @@ This example shows how to configure the ``defaults`` section in ``tace.yaml`` to
 
     defaults:
         - _self_                        
-        - config/model@model: tace      
+        - config/model@model: tacev1      
         - config/logger@_here_: wandb
 
 Explanation:

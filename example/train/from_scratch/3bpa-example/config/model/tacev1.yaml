@@ -43,7 +43,6 @@ config:
     nonlinearity:
       type: null # (null | str), choices: [null, norm, gated]
       gate: 'silu' # (null | str)
-    kernel: scatter # (str), choices: [scatter, torch_fusion] 
     sc: # self connection
       use_first_sc: false    # (bool), false is recommended
       from: current_message  # (str), choices: [current_message, last_product]
@@ -116,7 +115,7 @@ config:
         enable: false
         act: 'silu'   # (str, null)
 
-      collinear_magmoms:
+      initial_collinear_magmoms:
         enable: false
         act: 'silu'   # (str, null)
     
@@ -129,7 +128,7 @@ config:
         act: 'silu'   # (str, null)
 
     equivariant:
-      noncollinear_magmoms:
+      initial_noncollinear_magmoms:
         enable: false
         normalizer: 1.0 # (float)
 

@@ -42,8 +42,8 @@ class TACEDescriptor(torch.nn.Module):
         super().__init__()
 
         # === init ===
-        self.invariant_embeddings = universal_embedding.get("invariant", {})
-        self.equivariant_embeddings = universal_embedding.get("equivariant", {})
+        self.invariant_embedding_property = universal_embedding['invariant_embedding_property']
+        self.equivariant_embedding_property = universal_embedding['equivariant_embedding_property']
         self.register_buffer("num_layers", torch.tensor(num_layers, dtype=torch.int64))
         self.register_buffer("atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64))
         self.register_buffer("cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype()))
@@ -72,14 +72,14 @@ class TACEDescriptor(torch.nn.Module):
         if len(universal_embedding['invariant_embedding_property']) > 0:
             self.uie_embedding = UniversalInvariantEmbedding(
                 num_channel,
-                self.invariant_embeddings,
+                universal_embedding.get("invariant", {}),
             )
         if len(universal_embedding['equivariant_embedding_property']) > 0:
             self.uee_embeddings = nn.ModuleList()
             for _ in range(num_layers):
                 self.uee_embeddings.append(
                     UniversalEquivariantEmbedding(
-                        self.equivariant_embeddings,
+                        universal_embedding.get("equivariant", {}),
                         atomic_numbers,
                         num_channel,
                     )
@@ -154,10 +154,14 @@ class TACEDescriptor(torch.nn.Module):
         uie_feats = None
         if hasattr(self, "uie_embedding"):
             uie_data = {}
-            for k, _ in self.invariant_embeddings.items():
+            for k in self.invariant_embedding_property:
                 uie_data.update({k: data[k]})
             uie_feats = self.uie_embedding(data["batch"], uie_data)
             node_feats[0] = node_feats[0] + uie_feats
+        if hasattr(self, 'uee_embeddings'):
+            uee_data = {}
+            for k in self.equivariant_embedding_property:
+                    uee_data.update({k: data[k]})
 
         # === edge initialize (radial and angular) ===
         edge_feats, cutoff = self.radial_embedding(
@@ -187,10 +191,10 @@ class TACEDescriptor(torch.nn.Module):
                 cutoff,
                 graph,
             )
-            if hasattr(self, 'uee_embeddings'):
-                node_feats = self.uee_embeddings[idx](node_feats, data)
             if lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:nlocal] # nlocal
+            if hasattr(self, 'uee_embeddings'):
+                node_feats = self.uee_embeddings[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
             node_feats = prod(node_feats, node_attrs_slice, sc)
             descriptors.append(node_feats)
 

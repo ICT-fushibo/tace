@@ -143,7 +143,7 @@ def compute_atomic_energy_per_level(
         x = np.linalg.lstsq(A, B, rcond=None)[0]
         atomic_energy = {}
         for i, z in enumerate(element.atomic_numbers):
-            atomic_energy[z] = x[i]
+            atomic_energy[z] = float(x[i])
     except np.linalg.LinAlgError:
         logging.info(
             "Failed to compute Isolated Atomic Energies automatically , using Isolated Atomic Energies = 0.0 for all atoms"

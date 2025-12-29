@@ -156,6 +156,14 @@ class TACEV1(torch.nn.Module):
             self.direct_virials_readout2s = build_tensor_readout(l=2, **for_tensor_readout)
             self.direct_virials_basis_change = PropertyBasisChange["direct_virials"]() 
 
+        # === Final Collinear Magmoms ===
+        if 'final_collinear_magmoms' in self.target_property:
+            self.final_collinear_magmoms_readouts = build_scalar_readout(**for_scalar_readout)
+
+        # === Final Noncollinear Magmoms === not conform to time reversal ...
+        if 'final_noncollinear_magmoms' in self.target_property:
+            self.final_noncollinear_magmoms_readouts = build_tensor_readout(l=1, **for_tensor_readout)
+
         # === Charges ===
         if "charges" in self.target_property:
             self.predict_charges_method = self.conservation.get('charges', {}).get('method', 'lagrangian')
@@ -421,6 +429,34 @@ class TACEV1(torch.nn.Module):
                 scalar_descriptor_list.append(descriptor[0])
             scalar_descriptor = torch.cat(scalar_descriptor_list, dim=-1)
 
+        # === Final Noncollinear Magmoms ===
+        F_NC_MAG = None
+        if 'final_noncollinear_magmoms' in self.target_property:
+            f_nc_m_list = []
+            for ii, final_noncollinear_magmoms_readout in enumerate(self.final_noncollinear_magmoms_readouts):
+                if not self.use_all_layer:
+                    ii = -1
+                f_nc_m_list.append(
+                    final_noncollinear_magmoms_readout(
+                        descriptors[ii][1],
+                        node_level,
+                    )[num_atoms_arange, node_level, :]
+                )
+            F_NC_MAG = torch.sum(torch.stack(f_nc_m_list, dim=-1), dim=-1)
+
+        # === Final Collinear Magmoms ===
+        F_C_MAG = None
+        if 'final_collinear_magmoms' in self.target_property:
+            f_c_m_list = []
+            for ii, final_collinear_magmoms_readout in enumerate(self.final_collinear_magmoms_readouts):
+                if not self.use_all_layer:
+                    ii = -1
+                f_c_m_list.append(final_collinear_magmoms_readout(descriptors[ii][0])[num_atoms_arange, node_level])
+            F_C_MAG = torch.sum(torch.stack(f_c_m_list, dim=0), dim=0)
+            # print('initial', data['initial_collinear_magmoms'][:5])
+            # print('final', data['final_collinear_magmoms'][:5])
+            # print('predict', F_C_MAG[:5])
+            
         return {
             "energy": E,
             "node_energy": e_node, # TODO, check the inside of les
@@ -433,6 +469,8 @@ class TACEV1(torch.nn.Module):
             "les_energy": LES_E,
             "les_latent_charges": LES_LQ,
             "les_born_effective_charges": LES_BEC,
+            "final_collinear_magmoms": F_C_MAG,
+            "final_noncollinear_magmoms": F_NC_MAG,
             "scalar_descriptor": scalar_descriptor,
         }
     

@@ -40,7 +40,6 @@ def mse_energy_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Te
         * total_weight
     )
 
-
 @register_loss
 def mae_energy_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
     total_weight = label.entropy * label.energy_weight
@@ -48,7 +47,6 @@ def mae_energy_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Te
         torch.abs((label["energy"] - pred["energy"]) / (label.ptr[1:] - label.ptr[:-1]))
         * total_weight
     )
-
 
 @register_loss
 def mse_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
@@ -194,16 +192,6 @@ def mse_conservative_polarizability_per_atom(
         * total_weight
     )
 
-@register_loss
-def mse_hessians(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    batch = label.batch
-    total_weight = (label.entropy * label.hessians_weight)[batch][batch]  # TODO check
-    total_weight = total_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-    return torch.mean(
-        torch.square((label["hessians"] - pred["hessians"]))
-        * total_weight  # hessians shape: [atoms*atom, 3, 3]
-    )
-
 
 @register_loss
 def mse_born_effective_charges(
@@ -244,31 +232,6 @@ def mse_charges(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
     total_weight = (label.entropy * label.charges_weight)[batch]
     return torch.mean(torch.square(pred["charges"] - label["charges"]) * total_weight)
 
-# # no use
-@register_loss
-def mse_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    batch = label.batch
-    total_weight = label.entropy[batch].unsqueeze(-1) * label.magmoms_weight[
-        batch
-    ].unsqueeze(-1)
-    return torch.mean(torch.square(pred["magmoms"] - label["magmoms"]) * total_weight)
-
-@register_loss
-def mse_magnetic_forces_0(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    batch = label.batch
-    total_weight = (label.entropy * label.magnetic_forces_0_weight)[batch]
-    return torch.mean(torch.square(pred["magnetic_forces_0"] - label["magnetic_forces_0"]) * total_weight)
-
-@register_loss
-def mse_magnetic_forces_1(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    batch = label.batch
-    total_weight = label.entropy[batch].unsqueeze(-1) * label.magnetic_forces_1_weight[
-        batch
-    ].unsqueeze(-1)
-    return torch.mean(
-        torch.square(pred["magnetic_forces_1"] - label["magnetic_forces_1"]) * total_weight
-    )
-
 
 @register_loss
 def mse_direct_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
@@ -297,35 +260,80 @@ def mse_direct_virials_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor
     )
 
 @register_loss
-def mse_nuclear_chemical_shift(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+def mse_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "final_collinear_magmoms"
     batch = label.batch
-    total_weight = (label.entropy * label.nuclear_chemical_shift_weight)[batch]
-    return torch.mean(torch.square(pred["nuclear_chemical_shift"] - label["nuclear_chemical_shift"]) * total_weight)
+    total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
+    return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_nuclear_shielding(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+def mse_final_noncollinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "final_noncollinear_magmoms"
     batch = label.batch
-    total_weight = (label.entropy * label.nuclear_shielding_weight)[batch]
+    total_weight = label.entropy[batch].unsqueeze(-1) * label.final_collinear_magmoms_weight[
+        batch
+    ].unsqueeze(-1)
+    return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
+
+@register_loss
+def mse_magnetic_collinear_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "magnetic_collinear_forces"
+    batch = label.batch
+    total_weight = (label.entropy * label.magnetic_collinear_forces_weight)[batch]
+    return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
+
+@register_loss
+def mse_magnetic_noncollinear_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "magnetic_noncollinear_forces"
+    batch = label.batch
+    total_weight = label.entropy[batch].unsqueeze(-1) * label.magnetic_noncollinear_forces_weight[
+        batch
+    ].unsqueeze(-1)
     return torch.mean(
-        torch.square(
-            pred["nuclear_shielding"] - label["nuclear_shielding"]
-        ) * total_weight.unsqueeze(-1).unsqueeze(-1)
+        torch.square(pred[key] - label[key]) * total_weight
     )
 
 @register_loss
-def mse_elasticity_tensor(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    total_weight = (label.entropy * label.elasticity_tensor_weight)
+def mse_total_collinear_magmom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "total_collinear_magmom"
+    total_weight = label.entropy * label.total_collinear_magmom_weight
+    return torch.mean(torch.square((label[key] - pred[key])) * total_weight)
+
+@register_loss
+def mse_total_collinear_magmom_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "total_collinear_magmom"
+    total_weight = label.entropy * label.total_collinear_magmom_weight
     return torch.mean(
         torch.square(
-            pred["elasticity_tensor"] - label["elasticity_tensor"]
-        ) * total_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+            (label[key] - pred[key]) / (label.ptr[1:] - label.ptr[:-1])
+        )
+        * total_weight
     )
 
 @register_loss
-def mse_elasticity_tensor(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    total_weight = (label.entropy * label.elasticity_tensor_weight)
+def mse_total_noncollinear_magmom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "total_noncollinear_magmom"
+    total_weight = (label.entropy * label.total_noncollinear_magmom_weight).unsqueeze(-1)
+    return torch.mean(torch.square((label[key] - pred[key])) * total_weight)
+
+
+@register_loss
+def mse_total_noncollinear_magmom_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "total_noncollinear_magmom"
+    total_weight = (label.entropy * label.total_noncollinear_magmom_weight).unsqueeze(-1)
+    num_atoms = (label.ptr[1:] - label.ptr[:-1]).unsqueeze(-1)
     return torch.mean(
-        torch.square(
-            pred["elasticity_tensor"] - label["elasticity_tensor"]
-        ) * total_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+        torch.square((label[key] - pred[key]) / num_atoms) * total_weight
     )
+
+# TODO for xzm, not allowed for user now
+@register_loss
+def mse_hessians(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.hessians_weight)[batch][batch]  # TODO check
+    total_weight = total_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+    return torch.mean(
+        torch.square((label["hessians"] - pred["hessians"]))
+        * total_weight  # hessians shape: [atoms*atom, 3, 3]
+    )
+

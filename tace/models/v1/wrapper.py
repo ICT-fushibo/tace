@@ -81,7 +81,7 @@ class WrapModelV1(torch.nn.Module):
             "conservative_dipole": FIRST["polarization"],
             "polarization": FIRST["polarization"],
             "magnetization": FIRST["magnetization"],
-            "polarizability": SECOND["polarizability"],
+            "conservative_polarizability": SECOND["conservative_polarizability"],
             "direct_polarizability": RESULTS["direct_polarizability"],
             "born_effective_charges": SECOND["born_effective_charges"],
             "hessians": SECOND["hessians"],
@@ -92,6 +92,8 @@ class WrapModelV1(torch.nn.Module):
             "direct_forces": RESULTS["direct_forces"],
             "direct_virials": RESULTS["direct_virials"],
             "direct_stress": RESULTS["direct_stress"],
+            "final_collinear_magmoms": RESULTS["final_collinear_magmoms"],
+            "final_noncollinear_magmoms": RESULTS["final_noncollinear_magmoms"],
         }
 
     def first_derivative_fn(
@@ -120,9 +122,9 @@ class WrapModelV1(torch.nn.Module):
         if self.flags.compute_magnetization:
             inputs.append(data["magnetic_field"])
         if self.flags.compute_collinear_magnetic_forces:
-            inputs.append(data["collinear_magmoms"])
+            inputs.append(data["initial_collinear_magmoms"])
         if self.flags.compute_noncollinear_magnetic_forces:
-            inputs.append(data["noncollinear_magmoms"])
+            inputs.append(data["initial_noncollinear_magmoms"])
         if self.flags.compute_edge_forces:
             inputs.append(graph.edge_vector)
             
@@ -281,7 +283,7 @@ class WrapModelV1(torch.nn.Module):
 
         return {
             "hessians": H,
-            "polarizability": ALPHA,
+            "conservative_polarizability": ALPHA,
             "born_effective_charges": BEC,
             "magnetic_susceptibility": CHI_M,
         }

@@ -51,13 +51,11 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- noncollinear magmoms (not time reversal)
-- collinear magmoms *(not tested by us)*
-- total collinear magmoms *(not tested by us)*
+- initial/final (non)collinear magmoms (not time reversal)
+- total (non)collinear magmoms *(not tested by us)*
 - spin multiplicity *(not tested by us)*
 - electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*
-- total noncollinear magmoms *(not tested by us)*
 
 Methodology
 -----------
