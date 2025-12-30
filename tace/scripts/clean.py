@@ -6,7 +6,7 @@
 import shutil
 from pathlib import Path
 
-MAX_SIZE_BYTES = 5 * 1024**3  # 5 GB
+MAX_SIZE_BYTES = 1 * 1024**3  # 1 GB
 
 
 def get_size(path: Path) -> int:
@@ -58,6 +58,7 @@ def main():
         "checkpoints",
         "_tace.yaml",
         "out.txt",
+        "finetune_config.yaml"
         # "graphCache",
     ]
     current_dir = Path.cwd()

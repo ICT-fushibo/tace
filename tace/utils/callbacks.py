@@ -43,8 +43,8 @@ class EMACallback(Callback):
 
     def on_fit_start(self, trainer, pl_module):
         self.ema = ExponentialMovingAverage(
-            # [p for p in pl_module.parameters() if p.requires_grad],
-            [p for p in pl_module.model.parameters() if p.requires_grad],
+            [p for p in pl_module.model.parameters()], # for freeze convenience
+            # [p for p in pl_module.model.parameters() if p.requires_grad],
             self.decay,
             self.use_num_updates,
         )

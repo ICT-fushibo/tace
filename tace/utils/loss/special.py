@@ -178,8 +178,12 @@ class OMat24sAlexMPtrjLoss(torch.nn.Module):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(energy_weight={self.energy_weight:.3f}, "
-            f"forces_weight={self.forces_weight:.3f}, stress_weight={self.stress_weight:.3f}, "
-            f"energy_huber_delta={self.energy_huber_delta:.3f}, forces_huber_delta={self.forces_huber_delta:.3f}, "
-            f"stress_huber_delta={self.stress_huber_delta:.3f})"
+            f"{self.__class__.__name__}(\n"
+            f"  energy_weight        = {self.energy_weight:.3f},\n"
+            f"  forces_weight        = {self.forces_weight:.3f},\n"
+            f"  stress_weight        = {self.stress_weight:.3f},\n"
+            f"  energy_huber_delta   = {self.energy_huber_delta:.3f},\n"
+            f"  forces_huber_delta   = {self.forces_huber_delta:.3f},\n"
+            f"  stress_huber_delta   = {self.stress_huber_delta:.3f},\n"
+            f")"
         )

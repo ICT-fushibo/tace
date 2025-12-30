@@ -893,15 +893,18 @@ def get_embedding_property(cfg: Dict, separate: bool = False) -> List[str] | Tup
 MAE_PROPERTY = [
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
+        # and p != "final_collinear_magmoms"
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
+        # and p != "final_collinear_magmoms"
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization"
+    # and p != "final_collinear_magmoms"
     and p != "stress"   
     and p != "direct_stress"  
 ]
@@ -909,6 +912,7 @@ RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization" 
+    # and p != "final_collinear_magmoms"
     and p != "stress"    
     and p != "direct_stress"    
 ]

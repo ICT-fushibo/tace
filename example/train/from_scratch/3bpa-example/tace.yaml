@@ -1,10 +1,17 @@
 defaults:
   - _self_ 
-  - config/logger@_here_: wandb # Specify the logger should use. Besides WandB, you can also use other loggers. For details, refer to the Lightning API.
-  - config/model@model: tacev1 # Specify the model architecture file, since we actually support multiple models, but the currently open-sourced version only supports TACE.
+  # Specify the logger backlend
+  - config/logger@_here_: wandb
+  # Specify the model architecture
+  - config/model@model: tacev1 
 
-# resume_from_model: "checkpoints/*.ckpt"  # Specify the path to resume training, which must be a .ckpt file.
-# finetune_from_model: "pretrained/*.pt" # Specify the model to be fine-tuned. Files must be end with .ckpt, .pt, or .pth.
+# Specify the path to resume training, Files must be end with .ckpt
+resume_from_model: null
+
+# Specify the model to be fine-tuned. Files must be end with .ckpt, .pt, or .pth
+finetune_from_model: null 
+
+finetune: null # this field equals ./finetune_config.yaml, auto read or write directly here
 
 misc:
   project_name: 3bpa
@@ -13,7 +20,7 @@ misc:
   allow_tf32: false
   ignore_warning: true 
   env: # You can specify here the environment variables that should always be used.
-    WANDB_MODE: offline
+    WANDB_MODE: offline # For the convenience of Chinese users
 
 trainer:
   # As long as your system has NVIDIA GPUs, the following configuration will automatically detect and use all available GPUs for training.
@@ -91,6 +98,18 @@ callbacks:
   
 
 dataset:
+  type: ase # ase or ase-db
+  split_seed: ${misc.global_seed} # this random seed is useful if auto split
+  train_file: dataset/train_300K.xyz
+  valid_file: null                
+  # test_files: # (null, str, list) recoomend to use tace-eval --test 1 to print test errors to avoild possible bugs
+  #   - dataset/test_300K.xyz
+  #   - dataset/test_600K.xyz
+  #   - dataset/test_1200K.xyz
+  #   - dataset/test_dih.xyz
+  valid_ratio: 0.1 # auto split from train file if valid file is null, The priority order is:  no_valid_set > valid_file > valid_from_index > ``valid_ratio.
+  valid_from_index: false # split train and val from train.index and valid.index in current directory
+  no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
   neighborlist_backend: matscipy # [ase, vesin, matscipy] recommend matscipy
   storage_mode: memory # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
   shard_dirs: # if lmdb model, specify a list of path where you save you graph
@@ -102,18 +121,6 @@ dataset:
   avg_graph_size_in_KB: 200 # in KB, the total disk usage equals the size of this multiplied by the total number of your structures.
   lmdb_wait_timeout: 86400 # in seconds; when training with multi-GPU, the maximum waiting time.
   force_dtype: null # 32 or 64, if your data grapg saved in lmdb, but original float64, you can force to float32 for convenience
-  type: ase # ase or ase-db
-  split_seed: ${misc.global_seed} # this random seed is useful if auto split
-  train_file: dataset/train_300K.xyz
-  valid_file: null                
-  #test_files: # list of test file or null
-  #   - dataset/test_300K.xyz
-  #   - dataset/test_600K.xyz
-  #   - dataset/test_1200K.xyz
-  #   - dataset/test_dih.xyz
-  valid_ratio: 0.1 # auto split from train file if valid file is null, The priority order is:  no_valid_set > valid_file > valid_from_index > ``valid_ratio.
-  valid_from_index: false # split train and val from train.index and valid.index in current directory
-  no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
   keys: # all default key name is the property name
     level_key: level
     energy_key: energy

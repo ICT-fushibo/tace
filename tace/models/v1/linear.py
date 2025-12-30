@@ -375,6 +375,7 @@ class LoRAElementLinear(nn.Module):
         self.out_dim = out_dim
         self.l = l
         self.alpha = 1.0 / sqrt(in_dim)
+        self.atomic_numbers = atomic_numbers
         self.use_lora = True
         self.element_aware = element_aware
         self.lora_r = lora_r
@@ -533,6 +534,7 @@ class LoRAElementCWLinear(nn.Module):
         self.num_path = int(in_dim / out_dim)
         self.l = l
         self.alpha = 1.0 / sqrt(self.num_path)
+        self.atomic_numbers = atomic_numbers
         self.use_lora = True
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha

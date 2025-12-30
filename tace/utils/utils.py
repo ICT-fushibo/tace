@@ -113,10 +113,10 @@ def num_params(model) -> None:
 
 
 def log_parameters(model) -> None:
-    logging.info(f"Total number of parameters in the model: {num_params(model)}")
+    logging.debug(f"Total number of parameters in the model: {num_params(model)}")
     for name, param in model.named_parameters():
         if param.requires_grad:
-            logging.info(f"Layer: {name}, Number of parameters: {param.numel()}")
+            logging.debug(f"Layer: {name}, Number of parameters: {param.numel()}")
 
 
 def to_serializable(obj):

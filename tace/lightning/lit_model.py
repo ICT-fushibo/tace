@@ -16,22 +16,36 @@ from torchmetrics import MetricCollection
 
 
 from .select_model import select_model
+from .lora import from_lora_to_merged_model, to_lora_model
 from ..dataset.quantity import get_target_property, get_embedding_property
 from ..utils.metrics import build_metrics, update_metrics
 from .. utils._global import DTYPE, DEVICE
 
-from .lora import inject_lora_into_model
 
 # === LightningModule wrap ===
 class LightningWrapperModel(L.LightningModule):
-    def __init__(self, cfg: Dict, statistics, target_property: list[str], model: torch.nn.Module):
+    def __init__(
+            self, 
+            cfg: Dict, 
+            model: torch.nn.Module,
+            target_property: list[str], 
+            embedding_property: list[str], 
+            statistics,  # TODO
+        ):
         super().__init__()
-        self.cfg = cfg
-        self.statistics = statistics
-        self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
         self.save_hyperparameters(ignore=["model"])
-        self.loss_fn = instantiate(cfg["loss"])  # TODO for xzm
+        self.cfg = cfg
+        self.statistics = statistics  # TODO
+        model = from_lora_to_merged_model(model)
+        self.model = to_lora_model(cfg['finetune'], model)
+
+        # === Loss === 
+        self.loss_fn = instantiate(cfg["loss"])  # TODO
         self.loss_property = target_property
+
+        # === Metric ===
+        self._create_metrics("train")
+        self._create_metrics("val")
         synth_metric = cfg.get('synth_metric', None)
         if synth_metric:
             total = sum([v for k, v in synth_metric.items() if k != 'monitor_metric_name'])
@@ -41,8 +55,6 @@ class LightningWrapperModel(L.LightningModule):
                     for k, v in synth_metric.items()
                 }
         self.synth_metric = synth_metric
-        self._create_metrics("train")
-        self._create_metrics("val")
         test_sets = cfg.get("dataset", {}).get("test_files", [])
         if test_sets is None:
             self.num_test_sets = 0
@@ -53,11 +65,12 @@ class LightningWrapperModel(L.LightningModule):
             self.num_test_sets = len(test_sets)
             for i in range(self.num_test_sets):
                 self._create_metrics(f"test_{i}")
+
+        # === Misc ===
         self.force_dtype = DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
-        self.model = model
         self.use_swa = 'swa' in cfg["callbacks"]
-        self.init_finetune()
- 
+        self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
+
     def setup(self, stage: Optional[str] = None):
         self.sync_dist = self.trainer.num_devices > 1
         if self.ema is not None:
@@ -209,55 +222,6 @@ class LightningWrapperModel(L.LightningModule):
                 },
             }
 
-    def init_finetune(self):
-        # === check ===
-        yaml_path = Path("finetune_config.yaml")
-        if not yaml_path.exists():
-            logging.warning(f"{yaml_path} not found, skipping parameter freezing and lora.")
-            return
-
-        try:
-            finetune_cfg = yaml.safe_load(yaml_path.read_text())
-        except Exception as e:
-            logging.error(f"Failed to read {yaml_path}: {e}")
-            return
-        
-
-        # === init ===
-        strategy = finetune_cfg['strategy']
-        atomic_numbers = finetune_cfg['atomic_numbers']
-
-        if atomic_numbers is not None:
-            assert isinstance(atomic_numbers, list), 'atomic_numbers must be a list'
-            atomic_numbers = sorted(atomic_numbers)
-            raise NotImplementedError(
-                "The functionality for extracting weights and converting them into a specified element model "
-                "has not been implemented yet."
-            )
-        
-        if strategy == 'freeze':
-            name_to_param = dict(self.model.named_parameters())
-            for name, flag in finetune_cfg.items():
-                if name not in name_to_param:
-                    logging.warning(f"Parameter '{name}' not found in self.model.")
-                    continue
-                param = name_to_param[name]
-                param.requires_grad = not bool(flag)
-                logging.info('Finetune strategy = freeze')
-        elif strategy == 'lora':
-            # raise NotImplementedError(
-            #     "LoRA has not been implemented yet."
-            # )
-            for name, param in self.model.named_parameters():
-                param.requires_grad = False
-            inject_lora_into_model(self.model, finetune_cfg['lora'])
-            logging.info('Finetune strategy = lora')
-        else:
-            raise ValueError(
-                f'{strategy} not in allow strategy {['lora', 'freeze']}'
-            )
-
-
     @classmethod
     def load_from_checkpoint(
         cls,
@@ -265,7 +229,6 @@ class LightningWrapperModel(L.LightningModule):
         map_location: str = "cpu",
         strict: Optional[bool] = True,
         use_ema: int | bool = 1,
-        **kwargs: Any,
     ) -> Any:
 
         checkpoint = torch.load(
@@ -275,56 +238,30 @@ class LightningWrapperModel(L.LightningModule):
             v.dtype for v in checkpoint["state_dict"].values()
             if hasattr(v, "dtype") and torch.is_floating_point(v)
         ]
-        counts = Counter(dtypes)
-        dominant_dtype = counts.most_common(1)[0][0]
-        torch.set_default_dtype(dominant_dtype)
+        dominant_dtype = Counter(dtypes).most_common(1)[0][0] # original training precision
         cfg = checkpoint['hyper_parameters']['cfg']
-        use_swa = 'swa' in cfg['callbacks']
-
         target_property = get_target_property(cfg)
         embedding_property = get_embedding_property(cfg)
         statistics = checkpoint['hyper_parameters']['statistics']
-
-        if "cfg" in kwargs:
-            cfg = kwargs["cfg"]
-
         model = select_model(cfg, statistics, target_property, embedding_property)
-        raw_sd = checkpoint["state_dict"]
-
-        filtered_state_dict = {
-            k[len("model.") :]: v for k, v in raw_sd.items() if k.startswith("model.")
+        model = to_lora_model(cfg.get('finetune', {}), model)
+        model.to(dtype=dominant_dtype)
+        state_dict = {
+            k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
         }
-        model.load_state_dict(filtered_state_dict, strict=strict)
+        model.load_state_dict(state_dict, strict=strict)
 
         # === SWA ===
-        if use_swa:
+        if 'swa' in cfg['callbacks']:
             logging.debug("Since swa is enabled, skip trying load ema.")
             return model.to(map_location)
         
         # === EMA ===
         if bool(use_ema) and "ema_state_dict" in checkpoint:
             ema_params = checkpoint['ema_state_dict']['shadow_params']
-            if len(ema_params) == len([p for p in model.parameters() if p.requires_grad]):
-                idx = 0
-                for name, _ in model.named_parameters():
-                    filtered_state_dict[name] = ema_params[idx]
-                    idx += 1
-            else:
-                yaml_path = Path("finetune_config.yaml")
-                if yaml_path.exists():
-                    freeze_cfg = yaml.safe_load(yaml_path.read_text())['freeze']
-                    idx = 0
-                    for name, _ in model.named_parameters():
-                        if not freeze_cfg[name]: # not freezed params
-                            filtered_state_dict[name] = ema_params[idx]
-                            idx += 1
-                else:
-                    raise RuntimeError(
-                        "You used tace_param.yaml to freeze a portion of the parameters. "
-                        "When restoring the model from a ckpt file and attempting to use EMA parameters, "
-                        "you must also provide the same tace_param.yaml in the current directory."
-                    )
-            model.load_state_dict(filtered_state_dict, strict=strict)
+            for idx, (name, _ ) in enumerate(model.named_parameters()):
+                state_dict[name] = ema_params[idx]
+            model.load_state_dict(state_dict, strict=strict)
 
         return model.to(map_location)
 
@@ -345,7 +282,6 @@ def load_tace(
                 map_location=device,
                 strict=strict,
                 use_ema=use_ema,
-                **kwargs,
             )
         elif model_path.endswith(".pt") or model_path.endswith(".pth"):
             model = torch.load(

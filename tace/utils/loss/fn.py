@@ -266,6 +266,13 @@ def mse_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor
     total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
     return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
 
+# @register_loss
+# def mse_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+#     key = "final_collinear_magmoms"
+#     batch = label.batch
+#     total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
+#     return torch.mean(torch.square(abs(pred[key]) - abs(label[key])) * total_weight)
+
 @register_loss
 def mse_final_noncollinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
     key = "final_noncollinear_magmoms"

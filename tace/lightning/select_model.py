@@ -32,31 +32,22 @@ def select_model(
     WRAPPER_CLS = select_wrapper(cfg)
 
     # === model cls ===
-    model_path = (
-        cfg.get('model', {})
-        .get('config', {})
-        .get('_target_', 'tace.models.TACEV1')
-    )
+    model_path = cfg['model']['config'].get('_trget_', 'tace.models.TACEV1')
     if model_path == "tace.models.tace.TACE": # for compatible with earlier version
         model_path = "tace.models.TACEV1"
     module_name, class_name = model_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     MODEL_CLS = getattr(module, class_name)
     model_config = deep_convert(cfg['model']['config'])
-    filtered_model_config = {
-        k: v for k, v in model_config.items() 
-        if k != "_target_"
-        and k!= "wrapper"
-    }
-
     # === instantiate ===
     try:
         MODEL = WRAPPER_CLS(
             MODEL_CLS(
-                **filtered_model_config,
-                statistics=statistics,
+                **model_config,
                 target_property=target_property,
                 embedding_property=embedding_property,
+                statistics=statistics,
+                model_config=model_config,
             )
         )
     except Exception as e:

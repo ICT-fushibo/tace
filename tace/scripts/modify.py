@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-# TODO, modify target_property
+# TODO, modify target_property, not for users now
 
 
 # target_property = model.target_property

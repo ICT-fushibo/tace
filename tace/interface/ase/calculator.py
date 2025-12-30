@@ -43,9 +43,9 @@ class TACEAseCalc(Calculator):
         The device to run computations on, e.g., cpu or cuda.
         If None, the device is automatically inferred.
     dtype : str, optional, default=None
-        Data type for computations, e.g., float32 or float64.
+        Model dtype for computations, e.g., float32 or float64.
     level : int
-        Specify which fidelity level to use. The default is the first calculation level.
+        Specify which fidelity level to use. The default is the first.
     neighborlist_backend: str
         Support backend in one of [ase, matscipy, vesin], recommend matscipy
     **kwargs
@@ -55,8 +55,9 @@ class TACEAseCalc(Calculator):
     def __init__(
         self,
         model: str,
-        device: Optional[str] = None,
+        *,
         dtype: Optional[str] = None,
+        device: Optional[str] = None,
         level: int = 0,
         neighborlist_backend: str = "matscipy",
         **kwargs,

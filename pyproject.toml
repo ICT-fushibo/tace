@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "TACE"
 version = "0.0.8"
-description = "TACE - Cartesian Tensor based E(3) equivariant interatomic potentials."
+description = "TACE - Irreducible Cartesian Tensor based equivariant atomistic model."
 authors = [{ name = "Zemin Xu", email = "xvzemin@smail.nju.edu.cn" }]
 
 requires-python = ">=3.10"
@@ -87,7 +87,8 @@ tace-export = "tace.scripts.export:main"
 tace-graph = "tace.scripts.graph:main"
 tace-update = "tace.scripts.update:main"
 tace-modify = "tace.scripts.modify:main"
-tace-finetune_config = "tace.scripts.finetune_config:main"
+tace-finetune = "tace.scripts.finetune:main"
+tace-convert = "tace.scripts.convert:main"
 
 [tool.setuptools.packages.find]
 include = ["tace", "tace.*", "cartnn", "cartnn.*"]

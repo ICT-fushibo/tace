@@ -69,9 +69,12 @@ class TACEV1(torch.nn.Module):
         }
         cfg = check_model_config(cfg)
         super().__init__()
-
         # === init ===
+        if "model_config" in kwargs:
+            self.model_config = kwargs["model_config"]
+        self.statistics = cfg["statistics"]
         self.max_neighbors = cfg['max_neighbors']
+        self.avg_num_neighbors = cfg['avg_num_neighbors']
         self.target_property = cfg['target_property']
         self.embedding_property = cfg['embedding_property']
         self.conservation = cfg['conservation']

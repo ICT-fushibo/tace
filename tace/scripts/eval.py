@@ -48,16 +48,6 @@ def parse_args():
         if v['enable_prediction'] or v['enable_embedding']:
             parser.add_argument(f"--{k}_key", type=str, default=f"{k}")
 
-    # Compute flags for predict property that not exist in training data
-    for k, v in PROPERTY.items():
-        if v['enable_prediction']:
-            parser.add_argument(
-                f"--compute_{k}", 
-                type=int, 
-                choices=[0, 1], 
-                default=0, 
-                help='Allow predict property beyond training'
-            )
     return parser.parse_args()
 
 def main():
@@ -74,22 +64,15 @@ def main():
     model =load_tace(args.model, args.device, strict=True, use_ema=args.ema)
     max_neighbors = model.max_neighbors.item() if hasattr(model, "max_neighbors") else None
     cutoff = model.readout_fn.cutoff.item()
-    atomic_numbers = model.readout_fn.atomic_numbers.cpu().tolist()
+    atomic_numbers = model.readout_fn.atomic_numbers.tolist()
     device = args.device
     model_dtype = model.readout_fn.cutoff.dtype
     args_dtype = DTYPE[args.dtype]
 
-    # Enable requested properties
+
     target_property = list(set(model.target_property))
     embedding_property = getattr(model, "embedding_property", [])
 
-    # Compute flag
-    compute_flags = {k[8:]: v for k, v in vars(args).items() if k.startswith("compute_")}
-    for prop, flag in compute_flags.items():
-        if flag:
-            setattr(model.flags, f"compute_{prop}", True)
-            target_property.append(prop)
-    target_property = list(set(target_property))
     model.eval().to(device)
     print(f"Number of parameters: {num_params(model)}")
     if args_dtype != model_dtype:

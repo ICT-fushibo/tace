@@ -62,7 +62,7 @@ class UniversalInvariantEmbedding(torch.nn.Module):
             if v.get('enable', False) and PROPERTY[k]['rank'] == 0:
                 p_type = PROPERTY[k]["type"]
                 if p_type == "int":
-                    self.embeddings[k] = nn.Embedding(v["num_classes"], out_dim)
+                    self.embeddings[k] = nn.Embedding(v["num_embeddings"], out_dim)
                 elif p_type == "float":
                     act = v.get("act", "silu")
                     self.embeddings[k] = nn.Sequential(

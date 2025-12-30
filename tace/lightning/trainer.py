@@ -10,15 +10,13 @@ from datetime import datetime
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.callbacks import StochasticWeightAveraging
-from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from hydra.utils import instantiate
 from torch_geometric.loader import DataLoader
 
 
 from .lit_model import LightningWrapperModel
 from ..utils.callbacks import PrintMetricsCallback
-
+from ..utils.utils import log_parameters
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
 
@@ -124,45 +122,47 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
 def train(
     cfg: Dict,
     statistics,
-    target_property,
     model,
     datamodule,
-    trainer = None,
+    target_property,
+    embedding_property: list[str] = []
 ):
-    # Restart
+    lit_model = LightningWrapperModel(
+        cfg, 
+        model,
+        target_property, 
+        embedding_property,
+        statistics, 
+    )
+
+    # Trainer
+    trainer = build_trainer(cfg)
+
+    # TRAIN AND VALID
     resume_ckpt = cfg.get("resume_from_model", None)
-    if resume_ckpt is not None:
+    if resume_ckpt:
         ckpt_path = Path(resume_ckpt)
         if not ckpt_path.is_file():
             raise FileNotFoundError(f"Checkpoint not exists: {ckpt_path}")
-
-    lit_model = LightningWrapperModel(cfg, statistics, target_property, model)
-    logging.info(lit_model)
-
-    # Trainer
-    if trainer is None:
-        trainer = build_trainer(cfg)
-
-    # TRAIN AND VALID
-    if resume_ckpt is not None:
-        logging.info(f"Resume Training")
-        logging.info(f"resume_from_model:{resume_ckpt}")
+        logging.info(f"Resume Training from checkpoint: {resume_ckpt}")
         trainer.fit(
             lit_model,
             datamodule=datamodule,
             ckpt_path=resume_ckpt,
         )
     else:
+        logging.info(lit_model)
+        log_parameters(model)
         trainer.fit(
             lit_model,
             datamodule=datamodule,
         )
 
-    if lit_model.use_swa:
+    if getattr(lit_model, 'use_swa', True):
         trainer.save_checkpoint('swa_final.ckpt', weights_only=False)
     
     # TEST
-    if cfg['dataset'].get('test_files', None) is not None:
+    if cfg['dataset'].get('test_files', None):
         trainer.test(
             lit_model,
             datamodule=datamodule,

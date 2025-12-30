@@ -14,21 +14,18 @@ For detailed usage and scripts (e.g., ``opt``, and other scripts), see
     from tace.interface.ase import TACEAseCalc, add_dispersion
 
     device = 'cuda'            # Compute device, e.g., 'cpu' or 'cuda'
-    dtype = 'float32'          # Tensor data type 'float32' or 'float64' or None
+    dtype = 'float32'          # model dtype 'float32' or 'float64'
     MODEL_PATH = '.pt'         # Path to the model checkpoint, file ends with .pt, .pth or .ckpt
     level = 0  # first fidelity
     atoms = read('*.xyz', 0)   #  Any ase readable files
 
     dispersion = False
 
-    # For other parameters and usage, see the API documentation.
     calc = TACEAseCalc(
-        model_path=MODEL_PATH,
+        MODEL_PATH,
         device=device,
         dtype=dtype,
         level = level,
-        extra_compute_first_derivative = None,
-        extra_compute_second_derivative  = None,
     )
     if dispersion: # pip install torch-dftd
         calc = add_dispersion(

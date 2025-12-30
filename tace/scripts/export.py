@@ -10,6 +10,10 @@ import torch
 
 
 from ..lightning import load_tace
+from ..utils._global import DTYPE
+
+
+ALLOWED_BACKEND = ["lammps", "torch"]
 
 
 def parse_args():
@@ -21,6 +25,12 @@ def parse_args():
         type=str,
         required=True,
         help="Model path",
+    )
+    parser.add_argument(
+        "-l", "--level",
+        type=int,
+        default=0,
+        help="Which fidelity to use",
     )
     parser.add_argument(
         "--dtype",
@@ -40,17 +50,11 @@ def parse_args():
         "--backend", 
         type=str, 
         default="lammps",
-        choices=["lammps", "torch"], 
+        choices=ALLOWED_BACKEND, 
         help="Specify the backend to export"
     )
     return parser.parse_args()
 
-DTYPE = {
-    "float16": torch.float16,
-    "float32": torch.float32,
-    "float64": torch.float64,
-    None: None
-}
 
 def main():
     args = parse_args()
@@ -60,7 +64,9 @@ def main():
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
     torch.set_default_dtype(args_dtype)
+    model.level = args.level
     model.to(dtype=args_dtype, device=args.device)
+    
     if args.backend == "lammps":
         from ..interface.lammps import TACELammpsCalc
         model.lmp = True
@@ -69,7 +75,7 @@ def main():
     elif args.backend == "torch":
         torch.save(model, args.model + "-torch.pt") 
     else:
-        raise ValueError(f"Unsupported backend '{args.backend}'. Currently only 'lammps' and 'torch' is available.")
+        raise ValueError(f"Unsupported backend '{args.backend}'. One of {ALLOWED_BACKEND} is available.")
 
 if __name__ == "__main__":
     main()
