@@ -10,43 +10,40 @@ RADIAL_BASIS = {
 
 
 ANGULAR_BASIS = {
-    "type": "ictd",
+    "traceless": True,
     "norm": True,
 }
 
 
 RADIAL_MLP = {
-    "hidden": [
-        [64, 64, 64],
-        [64, 64, 64],
-    ],
+    "hidden": [64, 64, 64],
     "act": "silu",
     "bias": False,
-    "enable_layer_norm": False,
 }
 
 
 INTER = {
-    "restriction": [None, None],
-    "residual": False,
+    "l1l2": None,
+    "conv_weights": ["edge_ij"],
+    "normalizer": "avg_num_neighbors",
+    "nonlinearity": {
+      "type": None,
+      "gate": 'silu', 
+    },
+    "sc": {
+      "use_first_sc": False, 
+      "from": "current_message",
+    },
+    "use_resnet": False,   
 }
 
 
 PROD = {
-    "restriction": None,
+    "l1l2": None,
+    "l3l1": None,
     "correlation": 3,
-    "element": True,
-    "coupled": True,
-    "add_source_target_embedding": False,
-    "normalizer": {
-      "type": "fixed",
-      "hidden": [64],
-      "act_1": 'silu',
-      "act_2": 'tanh',
-      "bias": False,
-      "scale_shift_trainable": True,
-    }
-
+    "element_aware": True,
+    "coupled_channel": True,
 }
 
 
@@ -55,8 +52,8 @@ READOUT_EMLP = {
     "act": "silu", 
     "gate": "silu",
     "bias": False,
-    "use_nolinear_tensor_readout": True,
-    "use_only_last_readout": False,
+    "use_all_layer": True,
+    "enable_uie_readout": False,
 }
 
 
@@ -65,26 +62,92 @@ SCALE_SHIFT = {
     "shift_type": "mean_delta_energy_per_atom",
     "scale_trainable": False,
     "shift_trainable": False,
-    "scale_dict": "auto",
-    "shift_dict": "auto",
 }
 
 
 SHORT_RANGE = {
-    'use_zbl': False
+    "zbl": {
+      "enable": False,
+      "trainable": False,
+    }
 }
 
 LONG_RANGE = {
-    'les': 
-        {
-            'use_les': False,
-            'les_arguments': None,
+    "les": {
+        "enable": False,
+        "les_arguments": {
+            "n_layers": 3,
+            "n_hidden": [32, 16],
+            "add_linear_nn": True,
+            "output_scaling_factor": 0.1,
+            "sigma": 1.0,
+            "dl": 2.0,
+            "remove_mean": True,
+            "epsilon_factor": 1.0,
+            "use_atomwise": False,
+            "compute_bec": False,
+            "bec_output_index": None,
         },
+    },
+}
+
+
+CONSERVATION = {
+    "charges": {
+        "method": "lagrangian",
+    },
+}
+
+
+UNIVERSAL_EMBEDDING = {
+    "invariant": {
+        "level": {
+            "enable": False,
+            "num_embeddings": -1,
+        },
+        "spin_multiplicity": {
+            "enable": False,
+            "num_embeddings": -1,
+        },
+        "charges": {
+            "enable": False,
+            "act": "silu",
+        },
+        "total_charge": {
+            "enable": False,
+            "act": "silu",
+        },
+        "initial_collinear_magmoms": {
+            "enable": False,
+            "act": "silu",
+        },
+        "temperature": {
+            "enable": False,
+            "act": "silu",
+        },
+        "electron_temperature": {
+            "enable": False,
+            "act": "silu",
+        },
+    },
+    "equivariant": {
+        "initial_noncollinear_magmoms": {
+            "enable": False,
+            "normalizer": 1.0,
+        },
+        "electric_field": {
+            "enable": False,
+            "normalizer": 1.0,
+        },
+        "magnetic_field": {
+            "enable": False,
+            "normalizer": 1.0,
+        },
+    },
 }
 
 
 from typing import Dict, Any, List, Tuple
-
 
 def check_model_config(cfg: Dict[str, Any]):
     assert isinstance(cfg['radial_basis'], Dict), "cfg.model.config.radial_basis must be a Dict"
@@ -105,27 +168,16 @@ def check_model_config(cfg: Dict[str, Any]):
         cfg['statistics'] = [cfg['statistics']]
 
     # Lmax, lmax
-    # if 'max_r_1' in cfg['kwargs']:
-    #     cfg['Lmax'] = cfg['kwargs']['max_r_1']
-    # if 'max_r_2' in cfg['kwargs']:
-    #     cfg['lmax'] = cfg['kwargs']['max_r_2']
     if isinstance(cfg['Lmax'], int):
         cfg['Lmax'] = [cfg['Lmax']] * cfg['num_layers']
     if isinstance(cfg['lmax'], int):
         cfg['lmax'] = [cfg['lmax']] * cfg['num_layers']
-
-    # num_channel, num_channel_hidden
-    # if isinstance(cfg['num_channel'], int):
-    #     cfg['num_channel'] = [cfg['num_channel']] * cfg['num_layers']
-    # if isinstance(cfg['num_channel_hidden'], int):
-    #     cfg['num_channel_hidden'] = [cfg['num_channel_hidden']] * cfg['num_layers']
 
     # radial_mlp
     if isinstance(cfg['radial_mlp']['hidden'][0], list): # not safe
         pass
     else:
         cfg['radial_mlp']['hidden'] = [cfg['radial_mlp']['hidden']] * cfg['num_layers']
-
 
     # readout_emlp
     if 'readout_mlp' in cfg['kwargs']:
@@ -140,48 +192,20 @@ def check_model_config(cfg: Dict[str, Any]):
     # avg_num_neighbors
     cfg['avg_num_neighbors'] = cfg['statistics'][0]['avg_num_neighbors']
 
-    # atomic_energies TODO, check correctness when atomic_energies = None
     if "energy" in cfg['target_property']: 
         cfg['atomic_energies'] = [stats['atomic_energy'] for stats in cfg['statistics']]
     else:
         cfg['atomic_energies'] = None
 
     # short_range and long_range
-    cfg['short_range'] = cfg['short_range'] or SHORT_RANGE
-    cfg['long_range'] = cfg['long_range'] or LONG_RANGE
-    cfg['use_zbl'] = cfg['short_range'].get('use_zbl', False)
-    if cfg['short_range'].get('enable_zbl', False):
-        cfg['use_zbl'] = True
-    cfg['use_les'] = cfg['long_range'].get('les', LONG_RANGE['les']['use_les'])
-
+    cfg['short_range'] = cfg.get('short_range', {}) or SHORT_RANGE
+    cfg['long_range'] = cfg.get('long_range', {}) or LONG_RANGE
+ 
     # inter
-    # if isinstance(cfg['inter'].get('restriction', None), List):
-    #     cfg['inter']['l1l2'] = []
-    #     for r in cfg['inter']['restriction']:
-    #         cfg['inter']['l1l2'].append(r)
     if isinstance(cfg['inter']['l1l2'], str) or cfg['inter']['l1l2'] == None:
         cfg['inter']['l1l2'] = [cfg['inter']['l1l2']] * cfg['num_layers']
 
-
-    cfg['inter']['ictp_lw'] = cfg['inter'].get('ictp_lw', False)
-    cfg['inter']['ictc_lw'] = cfg['inter'].get('ictc_lw', False)
-    cfg['inter']['ictp_hw'] = cfg['inter'].get('ictp_hw', True)
-    cfg['inter']['ictc_hw'] = cfg['inter'].get('ictc_hw', True)
-
     # prod
-    # if 'r_1_r_2' in cfg['prod'].get('restriction', {}):
-    #     cfg['prod']['l1l2'] = [cfg['prod']['restriction']['r_1_r_2']] * cfg['num_layers']
-    # if 'r_o_r_1' in cfg['prod'].get('restriction', {}):
-    #     cfg['prod']['l3l1'] = [cfg['prod']['restriction']['r_o_r_1']] * cfg['num_layers']
-    # normalizer
-    if isinstance(cfg['inter']['normalizer'], Dict):
-        legacy_normalizer = cfg['inter']['normalizer']
-        if legacy_normalizer['type'] == 'fixed':
-            cfg['inter']['normalizer'] = 'avg_num_neighbors'
-        else:
-            cfg['inter']['normalizer'] = 'density_v1'
-
-
     if isinstance(cfg['prod']['l1l2'], str) or cfg['prod']['l1l2'] == None:
         cfg['prod']['l1l2'] = [cfg['prod']['l1l2']] * cfg['num_layers']
     if isinstance(cfg['prod']['l3l1'], str) or cfg['prod']['l3l1'] == None:
@@ -190,12 +214,10 @@ def check_model_config(cfg: Dict[str, Any]):
         cfg['prod']['correlation'] = [cfg['prod']['correlation']] * cfg['num_layers']
 
 
-
-    # === embedding ===
+    # === uie and uee ===
     universal_embedding = cfg.get('universal_embedding', {})
     universal_embedding['invariant'] = universal_embedding.get('invariant', {})
     universal_embedding['equivariant'] = universal_embedding.get('equivariant', {})
-
     universal_embedding['invariant_embedding_property'] = []
     for k, v in universal_embedding['invariant'].items():
         if v.get('enable', False):
@@ -206,7 +228,6 @@ def check_model_config(cfg: Dict[str, Any]):
             universal_embedding['equivariant_embedding_property'].append(k)
 
     # === conservation ===
-    cfg['conservation'] = cfg.get('conservation', {})
-
+    cfg['conservation'] = cfg.get('conservation', {}) or CONSERVATION
 
     return cfg

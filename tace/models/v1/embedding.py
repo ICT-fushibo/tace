@@ -3,16 +3,17 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Dict, Union
+from typing import List, Dict
 
 
 import torch
 from torch import nn, Tensor
-from cartnn.o3 import expand_dims_to
+
 
 
 
 from .act import ACT
+from .utils import expand_dims_to
 from ...dataset.quantity import PROPERTY, UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
 
 

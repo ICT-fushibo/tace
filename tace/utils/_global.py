@@ -4,6 +4,7 @@
 ################################################################################
 
 import packaging
+from string import ascii_letters
 from pathlib import Path
 
 import torch
@@ -47,7 +48,10 @@ DEVICE = {
     **{torch.device(f"cuda:{i}"): torch.device(f"cuda:{i}") for i in range(num_gpus)},
 }
 
-_TORCH_VERSION = packaging.version.parse(torch.__version__)
-_TORCH_GE_2_9 = _TORCH_VERSION >= packaging.version.parse("2.9")
-_GLOBAL_STATE_INITIALIZED = False
+LETTERS = list(ascii_letters)[3:]
+
+
+# _TORCH_VERSION = packaging.version.parse(torch.__version__)
+# _TORCH_GE_2_9 = _TORCH_VERSION >= packaging.version.parse("2.9")
+# _GLOBAL_STATE_INITIALIZED = False
 

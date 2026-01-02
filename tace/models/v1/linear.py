@@ -9,8 +9,6 @@ from typing import Dict, List, Optional
 
 
 import torch
-from torch import Tensor, nn
-
 
 
 class Linear(torch.nn.Module):
@@ -93,12 +91,12 @@ class ElementLinear(torch.nn.Module):
         self.groups = groups
         self.num_groups = len(groups) if groups is not None else None
         # if self.groups is None:
-        self.weights = nn.Parameter(
+        self.weights = torch.nn.Parameter(
             torch.empty(num_elements, out_dim, in_dim)
         )
         torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
-        if bias and l ==0:
-            self.bias = nn.Parameter(torch.empty(num_elements, out_dim))
+        if bias and l == 0:
+            self.bias = torch.nn.Parameter(torch.empty(num_elements, out_dim))
             torch.nn.init.zeros_(self.bias)
         else:
             self.register_parameter("bias", None)
@@ -141,7 +139,7 @@ class ElementLinear(torch.nn.Module):
 
 
 # only for prod
-class CWLinear(nn.Module):
+class CWLinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -159,10 +157,10 @@ class CWLinear(nn.Module):
         num_path = int(in_dim / out_dim)
         self.num_path = num_path
         self.alpha = 1.0 / sqrt(num_path)
-        self.weight = nn.Parameter(torch.empty(out_dim, num_path))
+        self.weight = torch.nn.Parameter(torch.empty(out_dim, num_path))
         torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
         if bias and self.l == 0:
-            self.bias = nn.Parameter(torch.zeros(out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
         else:
             self.register_parameter("bias", None)
         letters = list(string.ascii_letters[3:])
@@ -183,7 +181,7 @@ class CWLinear(nn.Module):
 
 
 # only for prod
-class ElementCWLinear(nn.Module):
+class ElementCWLinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -208,10 +206,10 @@ class ElementCWLinear(nn.Module):
         self.atomic_numbers = atomic_numbers
         self.alpha = 1.0 / sqrt(num_path)
         self.l = l
-        self.weights = nn.Parameter(torch.empty(num_elements, out_dim, num_path))
+        self.weights = torch.nn.Parameter(torch.empty(num_elements, out_dim, num_path))
         torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
         if bias and l == 0:
-            self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(num_elements, out_dim))
         else:
             self.register_parameter("bias", None)
         letters = [c for c in string.ascii_letters[3:] if c != 'z']
@@ -234,57 +232,65 @@ class ElementCWLinear(nn.Module):
 
 
 class SelfInteraction(torch.nn.Module):
+
+    ls: List[int]
+
     def __init__(
         self,
-        in_channel: int,
-        out_channel: int,
-        rs: List[int],
+        in_channel: int | List[int],
+        out_channel: int | List[int],
+        ls: List[int],
         bias: bool = False,
         atomic_numbers: Optional[List[int]] = None,
     ) -> None:
         super().__init__()
 
-        self.rs = rs
-        self.in_channel = in_channel
-        self.out_channel = out_channel
+        self.ls = ls
+
+        if isinstance(in_channel, int):
+            in_channel = [in_channel] *len(ls)
+
+        if isinstance(out_channel, int):
+            out_channel = [out_channel] *len(ls)
+
         if atomic_numbers is None:
-            self.linears = nn.ModuleDict(
+            self.linears = torch.nn.ModuleDict(
                 {
-                    str(r): Linear(
-                        in_channel,
-                        out_channel,
-                        bias=(r == 0 and bias),
-                        l=r,
+                    str(l): Linear(
+                        in_channel[idx],
+                        out_channel[idx],
+                        bias=(l == 0 and bias),
+                        l=l,
                     )
-                    for r in rs
+                    for idx, l in enumerate(ls)
                 }
             )
         else:
-            self.linears = nn.ModuleDict(
+            self.linears = torch.nn.ModuleDict(
                 {
-                    str(r): ElementLinear(
-                        in_channel,
-                        out_channel,
-                        bias=(r == 0 and bias),
-                        l=r,
+                    str(l): ElementLinear(
+                        in_channel[idx],
+                        out_channel[idx],
+                        bias=(l == 0 and bias),
+                        l=l,
                         atomic_numbers=atomic_numbers,
                     )
-                    for r in rs
+                    for idx, l in enumerate(ls)
                 }
             )
 
-    def forward(self, ins: Dict[int, Tensor], node_attrs: Optional[Tensor]=None) -> Dict[int, Tensor]:
-        outs = {}
-        for r, linear in self.linears.items():
-            r = int(r)
-            outs[r] = linear(ins[r], node_attrs)
-        return outs
+    def forward(
+            self, 
+            in_dict: Dict[int, torch.Tensor],
+            node_attrs: Optional[torch.Tensor] = None,
+        ) -> Dict[int, torch.Tensor]:
+        out_dict = {}
+        for l in self.ls:
+            out_dict[l] = self.linears[str(l)](in_dict[l], node_attrs)
+        return out_dict
 
-    # def __repr__(self):
-    #     return f"{self.__class__.__name__}(in_channel={self.in_channel}, out_channel={self.out_channel}, rank={self.rs})"
 
-
-class LoRALinear(nn.Module):
+class LoRALinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -305,18 +311,18 @@ class LoRALinear(nn.Module):
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
         self.scaling = lora_alpha / lora_r
-        self.weight = nn.Parameter(torch.empty(in_dim, out_dim))
+        self.weight = torch.nn.Parameter(torch.empty(in_dim, out_dim))
         torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
         self.weight.requires_grad_(False)
         if bias and l == 0:
-            self.bias = nn.Parameter(torch.zeros(out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
             self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
-        self.lora_A = nn.Parameter(torch.zeros(in_dim, lora_r))
-        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
-        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
-        nn.init.zeros_(self.lora_B)
+        self.lora_A = torch.nn.Parameter(torch.zeros(in_dim, lora_r))
+        self.lora_B = torch.nn.Parameter(torch.zeros(lora_r, out_dim))
+        torch.nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        torch.nn.init.zeros_(self.lora_B)
 
         letters = [c for c in string.ascii_letters[3:] if c != 'C']
         in1 = 'bc' + ''.join(letters[:self.l])
@@ -353,7 +359,7 @@ class LoRALinear(nn.Module):
         )
 
 
-class LoRAElementLinear(nn.Module):
+class LoRAElementLinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -381,24 +387,24 @@ class LoRAElementLinear(nn.Module):
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
         self.scaling = lora_alpha / lora_r
-        self.weights = nn.Parameter(
+        self.weights = torch.nn.Parameter(
             torch.empty(num_elements, out_dim, in_dim)
         )
         torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
         self.weights.requires_grad_(False)
         if bias and l == 0:
-            self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(num_elements, out_dim))
             self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
         if self.element_aware:
-            self.lora_A = nn.Parameter(torch.zeros(num_elements, lora_r, in_dim))
-            self.lora_B = nn.Parameter(torch.zeros(num_elements, out_dim, lora_r))
+            self.lora_A = torch.nn.Parameter(torch.zeros(num_elements, lora_r, in_dim))
+            self.lora_B = torch.nn.Parameter(torch.zeros(num_elements, out_dim, lora_r))
         else:
-            self.lora_A = nn.Parameter(torch.zeros(lora_r, in_dim))
-            self.lora_B = nn.Parameter(torch.zeros(out_dim, lora_r))
-        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
-        nn.init.zeros_(self.lora_B)
+            self.lora_A = torch.nn.Parameter(torch.zeros(lora_r, in_dim))
+            self.lora_B = torch.nn.Parameter(torch.zeros(out_dim, lora_r))
+        torch.nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        torch.nn.init.zeros_(self.lora_B)
         letters = [c for c in string.ascii_letters[3:] if c not in ['C', 'z']]
         self.expr = (
             f'bz, zCc, bc{"".join(letters[:self.l])} -> '
@@ -444,7 +450,7 @@ class LoRAElementLinear(nn.Module):
 
 
 # only for prod
-class LoRACWLinear(nn.Module):
+class LoRACWLinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -467,18 +473,18 @@ class LoRACWLinear(nn.Module):
         self.lora_alpha = lora_alpha
         self.lora_r = lora_r
         self.scaling = lora_alpha / lora_r
-        self.weight = nn.Parameter(torch.empty(out_dim, self.num_path))
+        self.weight = torch.nn.Parameter(torch.empty(out_dim, self.num_path))
         torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
         self.weight.requires_grad_(False)
         if bias and l == 0:
-            self.bias = nn.Parameter(torch.zeros(out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
             self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
-        self.lora_A = nn.Parameter(torch.zeros(self.num_path, lora_r))
-        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
-        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
-        nn.init.zeros_(self.lora_B)
+        self.lora_A = torch.nn.Parameter(torch.zeros(self.num_path, lora_r))
+        self.lora_B = torch.nn.Parameter(torch.zeros(lora_r, out_dim))
+        torch.nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        torch.nn.init.zeros_(self.lora_B)
         letters = list(string.ascii_letters[3:])
         self.expr = (
             f'abc{"".join(letters[:self.l])}, ca -> '
@@ -511,7 +517,7 @@ class LoRACWLinear(nn.Module):
 
 
 # only for prod
-class LoRAElementCWLinear(nn.Module):
+class LoRAElementCWLinear(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -539,21 +545,21 @@ class LoRAElementCWLinear(nn.Module):
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
         self.scaling = lora_alpha / lora_r
-        self.weights = nn.Parameter(
+        self.weights = torch.nn.Parameter(
             torch.empty(num_elements, out_dim, self.num_path)
         )
         torch.nn.init.uniform_(self.weights, -sqrt(3), sqrt(3))
         self.weights.requires_grad_(False)
         if bias and l == 0:
-            self.bias = nn.Parameter(torch.zeros(num_elements, out_dim))
+            self.bias = torch.nn.Parameter(torch.zeros(num_elements, out_dim))
             self.bias.requires_grad_(False)
         else:
             self.register_parameter("bias", None)
 
-        self.lora_A = nn.Parameter(torch.zeros(self.num_path, lora_r))
-        self.lora_B = nn.Parameter(torch.zeros(lora_r, out_dim))
-        nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
-        nn.init.zeros_(self.lora_B)
+        self.lora_A = torch.nn.Parameter(torch.zeros(self.num_path, lora_r))
+        self.lora_B = torch.nn.Parameter(torch.zeros(lora_r, out_dim))
+        torch.nn.init.kaiming_uniform_(self.lora_A, a=sqrt(5))
+        torch.nn.init.zeros_(self.lora_B)
         letters = [c for c in string.ascii_letters[3:] if c != 'z']
         self.expr = (
             f'bz, zca, abc{"".join(letters[:self.l])} -> '
@@ -586,3 +592,17 @@ class LoRAElementCWLinear(nn.Module):
         )
     
 
+# (elemenet-aware, channel-wise)
+LinearDict = {
+    (False, False): Linear,
+    (True, False): ElementLinear,
+    (False, True): CWLinear,
+    (True, True): ElementCWLinear,
+}
+
+LoRALinearDict = {
+    (False, False): LoRALinear,
+    (True, False): LoRAElementLinear,
+    (False, True): LoRACWLinear,
+    (True, True): LoRAElementCWLinear,
+}

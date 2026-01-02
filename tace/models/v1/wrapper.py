@@ -10,6 +10,7 @@ import torch
 from torch import Tensor
 from e3nn.util.jit import compile_mode
 
+
 from .utils import Graph
 from ...dataset.quantity import PROPERTY, ComputeFlag
 from ...utils.torch_scatter import scatter_sum

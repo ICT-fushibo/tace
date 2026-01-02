@@ -1,7 +1,6 @@
 ################################################################################
 # Authors: Zemin Xu 
 # License: MIT, see LICENSE.md
-# check: ✔
 ################################################################################
 
 from math import sqrt
@@ -23,6 +22,7 @@ class InterEinsumTC(torch.nn.Module):
     def __init__(self, comb: Tuple) -> None:
         super().__init__()
         l1, l2, _, k = comb
+        self.comb = comb
         self.expr = generate_path(*comb, True)
         ctr = torch.fx.symbolic_trace(lambda T1, T2: torch.einsum(self.expr, T1, T2))
         self.ctr = (
@@ -40,7 +40,7 @@ class InterEinsumTC(torch.nn.Module):
         return self.ctr(T1, T2) * self.normalizer
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(path={self.expr})"
+        return f"{self.__class__.__name__}(path={self.expr}, comb={self.comb})"
 
 
 class ProdEinsumTC(torch.nn.Module):
@@ -48,6 +48,7 @@ class ProdEinsumTC(torch.nn.Module):
     def __init__(self, comb: Tuple) -> None:
         super().__init__()
         l1, l2, _, k = comb
+        self.comb = comb
         expr = generate_path(*comb, True)
         inputs, output = expr.split("->")
         in1, in2 = [x.strip() for x in inputs.split(",")]
@@ -70,5 +71,5 @@ class ProdEinsumTC(torch.nn.Module):
         return self.ctr(T1, T2) * self.normalizer
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(path={self.expr})"
+        return f"{self.__class__.__name__}(path={self.expr}, comb={self.comb})"
 

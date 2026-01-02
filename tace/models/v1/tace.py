@@ -7,10 +7,9 @@ from typing import Dict, List, Optional, Any, Type
 
 
 import torch
-from cartnn.math import ZBLBasis
-from cartnn.util import scatter_sum
 
 
+from .radial import ZBLBasis
 from .layers import OneHotToAtomicEnergy, ScaleShift
 from .readout import build_scalar_readout, build_tensor_readout, ScalarReadOut
 from .representation import TACEDescriptor
@@ -30,6 +29,7 @@ from .default import (
 from .basis_change import PropertyBasisChange
 from ...dataset.statistics import Statistics
 from ...dataset.quantity import get_target_irreps
+from ...utils.torch_scatter import scatter_sum
 
 class TACEV1(torch.nn.Module):
     def __init__(

@@ -1,0 +1,67 @@
+################################################################################
+# Authors: Zemin Xu
+# License: MIT, see LICENSE.md
+################################################################################
+
+import argparse
+import torch
+
+
+from tace.lightning import load_tace
+
+
+def average_models(model_paths, ema=False):
+    assert len(model_paths) > 0, "No model paths provided."
+    model_avg = load_tace(
+        model_paths[0], 
+        device="cpu",
+        strict=True,
+        use_ema=ema,
+    )
+    model_avg.eval()
+    with torch.no_grad():
+        for p in model_avg.parameters():
+            p.data.zero_()
+
+    for path in model_paths:
+        model = load_tace(
+            path, 
+            device="cpu",
+            strict=True,
+            use_ema=ema,
+        )
+        model.eval()
+        with torch.no_grad():
+            for p_avg, p in zip(model_avg.parameters(), model.parameters()):
+                p_avg.data.add_(p.data)
+    num_models = len(model_paths)
+    with torch.no_grad():
+        for p in model_avg.parameters():
+            p.data.div_(num_models)
+    return model_avg
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SWA average TACE models")
+    parser.add_argument(
+        "-m", "--models",
+        nargs="+",
+        required=True,
+        help="Paths to model checkpoints"
+    )
+    parser.add_argument(
+        "-e", "--ema",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="Whether use ema params",
+    )
+    args = parser.parse_args()
+    model_avg = average_models(args.models, args.ema)
+    output_path = "average_model.pt"
+    torch.save(model_avg, output_path)
+    print(f"Averaged model saved to {output_path}")
+
+
+if __name__ == "__main__":
+    main()

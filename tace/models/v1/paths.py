@@ -4,11 +4,11 @@
 ################################################################################
 
 
-from string import ascii_letters
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Tuple
 from collections import defaultdict
 
-LETTERS = list(ascii_letters)[3:]
+
+from ...utils._global import LETTERS
 
 
 def satisfy(l1: int, l2: int, restriction: Optional[str] = None) -> bool:
@@ -90,64 +90,46 @@ def generate_path(
 
 
 def generate_prod_paths(
-    max_left, max_right, max_hidden, max_rank_of_in, rank_of_out, correlation, l1l2, l2l3, l3l1,
+    lmax_in, ls_out, correlation, l1l2, l2l3, l3l1,
 ):
     paths_list_list = []
     exprs_list_list = []
-    current_ranks = set(range(max_rank_of_in + 1))
+    current_ranks = set(range(lmax_in + 1))
 
-    for v in range(correlation - 1):
-        paths_list = []
-        exprs_list = []
+    for nu in range(2, correlation + 1):
+        path_list = [] # TODO convert this to dict
+        expr_list = [] # TODO convert this to dict
         next_ranks = set()
-
         for l1 in current_ranks:
-            for l2 in range(max_rank_of_in + 1):
+            for l2 in range(lmax_in + 1):
                 lmin = abs(l1 - l2)
-                lmax = min(max_rank_of_in, l1 + l2)
+                lmax = min(lmax_in, l1 + l2)
                 for l3 in range(lmin, lmax + 1, 2):
                     if satisfy(l1, l2, l1l2) and satisfy(l2, l3, l2l3) and satisfy(l3, l1, l3l1):
                         k = (l1 + l2 - l3) // 2
-                        paths_list.append((l1, l2, l3, k))
+                        path_list.append((l1, l2, l3, k))
                         next_ranks.add(l3)
-                        exprs_list.append(
-                            generate_path(l1, l2, l3, k, True)
-                        )
+                        expr_list.append(generate_path(l1, l2, l3, k, True))
          
-        paths_list_list.append(paths_list)
-        exprs_list_list.append(exprs_list)
+        paths_list_list.append(path_list)
+        exprs_list_list.append(expr_list)
         current_ranks = next_ranks
 
-    valid_ranks = rank_of_out
-    for v in reversed(range(correlation - 1)):
-        filtered_paths = []
-        filtered_exprs = []
+    valid_ranks = ls_out
+    for nu in reversed(range(correlation - 1)):
+        filtered_path = []
+        filtered_expr = []
         next_valid_ranks = set()
 
-        for (r_1, r_2, r_o, k), exprs in zip(
-            paths_list_list[v], exprs_list_list[v]
-        ):
-            if r_o in valid_ranks:
-                filtered_paths.append((r_1, r_2, r_o, k))
-                filtered_exprs.append(exprs)
-                next_valid_ranks.update([r_1, r_2])
+        for (l1, l2, l3, k), expr in zip(paths_list_list[nu], exprs_list_list[nu]):
+            if l3 in valid_ranks:
+                filtered_path.append((l1, l2, l3, k))
+                filtered_expr.append(expr)
+                next_valid_ranks.update([l1, l2])
 
-        paths_list_list[v] = filtered_paths
-        exprs_list_list[v] = filtered_exprs
+        paths_list_list[nu] = filtered_path
+        exprs_list_list[nu] = filtered_expr
         valid_ranks = next_valid_ranks
-
-
-    for v in (range(correlation - 1)):
-        filtered_paths = []
-        filtered_exprs = []
-        for (r_1, r_2, r_o, k), exprs in zip(
-            paths_list_list[v], exprs_list_list[v]
-        ):
-            if r_1 <= max_left[v+1] and r_2 <= max_right[v+1] and r_o <= max_hidden[v+1]:
-                filtered_paths.append((r_1, r_2, r_o, k))
-                filtered_exprs.append(exprs) 
-        paths_list_list[v] = filtered_paths
-        exprs_list_list[v] = filtered_exprs
 
     return paths_list_list, exprs_list_list
 

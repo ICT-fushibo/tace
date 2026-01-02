@@ -18,13 +18,14 @@ dependencies = [
     "ase",
     "numpy",
     "e3nn",
-    "wandb",
     "torch_geometric",
     "scipy",
     "configargparse",
-    "lmdb",
     "pandas",
-    "torch-sim-atomistic" 
+    "lmdb",
+    "torch-sim-atomistic",
+    "wandb",
+    "huggingface_hub",
 ]
 
 [project.optional-dependencies]
@@ -72,6 +73,7 @@ dev = [
     "vtk",
     "pymatgen",
     "pymatviz==0.15.1",
+    "huggingface_hub",
 ]
 
 
@@ -89,9 +91,11 @@ tace-update = "tace.scripts.update:main"
 tace-modify = "tace.scripts.modify:main"
 tace-finetune = "tace.scripts.finetune:main"
 tace-convert = "tace.scripts.convert:main"
+tace-download = "tace.scripts.download:main"
+tace-average = "tace.scripts.average:main"
 
 [tool.setuptools.packages.find]
-include = ["tace", "tace.*", "cartnn", "cartnn.*"]
+include = ["tace", "tace.*"]
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]

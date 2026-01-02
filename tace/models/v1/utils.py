@@ -9,11 +9,17 @@ from typing import Dict, Tuple, Optional, NamedTuple
 import torch
 
 
-from cartnn.util import scatter_sum
-from cartnn.o3 import expand_dims_to
+from ...utils.torch_scatter import scatter_sum
 
 
-def add_to_left(
+def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
+    '''jit-safe'''
+    while T.ndim < n_dim:
+        T = T.unsqueeze(dim)
+    return T
+
+
+def add_dict_to_left(
     T1: Dict[int, torch.Tensor], T2: Dict[int, torch.Tensor]
 ) -> Dict[int, torch.Tensor]:
 
@@ -25,7 +31,7 @@ def add_to_left(
     return T1
 
 
-def add_to_right(
+def add_dict_to_right(
         T1: Dict[int, torch.Tensor], T2: Dict[int, torch.Tensor]
     ) -> Dict[int, torch.Tensor]:
 

@@ -2,7 +2,26 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
+'''
+This file is about the radial relatied operations.
 
+The code framework and most of the implementation are modified from MACE.
+https://github.com/ACEsuit/mace
+
+In addition, we provide several extra operations related to the radial components.
+
+MIT License
+
+Copyright (c) 2022 ACEsuit/mace
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of 
+this software and associated documentation files (the "Software"), to deal in the 
+Software without restriction, including without limitation the rights to use, copy, 
+modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, 
+and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+'''
 import math
 from typing import List
 
@@ -16,7 +35,7 @@ from scipy.optimize import brentq
 from scipy.special import jv
 
 
-from ..util.torch_scatter import scatter_sum
+from ...utils.torch_scatter import scatter_sum
 
 
 def jn_taylor(n, x, terms=5):
@@ -310,7 +329,7 @@ class Normalized_j0_SphericalBesselBasis(torch.nn.Module):
             # don't take 0 in case of weirdness like bessel at 0 # weirdness 不可思议的 离奇的 singular point?
             rs = torch.linspace(r_min, r_max, n + 1)[1:]
             rs.unsqueeze_(-1)
-            bs = self.basis(rs)  # TODO 修改后适配了自己的 j0_SphericalBesselBasis
+            bs = self.basis(rs)  # TODO for xzm
             assert bs.ndim == 2 and len(bs) == n
             if norm_basis_mean_shift:
                 basis_std, basis_mean = torch.std_mean(bs, dim=0)
@@ -326,6 +345,20 @@ class Normalized_j0_SphericalBesselBasis(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> Tensor:
         return (self.basis(x) - self._mean) * self._inv_std
 
+
+class CosineCutoff(torch.nn.Module):
+    def __init__(self, cutoff: float) -> None:
+        super().__init__()
+        self.register_buffer(
+            "cutoff",
+            torch.tensor(cutoff, dtype=torch.get_default_dtype()),
+        )
+
+    def forward(self, length: torch.Tensor) -> torch.Tensor:
+        return torch.square(
+            0.5 * torch.cos(length * (torch.pi / self.cutoff)) + 0.5
+        ).unsqueeze(-1)
+    
 
 class PolynomialCutoff(torch.nn.Module):
     """Envelope function(PolynomialCutoff funciton) is proposed in the DimeNet: https://www.cs.cit.tum.de/daml/dimenet/"""
@@ -482,134 +515,56 @@ class SoftTransform(torch.nn.Module):
         return f"{self.__class__.__name__}(a={self.a.item()}, b={self.b.item()})"
 
 
-class RadialBasis(torch.nn.Module):
-    def __init__(
-        self,
-        cutoff: float = 6.0,
-        num_basis: int = 8,
-        polynomial_cutoff: int = 5.0,
-        radial_basis: str = "bessel",
-        distance_transform=None,
-        order: int | List[int] = [0],
-        trainable: bool = False,
-        apply_cutoff: bool = True,
-    ):
-        super().__init__()
-        if radial_basis == "bessel" or radial_basis == "j0":
-            self.radial_fn = j0_SphericalBesselBasis(
-                cutoff=cutoff, num_basis=num_basis, trainable=trainable
-            )
-        elif radial_basis == "jn":
-            self.radial_fn = jn_SphericalBesselBasis(
-                cutoff=cutoff,
-                order=order,
-                num_basis=num_basis,
-                trainable=trainable,
-            )
-        elif radial_basis == "normalized_bessel" or radial_basis == "n_j0":
-            self.radial_fn = Normalized_j0_SphericalBesselBasis(
-                r_max=cutoff,
-                original_basis_kwargs={"cutoff": cutoff, "num_basis": num_basis},
-            )
-
-        elif radial_basis == "chebychev":
-            self.radial_fn = ChebychevBasis(
-                r_max=cutoff,
-                num_basis=num_basis,
-            )
-        elif radial_basis == "gaussian":
-            self.radial_fn = GaussianBasis(
-                r_max=cutoff,
-                num_basis=num_basis,
-                trainable=trainable,
-            )
-        else:
-            raise ValueError(f"Unknown radial_basis: {radial_basis}")
-        if distance_transform == "Agnesi":
-            self.distance_transform = AgnesiTransform()
-        elif distance_transform == "Soft":
-            self.distance_transform = SoftTransform()
-        self.cutoff_fn = PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
-
-        if not isinstance(num_basis, int):
-            num_basis = sum(num_basis)
-            self.out_dim = num_basis
-            self.num_basis = num_basis
-        else:
-            self.out_dim = num_basis
-            self.num_basis = num_basis
-
-        self.apply_cutoff = apply_cutoff
-        self.for_copy = {
-            "cutoff": cutoff,
-            "num_basis": num_basis,
-            "polynomial_cutoff": polynomial_cutoff,
-            "radial_basis": radial_basis,
-            "distance_transform": distance_transform,
-            "order": order,
-            "trainable": trainable,
-            "apply_cutoff": apply_cutoff,
-        }
-
-    def forward(
-        self,
-        edge_length: torch.Tensor,
-        node_attrs: torch.Tensor,
-        edge_index: torch.Tensor,
-        atomic_numbers: torch.Tensor,
-    ) -> torch.Tensor:
-        cutoff = self.cutoff_fn(edge_length)
-        if hasattr(self, "distance_transform"):
-            edge_length = self.distance_transform(
-                edge_length, node_attrs, edge_index, atomic_numbers
-            )
-        radial = self.radial_fn(edge_length)
-        if self.apply_cutoff:
-            return radial * cutoff, None
-        else:
-            return radial, cutoff
-
-
-    # j1 j2 j3 ...
-    def copy(self, max_rank: int = -1):
-        return self.replicate()
-
-    def replicate(self):
-        for_copy = self.for_copy
-        return self.__class__(**for_copy)
-
-
-# # @compile_mode("script")
-class CosineCutoff(torch.nn.Module):
-    def __init__(self, cutoff: float) -> None:
+class ChebychevBasis(torch.nn.Module):
+    """ Not recommended for use in TACE """
+    def __init__(self, cutoff: float, num_basis=8):
         super().__init__()
         self.register_buffer(
-            "cutoff",
-            torch.tensor(cutoff, dtype=torch.get_default_dtype()),
+            "n",
+            torch.arange(1, num_basis + 1, dtype=torch.get_default_dtype()).unsqueeze(
+                0
+            ),
         )
+        self.num_basis = num_basis
+        self.cutoff = cutoff
 
-    def forward(self, length: torch.Tensor) -> torch.Tensor:
-        return torch.square(
-            0.5 * torch.cos(length * (torch.pi / self.cutoff)) + 0.5
-        ).unsqueeze(-1)
-
-
-class ChebychevBasis(torch.nn.Module):
-    def __init__(self, r_max: float, num_basis=8):
-        super().__init__()
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.repeat(1, self.num_basis)
+        n = self.n.repeat(len(x), 1)
+        return torch.special.chebyshev_polynomial_t(x, n)
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(r_max={self.r_max}, num_basis={self.num_basis},"
+            f"{self.__class__.__name__}(cutoff={self.cutoff}, num_basis={self.num_basis},"
         )
 
 
 class GaussianBasis(torch.nn.Module):
-    def __init__(self, r_max: float, num_basis=128, trainable=False):
+    """ Not recommended for use in TACE """
+    def __init__(self, cutoff: float, num_basis=128, trainable=False):
         super().__init__()
+        gaussian_weights = torch.linspace(
+            start=0.0, end=cutoff, steps=num_basis, dtype=torch.get_default_dtype()
+        )
+        if trainable:
+            self.gaussian_weights = torch.nn.Parameter(
+                gaussian_weights, requires_grad=True
+            )
+        else:
+            self.register_buffer("gaussian_weights", gaussian_weights)
+        self.coeff = -0.5 / (cutoff / (num_basis - 1)) ** 2
+
+        self.num_basis = num_basis
+        self.cutoff = cutoff
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [..., 1]
+        x = x - self.gaussian_weights
+        return torch.exp(self.coeff * torch.pow(x, 2))
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(r_max={self.cutoff}, num_basis={self.num_basis},"
+        return (
+            f"{self.__class__.__name__}(cutoff={self.cutoff}, num_basis={self.num_basis},"
+        )
 
 
 class ZBLBasis(torch.nn.Module):
@@ -683,6 +638,100 @@ class ZBLBasis(torch.nn.Module):
         return f"{self.__class__.__name__}(c={[float(f'{c:.4f}') for c in self.c.tolist()]})"
 
 
+class RadialBasis(torch.nn.Module):
+    def __init__(
+        self,
+        cutoff: float = 6.0,
+        num_basis: int = 8,
+        polynomial_cutoff: int = 5.0,
+        radial_basis: str = "bessel",
+        distance_transform=None,
+        order: int | List[int] = [0],
+        trainable: bool = False,
+        apply_cutoff: bool = True,
+    ):
+        super().__init__()
+        if radial_basis == "bessel" or radial_basis == "j0":
+            self.radial_fn = j0_SphericalBesselBasis(
+                cutoff=cutoff, num_basis=num_basis, trainable=trainable
+            )
+        elif radial_basis == "jn":
+            self.radial_fn = jn_SphericalBesselBasis(
+                cutoff=cutoff,
+                order=order,
+                num_basis=num_basis,
+                trainable=trainable,
+            )
+        elif radial_basis == "normalized_bessel" or radial_basis == "n_j0":
+            self.radial_fn = Normalized_j0_SphericalBesselBasis(
+                r_max=cutoff,
+                original_basis_kwargs={"cutoff": cutoff, "num_basis": num_basis},
+            )
+        elif radial_basis == "chebychev":
+            self.radial_fn = ChebychevBasis(
+                cutoff=cutoff,
+                num_basis=num_basis,
+            )
+        elif radial_basis == "gaussian":
+            self.radial_fn = GaussianBasis(
+                cutoff=cutoff,
+                num_basis=num_basis,
+                trainable=trainable,
+            )
+        else:
+            raise ValueError(f"Unknown radial_basis: {radial_basis}")
+        if distance_transform == "Agnesi":
+            self.distance_transform = AgnesiTransform()
+        elif distance_transform == "Soft":
+            self.distance_transform = SoftTransform()
+        self.cutoff_fn = PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
+
+        if not isinstance(num_basis, int):
+            num_basis = sum(num_basis)
+            self.out_dim = num_basis
+            self.num_basis = num_basis
+        else:
+            self.out_dim = num_basis
+            self.num_basis = num_basis
+
+        self.apply_cutoff = apply_cutoff
+        self.for_copy = {
+            "cutoff": cutoff,
+            "num_basis": num_basis,
+            "polynomial_cutoff": polynomial_cutoff,
+            "radial_basis": radial_basis,
+            "distance_transform": distance_transform,
+            "order": order,
+            "trainable": trainable,
+            "apply_cutoff": apply_cutoff,
+        }
+
+    def forward(
+        self,
+        edge_length: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_index: torch.Tensor,
+        atomic_numbers: torch.Tensor,
+    ) -> torch.Tensor:
+        cutoff = self.cutoff_fn(edge_length)
+        if hasattr(self, "distance_transform"):
+            edge_length = self.distance_transform(
+                edge_length, node_attrs, edge_index, atomic_numbers
+            )
+        radial = self.radial_fn(edge_length)
+        if self.apply_cutoff:
+            return radial * cutoff, None
+        else:
+            return radial, cutoff
+
+    # j1 j2 j3 ...
+    def copy(self, lmax: int = -1):
+        return self.replicate()
+
+    def replicate(self):
+        for_copy = self.for_copy
+        return self.__class__(**for_copy)
+    
 # # draw
 # import torch
 # import matplotlib.pyplot as plt

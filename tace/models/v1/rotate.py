@@ -2,7 +2,9 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-
+"""
+This file is about the rotation, init_edge_rot_mat from eSCN.
+"""
 import torch
 
 # def rotate_cart(T: Tensor, R: Tensor):

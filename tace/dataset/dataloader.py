@@ -62,8 +62,6 @@ def build_atomsList(
         )
         atomic_numbers_from_dataset = atomic_numbers_from_cfg
 
-    element = build_element_lookup(atomic_numbers_from_dataset)
-
     # === multi-level atomic_energy ===
     atomic_energies= []
     if "energy" in target_property:
@@ -72,11 +70,15 @@ def build_atomsList(
         atomic_energies_cfg = cfg['model']['config'].get("atomic_energies", None)
         assert atomic_energies_cfg is None or isinstance(atomic_energies_cfg, List)
 
-        if num_levels > 1 and atomic_energies_cfg is not None:
+        if atomic_energies_cfg is not None:
             assert num_levels == len(atomic_energies_cfg)
             for v in atomic_energies_cfg:
-                assert isinstance(v, Dict) or v is None, "If you want to use mixed precision training, "
-                "you must provide each level's atomic energy or set all level to null"
+                assert isinstance(v, Dict), "If you want to use multi-fidelity or multi-head training, "
+                "you must provide each level's atomic energy or set null"
+            atomic_numbers_from_energy = set(z for IAE_dict in atomic_energies_cfg for z in IAE_dict.keys())
+            atomic_numbers_from_dataset = atomic_numbers_from_dataset | atomic_numbers_from_energy
+
+        element = build_element_lookup(atomic_numbers_from_dataset)
 
         if atomic_energies_cfg is None:
             logging.info("Computing Isolated Atomic Energies (IAE) automatically for each level")
@@ -105,7 +107,8 @@ def build_atomsList(
         logging.info("Isolated Atomic Energies per computational level:")
         for idx, energy in enumerate(atomic_energies):
             logging.info(f"  Level {idx}: {energy}")
-
+    else:
+        element = build_element_lookup(atomic_numbers_from_dataset)
     return element, threeAtomsList, atomic_energies
 
 @rank_zero_only

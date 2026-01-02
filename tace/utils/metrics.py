@@ -9,7 +9,6 @@ from typing import Dict, List
 import torch
 from torch import Tensor
 from torchmetrics import Metric
-from cartnn.o3 import expand_dims_to
 
 
 from ..dataset.quantity import (
@@ -20,6 +19,13 @@ from ..dataset.quantity import (
 )
 
 SCALE = 1000.0  # for example, metric units from eV to meV
+
+
+def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
+    '''jit-safe'''
+    while T.ndim < n_dim:
+        T = T.unsqueeze(dim)
+    return T
 
 
 class MAE(Metric):

@@ -8,6 +8,8 @@ import torch
 
 ACT = {
     None: torch.nn.Identity,
+    "None": torch.nn.Identity,
+    "null": torch.nn.Identity,
     "identity": torch.nn.Identity,
     "relu": torch.nn.ReLU,
     "leaky_relu": torch.nn.LeakyReLU,

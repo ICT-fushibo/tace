@@ -4,7 +4,7 @@
 ################################################################################
 """
 So far, all the functions have been concentrated within one interaction module,
-and LAMMPS utils are from MACE
+and LAMMPS utils are modified from MACE
 """
 import abc
 from typing import Dict, List, Tuple, Optional, Any
@@ -12,21 +12,17 @@ from typing import Dict, List, Tuple, Optional, Any
 
 import torch
 from torch import Tensor
-from cartnn.o3 import ICTD, expand_dims_to
-from cartnn.util import scatter_sum
 
 
 from .mlp import MLP
-from .paths import generate_combinations
-from .linear import SelfInteraction, ElementLinear, Linear
+from .linear import SelfInteraction, LinearDict
 from .ctr import Contraction
-from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict, add_to_left
+from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict, add_dict_to_left
 from .layers import NormNonlinearity, GatedNonlinearity
+from .ictd import ICTD
+from .utils import expand_dims_to
+from ...utils.torch_scatter import scatter_sum
 
-InterLinear = {
-    False: Linear,
-    True: ElementLinear,
-}
 
 class InteractionBase(torch.nn.Module):
     def __init__(
@@ -40,9 +36,9 @@ class InteractionBase(torch.nn.Module):
         lmax_out: int,
         ls_sc: List[int],
         atomic_numbers: int,
-        avg_num_neighbors,
-        num_radial_basis,
-        radial_mlp,
+        avg_num_neighbors: float,
+        num_radial_basis: int,
+        radial_mlp: Dict,
         inter: Dict,
     ) -> None:
         super().__init__()
@@ -62,9 +58,9 @@ class InteractionBase(torch.nn.Module):
             "avg_num_neighbors",
             torch.tensor(avg_num_neighbors, dtype=torch.get_default_dtype()),
         )
-        for r in range(lmax_out + 1):
-            DS = ICTD(r, r)[1]
-            self.register_buffer(f"D_{r}_{r}_1", DS[0].to(torch.get_default_dtype()))
+        for l in range(lmax_out + 1):
+            DS = ICTD(l, l)[1]
+            self.register_buffer(f"D_{l}_{l}_1", DS[0].to(torch.get_default_dtype()))
             del DS
         self._setup()
 
@@ -118,7 +114,7 @@ class Interaction(InteractionBase):
             self.resnet = SelfInteraction(
                 self.num_channel,
                 self.num_channel,
-                rs=list(range(self.lmax_in + 1)),
+                ls=list(range(self.lmax_in + 1)),
                 bias=self.bias,
                 atomic_numbers=self.atomic_numbers,
             )    
@@ -127,23 +123,18 @@ class Interaction(InteractionBase):
         self.linear_up = SelfInteraction(
             self.num_channel,
             self.num_channel,
-            rs=list(range(self.lmax_in + 1)),
+            ls=list(range(self.lmax_in + 1)),
             bias=self.bias,
         )
 
         # === ICTP and ICTC
-        combs = generate_combinations(
-            self.lmax_in,
-            self.lmax_out,
-            self.lmax_out,
-            l1l2=self.inter["l1l2"][self.layer],
-        )
         self.tc = Contraction(
-            combs=combs,
             num_channel=self.num_channel,
             num_channel_hidden=self.num_channel_hidden,
             lmax_in=self.lmax_in,
             lmax_out=self.lmax_out,
+            l1l2=self.inter["l1l2"][self.layer],
+            filter_combs=self.inter.get("filter_combs", None)
         )
 
         # === self / skip connection ===
@@ -154,7 +145,7 @@ class Interaction(InteractionBase):
             self.sc_from = self.inter.get('sc', {}).get('from', "current_message") 
             self.scs = torch.nn.ModuleDict()
             for l in self.ls_sc:
-                    self.scs[str(l)] = InterLinear[True](
+                    self.scs[str(l)] = LinearDict[True, False](
                     self.num_channel if self.sc_from == 'last_product' else self.num_channel_hidden,
                     self.num_channel,
                     bias=(l == 0 and self.bias),
@@ -219,22 +210,24 @@ class Interaction(InteractionBase):
         nonlinearity_type = self.inter.get('nonlinearity', {}).get('type', None)
         nonlinearity_gate = self.inter.get('nonlinearity', {}).get('gate', 'silu')
         if nonlinearity_type is not None:
-            if nonlinearity_type == 'gated':
+            if nonlinearity_type in ['gated', 'gated_gate']:
                 self.nonlinearity_gate = GatedNonlinearity(
                     rmax=self.lmax_out,
                     in_dim=self.num_channel_hidden,
                     gate=nonlinearity_gate,
                 )  
-            else:
+            elif nonlinearity_type in ['norm', 'norm_gate']:
                 self.nonlinearity_gate = NormNonlinearity(
                     rmax=self.lmax_out,
                     in_dim=self.num_channel_hidden,
                     gate=nonlinearity_gate,
                 )
+            else:
+                raise
             self.nonlinearity_linear = SelfInteraction(
                 in_channel=self.num_channel_hidden,
                 out_channel=self.num_channel_hidden,
-                rs=list(range(self.lmax_out + 1)),
+                ls=list(range(self.lmax_out + 1)),
                 bias=self.bias,
             )
     
@@ -251,7 +244,6 @@ class Interaction(InteractionBase):
     ) -> Tuple[Dict[int, Tensor], Dict[int, Tensor]]:
 
         # === LAMMPS pretreatment ===
-        lmp = graph.lmp
         lmp_data = graph.lmp_data
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
@@ -315,7 +307,7 @@ class Interaction(InteractionBase):
                 normalizer = self.avg_num_neighbors
             t = t / normalizer
             m_i[r] = (t.reshape(B, C, -1) @ self.D(r)).reshape((B, C) + REST)
-        add_to_left(m_i, residual)
+        add_dict_to_left(m_i, residual)
 
         # === nonlinearity ===
         if hasattr(self, 'nonlinearity_gate'):
@@ -327,7 +319,7 @@ class Interaction(InteractionBase):
                 scs[r] = self.scs[str(r)](m_i[r], node_attrs_total)
 
         # === LAMMPS postprocessing ===
-        if lmp:
+        if graph.lmp:
             m_i = self.truncate_ghosts_dict(m_i, nlocal)
             if len(scs) > 0:
                 scs = self.truncate_ghosts_dict(scs, nlocal)

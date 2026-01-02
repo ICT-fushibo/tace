@@ -7,10 +7,10 @@ from typing import Dict, List, Any
 
 import torch
 from torch import Tensor, nn
-from cartnn.math import RadialBasis
-from cartnn.o3 import LegacyCartesianHarmonics2
 
 
+from .radial import RadialBasis
+from .ch import LegacyCartesianHarmonics2
 from .mlp import MLP
 from .inter import Interaction
 from .prod import SelfContraction

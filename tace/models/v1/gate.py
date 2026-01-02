@@ -29,14 +29,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-from typing import Dict, Type
+from typing import Dict
 import torch
 import torch.nn.functional as F
-from cartnn.o3 import expand_dims_to
 
 
 from .act import ACT
-
+from .utils import expand_dims_to
 
 class NormGateBase(torch.nn.Module):
     """
@@ -144,7 +143,7 @@ NormGate: Dict[str | None, type[torch.nn.Module]] = {
     "tanh": TensorNormTanh,
     "relu": TensorNormRelu,
     "None": TensorNormIdentity,
-    "none": TensorNormIdentity,
+    "null": TensorNormIdentity,
     None: TensorNormIdentity,
 }
 

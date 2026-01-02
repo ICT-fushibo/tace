@@ -16,7 +16,8 @@ config:
   num_layers: 2 # (int), 2 for correlation >=2, can be higher when correlation=2
   bias: true # (bool), false is more safe, but true sometimes give better results
   num_channel: 64 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
-  num_channel_hidden: ${model.config.num_channel} # (int), equal num_channel is the best
+  num_channel_hidden: ${model.config.num_channel} # (int), equal num_channel is the bes
+  
 
   radial_basis:
     radial_basis: j0   # [j0, jn, n_j0]

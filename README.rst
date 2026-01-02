@@ -2,11 +2,6 @@ Tensor Atomic Cluster Expansion
 ===============================
 .. = - ~ ^ "
 
-This is the official repository for TACE atomistic machine learning, 
-and it also temporarily hosts the ``cartnn`` package. 
-In the future, if ICTP and ICTC are fully developed, ``cartnn`` will be moved to a repository forked from ```e3nn``.
-You can use Cartesian-3j and ICTD like ``from cartnn.o3 import cartesian-3j, ICTD``.
-
 .. image:: arch.png
    :width: 100%
    :align: center
