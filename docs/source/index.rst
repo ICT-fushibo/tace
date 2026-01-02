@@ -33,17 +33,19 @@ Currently, the officially supported properties include:
 - Hessians (conservative, predict only)
 - Stress (conservative | direct)
 - Virials (conservative | direct)
-- Charges (Qeq or uniform)
+- Charges (lagrangian or uniform_distribution)
 - Dipole moment (conservative | direct)
 - Polarization (conservative, multi-value for PBC systems)
 - Polarizability (conservative | direct)
-- Born effective charges (conservative, under electric field or LES)  *(LES not tested by us)*
+- Born effective charges (conservative, under electric field or LES )  (LES predict only)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - Noncollinear magnetic forces (conservative)
 - Collinear magnetic forces (conservative) *(not tested by us)*
 - Magnetization (conservative) *(not tested by us)*
 - Magnetic susceptibility (conservative) *(not tested by us)*
+.. - final (non)collinear magmoms (not time reversal)
+.. - total (non)collinear magmoms *(not tested by us)*
 
 For embedding property, we support:
 
@@ -51,8 +53,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial/final (non)collinear magmoms (not time reversal)
-- total (non)collinear magmoms *(not tested by us)*
+- initial (non)collinear magmoms (not time reversal)
 - spin multiplicity *(not tested by us)*
 - electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*
@@ -106,7 +107,7 @@ If you use Cartesian-3j or Cartesian-nj, please cite our papers:
 Contact
 -------
 
-If you have any problems, suggestions or cooperations, please contact us through xvzemin@smail.nju.edu.cn
+If you have any problems, suggestions or cooperations, please contact us through xv_chana@163.com
 
 For bugs or feature requests, please use https://github.com/xvzemin/tace/issues.
 

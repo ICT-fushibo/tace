@@ -68,7 +68,6 @@ class LightningWrapperModel(L.LightningModule):
 
         # === Misc ===
         self.force_dtype = DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
-        self.use_swa = 'swa' in cfg["callbacks"]
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
 
     def setup(self, stage: Optional[str] = None):
@@ -91,11 +90,6 @@ class LightningWrapperModel(L.LightningModule):
                 lambda x: x.to(self.force_dtype) if x.is_floating_point() else x
             )            
         output, loss = self._process_batch(batch)
-
-        # # for check unused parameters
-        # for name, param in self.named_parameters():
-        #     if param.requires_grad and param.grad is None:
-        #         logging.warning(f"Parameter '{name}' is not used in loss computation.")
 
         self.log(
             f"{prefix}/loss",

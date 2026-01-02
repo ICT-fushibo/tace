@@ -8,15 +8,19 @@ from typing import Dict
 from pathlib import Path
 from datetime import datetime
 
+
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 from hydra.utils import instantiate
 from torch_geometric.loader import DataLoader
+from pytorch_lightning.callbacks import StochasticWeightAveraging
 
 
 from .lit_model import LightningWrapperModel
 from ..utils.callbacks import PrintMetricsCallback
 from ..utils.utils import log_parameters
+
+
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
 
@@ -70,6 +74,26 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
 
     # === Built-in callbacks ===
     initialized_callbacks += [PrintMetricsCallback()]
+
+    # === Disallow SWA callback ===
+    swa_cbs = [
+        cb for cb in initialized_callbacks
+        if isinstance(cb, StochasticWeightAveraging)
+    ]
+    if swa_cbs:
+        raise RuntimeError(
+            "StochasticWeightAveraging (SWA) is currently not allowed in TACE when used "
+            "directly via PyTorch Lightning callbacks.\n\n"
+            "Reason: During testing, we observed some strange issues "
+            "when using Lightning's built-in SWA.\n\n"
+            "Recommended alternative:\n"
+            "- Save a series of model checkpoints during training.\n"
+            "- After training, use the provided `tace-average` command to compute an averaged "
+            "model from any set of models with the same architecture.\n\n"
+            "This approach is especially useful in the late stage of training, "
+            "particularly when increasing the energy loss weight, and can significantly "
+            "improve the model's generalization performance."
+        )
 
     # === Put checkpoint at the end ===
     other_cbs = [
@@ -157,9 +181,6 @@ def train(
             lit_model,
             datamodule=datamodule,
         )
-
-    if getattr(lit_model, 'use_swa', True):
-        trainer.save_checkpoint('swa_final.ckpt', weights_only=False)
     
     # TEST
     if cfg['dataset'].get('test_files', None):
@@ -170,3 +191,4 @@ def train(
             verbose=False,
         )
     logging.info("Training completed at %s", datetime.now().strftime("%Y-%m-%d %H:%M"))
+

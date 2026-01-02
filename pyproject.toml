@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "TACE"
 version = "0.0.8"
 description = "TACE - Irreducible Cartesian Tensor based equivariant atomistic model."
-authors = [{ name = "Zemin Xu", email = "xvzemin@smail.nju.edu.cn" }]
+authors = [{ name = "Zemin Xu", email = "xv_chana@163.com" }]
 
 requires-python = ">=3.10"
 dependencies = [

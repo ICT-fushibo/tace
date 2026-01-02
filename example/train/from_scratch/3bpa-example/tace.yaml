@@ -58,13 +58,6 @@ callbacks:
     # min_delta: 1e-5 
     patience: 100
 
-  # swa:
-  #   _target_: lightning.pytorch.callbacks.StochasticWeightAveraging
-  #   swa_lrs: 1e-4
-  #   swa_epoch_start: 0.8 # int (>=1) or float (0.0~1.0)
-  #   annealing_epochs: 1
-  #   annealing_strategy: linear
-
   ema: # ema is always recommended
     _target_: tace.utils.callbacks.EMACallback
     decay: 0.99 # 0.99 - 0.999
