@@ -54,9 +54,10 @@ def main():
         type=int,
         choices=[0, 1],
         default=0,
-        help="Whether use ema params",
+        help="Whether use ema params, It is recommended not to use the ema parameter for averaging",
     )
     args = parser.parse_args()
+    print(f"A total of {len(args.models)} models will be averaged")
     model_avg = average_models(args.models, args.ema)
     output_path = "average_model.pt"
     torch.save(model_avg, output_path)

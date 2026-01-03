@@ -191,8 +191,10 @@ def ase_db_connect(
 def fair_lmdb(filename: str):
     raise NotImplementedError("fair_lmdb is not yet implemented")
 
+def torchsim_h5(filename: str):
+    raise NotImplementedError("torchsim_h5 is not yet implemented")
 
-HOW_TO_READ = {"ase": ase_io_read, "ase_db": ase_db_connect, "lmdb": fair_lmdb}
+HOW_TO_READ = {"ase": ase_io_read, "ase_db": ase_db_connect, "fair": fair_lmdb, "torchsim": torchsim_h5}
 
 
 def _read(

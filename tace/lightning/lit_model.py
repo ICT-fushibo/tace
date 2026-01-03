@@ -188,32 +188,37 @@ class LightningWrapperModel(L.LightningModule):
             {**{k: v for k, v in self.cfg["optimizer"].items() if k != "extra"}},
             params=self.parameters(),
         )
-        scheduler = instantiate(
-            {**{k: v for k, v in self.cfg["scheduler"].items() if k != "extra"}},
-            optimizer=optimizer,
-        )
-        lr_scheduler_cfg = self.cfg.get("scheduler", {}).get("extra", {})
-        monitor = lr_scheduler_cfg.get("monitor", "val/loss")
-        interval = lr_scheduler_cfg.get("interval", "epoch")
-        frequency = lr_scheduler_cfg.get("frequency", 1)
-        if self.no_valid_set:
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    "interval": interval,
-                    "frequency": frequency,
-                },
-            }
+        if "scheduler" in self.cfg:
+            lr_scheduler_cfg = self.cfg.get("scheduler", {}).get("extra", {})
+            monitor = lr_scheduler_cfg.get("monitor", "val/loss")
+            interval = lr_scheduler_cfg.get("interval", "epoch")
+            frequency = lr_scheduler_cfg.get("frequency", 1)
+            scheduler = instantiate(
+                {**{k: v for k, v in self.cfg["scheduler"].items() if k != "extra"}},
+                optimizer=optimizer,
+            )
+            if self.no_valid_set:
+                return {
+                    "optimizer": optimizer,
+                    "lr_scheduler": {
+                        "scheduler": scheduler,
+                        "interval": interval,
+                        "frequency": frequency,
+                    },
+                }
+            else:
+                return {
+                    "optimizer": optimizer,
+                    "lr_scheduler": {
+                        "scheduler": scheduler,
+                        "monitor": monitor,
+                        "interval": interval,
+                        "frequency": frequency,
+                    },
+                }
         else:
             return {
                 "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    "monitor": monitor,
-                    "interval": interval,
-                    "frequency": frequency,
-                },
             }
 
     @classmethod

@@ -32,7 +32,7 @@ def select_model(
     WRAPPER_CLS = select_wrapper(cfg)
 
     # === model cls ===
-    model_path = cfg['model']['config'].get('_trget_', 'tace.models.TACEV1')
+    model_path = cfg['model']['config'].get('_target_', 'tace.models.TACEV1')
     if model_path == "tace.models.tace.TACE": # for compatible with earlier version
         model_path = "tace.models.TACEV1"
     module_name, class_name = model_path.rsplit(".", 1)
