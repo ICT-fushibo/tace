@@ -17,7 +17,7 @@ from ..dataset.statistics import Statistics
 from ..lightning.trainer import train
 from ..lightning.lit_model import finetune, load_tace
 from ..lightning.select_model import select_model
-from ..dataset.dataloader import compute_statistics
+from ..dataset.dataloader import build_atomsList, compute_statistics
 from ..dataset.datamodule import build_datamodule
 from ..utils.hydra_resolver import register_resolvers
 from ..utils.logger import set_logger
@@ -82,7 +82,19 @@ def build(cfg: DictConfig):
                 logging.info(f"Using statistics_yaml from '{str(yaml_file)}' for level {idx}")
         else:
             logging.info(f"Computing statistics information from scratch")
-            statistics = compute_statistics(cfg, target_property, embedding_property, keyspec, num_levels)
+            element, threeAtomsList, atomic_energies = build_atomsList(
+                cfg, target_property, embedding_property, keyspec, num_levels
+            )
+            statistics = compute_statistics(
+                cfg, 
+                target_property, 
+                embedding_property, 
+                keyspec, 
+                num_levels,
+                element,
+                threeAtomsList,
+                atomic_energies,
+            )
 
     if cfg.get("finetune_from_model", None):
         model = finetune(cfg)

@@ -39,7 +39,7 @@ def parse_args():
         help="Specify convert type"
     )
     parser.add_argument(
-        "--debug", 
+        "-d", "--debug", 
         type=int, 
         default=0,
         help="print some extra information for debug"
@@ -67,7 +67,7 @@ def main():
         if bool(args.debug):
             print(model)
         print("The number of parameters: ")
-        print(f"  Your Lora:     {total_before - total_after}")
+        print(f"  Your LoRA:     {total_before - total_after}")
         print(f"  Before merged: {total_before}")
         print(f"  After merged:  {total_after}")
         model.to(dtype=args_dtype)

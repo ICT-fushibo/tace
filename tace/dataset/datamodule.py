@@ -27,11 +27,6 @@ from .statistics import Statistics
 from .quantity import KeySpecification
 
 
-def _log(rank, msg):
-    if rank == 0:
-        logging.info(f"[rank {rank}] {msg}")
-
-
 class GraphDatasetLMDB(Dataset):
     """
     Lazy-loading LMDB dataset; each LMDB shard contains local keys 0..(n-1).

@@ -1,5 +1,5 @@
 TACE-Scripts Tutorial
-=======
+=====================
 
 This section introduces some commonly used scripts for training, inference, and various utility tasks.
 The supported scripts are:
@@ -7,16 +7,19 @@ The supported scripts are:
 - **tace-train**
 - **tace-eval**
 - **tace-export**
+- **tace-finetune**
+- **tace-convert**
+- **tace-average**
+- **tace-update**
 - **tace-clean**
 - **tace-graph**
+- **tace-download**
 - **tace-split**
 
 
 .. note::
 
    All scripts support the ``-h`` option to display all available command-line arguments and usage instructions.
-
-Among them, we focus on the first four scripts, which are the most basic and frequently used:
 
 1. **tace-train**  
    This script is used to start model training. Users can configure training parameters and initiate the training process.
@@ -81,3 +84,60 @@ if the dataset storage mode is `lmdb` and the specified `shard_dirs` contain pre
 
 .. code-block:: bash  
    tace-graph -cn *.yaml
+
+
+7. **tace-convert**
+
+This script is mainly used to perform architecture-level or parameter-level transformations
+on an existing model.
+
+Typical use cases include (but are not limited to):
+
+- Merging LoRA parameters back into the base model
+
+8. **tace-update**
+
+This script is used to update internal statistical information stored in an existing model.
+
+Typical examples include:
+
+- Updating reference atomic energies
+- Adjusting internal `scale` and `shift` parameters
+
+9. **tace-average**
+
+This script accepts a series of models with identical architectures and computes
+the **average of all model parameters**.
+
+In practice, this serves as a manual implementation of **Stochastic Weight Averaging (SWA)**.
+
+A common workflow is:
+
+- Reduce the weight of force loss (i.e., increase the relative importance of energy)
+  in the late stage of training
+- Continue training with a low learning rate
+- Collect a sequence of checkpoints
+- Apply tace-average to obtain an averaged model
+
+This averaged model often exhibits better generalization performance.
+
+.. note::
+
+   If average models is used, it is generally **not recommended** to use EMA at the same time,
+   as both methods perform temporal averaging of parameters and may interfere with
+   each other.
+
+10. **tace-download**
+
+This script is used to download models or datasets provided by TACE.
+
+However, manual downloading is generally recommended, as network connectivity
+to the server may be unreliable in some environments.
+
+
+11. **tace-finetune**
+
+This script is used to generate configuration files for fine-tuning an existing model.
+
+The generated ``finetune_config.yaml`` file can be further customized before launching
+the fine-tuning process().

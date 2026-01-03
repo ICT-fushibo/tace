@@ -118,44 +118,10 @@ def compute_statistics(
     embedding_property: List[str],
     keyspec: KeySpecification,
     num_levels: int,
+    element,
+    threeAtomsList,
+    atomic_energies,
 ):
-
-    element, threeAtomsList, atomic_energies = build_atomsList(
-        cfg, target_property, embedding_property, keyspec, num_levels
-    )
-
-    # dataloader_valid = None
-    # if threeAtomsList[1] is not None:
-    #     dataset_valid = create_graphs_for_main_rank(threeAtomsList[1], element, for_dataset, 'valid')
-    #     # if dataset_valid is None:
-    #     #     if read_graphs:
-    #     #         dataset_valid = read_graphs_from_pt('valid')
-    #     # if save_graphs:
-    #     #     save_graphs_to_pt(dataset_valid, 'valid')
-    #     dataloader_valid = instantiate(
-    #         cfg["dataset"]["valid_dataloader"],
-    #         dataset=dataset_valid
-    #     )
-    #     logging.info(f"Number of configs in valid: {len(threeAtomsList[1])}")
-
-    # dataloader_tests = None
-    # if threeAtomsList[2] is not None:
-    #     dataloader_tests = []
-    #     for idx, test_atoms_list in enumerate(threeAtomsList[2]):
-    #         dataset_test = create_graphs_for_main_rank(test_atoms_list, element, for_dataset, f'test{idx}')
-    #         # if dataset_test is None:
-    #         #     if read_graphs:
-    #         #         dataset_test = read_graphs_from_pt(f'test{idx}')
-    #         # if save_graphs:
-    #         #     save_graphs_to_pt(dataset_test, f'test{idx}')
-    #         dataloader_test = instantiate(
-    #             cfg["dataset"]["test_dataloader"],
-    #             dataset=dataset_test
-    #         )
-    #         dataloader_tests.append(dataloader_test)
-    #     for idx, test_atoms_list in enumerate(threeAtomsList[2]):
-    #         logging.info(f"Number of configs in test{idx}: {len(test_atoms_list)}")
-
     # === compute statistics ===
     statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
     all_exist = all(p.exists() for p in statistics_yaml)
