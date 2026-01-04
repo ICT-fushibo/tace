@@ -16,18 +16,18 @@ Example
         - mse_energy_per_atom
         - mse_forces
         - mse_stress
-      loss_property_weights: [1.0, 10.0, 10.0]
+      loss_property_weights: [1.0, 8.0, 8.0]
 
     # huber loss used for outliers, used to train uMLIPs
     # loss:
     #   _target_: tace.utils.loss.OMat24sAlexMPtrjLoss
     #   loss_property: [energy, forces, stress]
     #   energy_weight: 1.0
-    #   forces_weight: 10.0
-    #   stress_weight: 10.0
+    #   forces_weight: 8.0
+    #   stress_weight: 8.0
     #   energy_huber_delta: 0.01
     #   forces_huber_delta: 0.01
-    #   stress_huber_delta: 0.1
+    #   stress_huber_delta: 0.01
 
     # The performance is mediocre and cannot achieve full convergence, but it can be used as a toy loss.
     # loss:
@@ -43,6 +43,11 @@ Notes
 -----
 
 - **Choice of loss function name**:  
-  - For properties that are already *per-atom* quantities,
-    the ``per_atom`` suffix is not required and not supported.  
+  - For properties that are already *per-atom* quantities,  
+    the ``per_atom`` suffix is not required and is not supported.
 
+- **Choice of loss function name**:  
+  - In general, mean squared error (MSE) performs better than mean absolute
+    error (MAE) during training. Therefore, MAE is not implemented by default,
+    but you may add it yourself if needed. For training on large datasets,
+    we recommend using the Huber loss.

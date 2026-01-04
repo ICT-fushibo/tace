@@ -17,3 +17,10 @@ Example
     # tags: ["baseline", "v0.0.1"]
     # group: "experiments"
     save_dir: wandb_logs  
+
+.. note::
+
+   We do not guarantee that the parameters recorded by Weights & Biases (wandb)
+   are always correct. We recommend directly referring to the errors printed in
+   the standard output. At the end of each epoch, all error metrics are
+   automatically printed.

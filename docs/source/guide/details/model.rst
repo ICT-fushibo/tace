@@ -1,9 +1,26 @@
 model
 =====
 
+This section describes the model architecture. In general, we use the traditional
+two-layer ACE architecture with ``correlation=3``, which achieves state-of-the-art
+accuracy in various benchmarks reported in the TACE paper.  
+
+If you want to increase the number of layers, we recommend setting ``correlation=2``.  
+We also provide extensive model parameters to control the architecture. 
+
+Typically, ``Lmax`` and ``lmax`` in Cartesian coordinates should not exceed 3. The number of channels
+is recommended to be between 48 and 64, which is sufficient and should not be larger.
+
+For the nonlinear gates in the interaction module, we recommend enabling them 
+when working with large datasets to enhance the model's learning capacity.
+
+
 .. note::
-    You can view detailed descriptions of some parameters here. We also provide detailed explanations in the example 
-    input files, code, so you can use these resources together for a better understanding.
+
+   Below is an example of usage. If a parameter comes from the internal
+   implementation of TACE, it may not be the most up-to-date. For the latest
+   parameters, please refer to the corresponding configuration files on GitHub.
+   A complete list of parameters along with detailed explanations is provided.
 
 Example
 -------

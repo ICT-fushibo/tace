@@ -6,6 +6,14 @@ Example
 
 For a complete list of all parameters and their detailed descriptions, please refer to the official PyTorch Lightning Trainer documentation: https://lightning.ai/docs/pytorch/stable/common/trainer.html
 
+
+.. note::
+
+   Below is an example of usage. If a parameter comes from the internal
+   implementation of TACE, it may not be the most up-to-date. For the latest
+   parameters, please refer to the corresponding configuration files on GitHub.
+   A complete list of parameters along with detailed explanations is provided.
+   
 .. code-block:: yaml
 
   trainer:

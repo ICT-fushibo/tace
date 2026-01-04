@@ -1,7 +1,7 @@
 misc
 ====
 
-The `misc` section contains miscellaneous configuration options for training and execution.
+The `misc` section contains miscellaneous configuration options for training and execution, such as tf32 training.
 
 Example
 -------
@@ -9,7 +9,7 @@ Example
 .. code-block:: yaml
   
   misc:
-    project_name: omat24_large
+    project_name: omat24_medium
     global_seed: 42 
     device: cuda # cpu or cuda
     allow_tf32: true

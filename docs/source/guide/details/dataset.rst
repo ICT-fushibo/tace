@@ -1,6 +1,17 @@
 dataset
 =======
 
+This field is used to store information about the sources of the train/valid/test set.
+It also controls whether the constructed graphs are saved locally, whether they are 
+loaded from specified files, and which keyscare used to read training labels from the input data.
+
+.. note::
+
+   Below is an example of usage. If a parameter comes from the internal
+   implementation of TACE, it may not be the most up-to-date. For the latest
+   parameters, please refer to the corresponding configuration files on GitHub.
+   A complete list of parameters along with detailed explanations is provided.
+   
 Example
 -------
 

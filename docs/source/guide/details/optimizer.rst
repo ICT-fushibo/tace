@@ -1,6 +1,8 @@
 optimizer
 =========
 
+Any optimizer supported by PyTorch Lightning can be used.
+
 Example
 -------
 
