@@ -30,6 +30,7 @@ from .utils import (
 
 PROPERTY = {
     "level": {
+        "ase_name": None,
         'type': 'int',
         "scope": "per-system",
         "rank": 0,
@@ -48,6 +49,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "energy": {
+        "ase_name": "energy",
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
@@ -67,6 +69,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "forces": {
+        "ase_name": "forces",
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -87,6 +90,7 @@ PROPERTY = {
         "requires_grad_with": ['positions'],
     },
     "edge_forces": {
+        "ase_name":None,
         'type': 'float',
         "scope": "per-edge",
         "rank": 1,
@@ -104,6 +108,7 @@ PROPERTY = {
         "requires_grad_with": ['edge_vector'],
     },
     "direct_forces": {
+        "ase_name": "forces",
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -122,6 +127,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "hessians": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-edge",
         "rank": 2,
@@ -142,6 +148,7 @@ PROPERTY = {
         "requires_grad_with": ['positions'],
     },
     "direct_hessians": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-edge",
         "rank": 2,
@@ -160,6 +167,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "stress": {
+        "ase_name": "stress",
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -179,6 +187,7 @@ PROPERTY = {
         "requires_grad_with": [], # manual set
     },
     "direct_stress": {
+        "ase_name": "stress",
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -197,6 +206,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "virials": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -216,6 +226,7 @@ PROPERTY = {
         "requires_grad_with": [], # manual set
     },
     "direct_virials": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -234,6 +245,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "atomic_stresses": {
+        "ase_name": "stresses",
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
@@ -252,6 +264,7 @@ PROPERTY = {
         "requires_grad_with": ['edge_vector'],
     },
     "atomic_virials": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
@@ -270,6 +283,7 @@ PROPERTY = {
         "requires_grad_with": ['edge_vector'],
     },
     "direct_dipole": {
+        "ase_name": "dipole",
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -292,6 +306,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "conservative_dipole": {
+        "ase_name": "dipole",
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -312,6 +327,7 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "polarization": {
+        "ase_name": "polarization",
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -333,6 +349,7 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "direct_polarizability": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -351,6 +368,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "conservative_polarizability": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -373,6 +391,7 @@ PROPERTY = {
         "requires_grad_with": ['electric_field'],
     },
     "born_effective_charges": {
+        "ase_name": "born_effective_charges",
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
@@ -395,6 +414,7 @@ PROPERTY = {
         "requires_grad_with": ['electric_field', 'positions'],
     },
     "magnetization": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -413,6 +433,7 @@ PROPERTY = {
         "requires_grad_with": ['magnetic_field'],
     },
     "magnetic_susceptibility": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
@@ -433,6 +454,7 @@ PROPERTY = {
         "requires_grad_with": ['magnetic_field'],
     },
     "charges": {
+        "ase_name": "charges",
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
@@ -451,6 +473,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "total_charge": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
@@ -470,6 +493,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "spin_multiplicity": {
+        "ase_name": None,
         'type': 'int',
         "scope": "per-system",
         "rank": 0,
@@ -488,6 +512,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "initial_collinear_magmoms": {
+        "ase_name": "initial_magmoms",
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
@@ -506,6 +531,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "initial_noncollinear_magmoms": {
+        "ase_name": "initial_magmoms",
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -524,6 +550,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "final_collinear_magmoms": {
+        "ase_name": "magmoms",
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
@@ -542,6 +569,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "final_noncollinear_magmoms": {
+        "ase_name": "magmoms",
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -560,6 +588,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "collinear_magnetic_forces": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
@@ -580,6 +609,7 @@ PROPERTY = {
         "requires_grad_with": ['magmoms_0'],
     },
     "noncollinear_magnetic_forces": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
@@ -600,6 +630,7 @@ PROPERTY = {
         "requires_grad_with": ['magmoms_1'],
     },
     "total_collinear_magmom": {
+        "ase_name": "magmoms",
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
@@ -618,6 +649,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "total_noncollinear_magmom": {
+        "ase_name": "magmoms",
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -636,6 +668,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "electric_field": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -654,6 +687,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "magnetic_field": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
@@ -671,25 +705,8 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "level": {
-        'type': 'int',
-        "scope": "per-system",
-        "rank": 0,
-        "abbreviation": "LEVEL",
-        "shape": {
-            "in_data": (1,),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
-        "enable_prediction": False,   
-        "enable_embedding": True,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
     "temperature": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
@@ -708,6 +725,7 @@ PROPERTY = {
         "requires_grad_with": [],
     },
     "electron_temperature": {
+        "ase_name": None,
         'type': 'float',
         "scope": "per-system",
         "rank": 0,

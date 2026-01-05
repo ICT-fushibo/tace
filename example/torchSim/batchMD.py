@@ -29,11 +29,12 @@ init_conf = water
 # init_conf = water.repeat((2,2,2))
 
 init_atomsList = [init_conf] * 5
-model = "../TACE-v1-OMat24-L.pt" # Your Model
+model = "../TACE-v1-OMat24-M.pt" # Your Model
 level = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
     level=level,
+    spin_off=True,
     device=device,
     dtype=dtype, 
     compute_forces=True,

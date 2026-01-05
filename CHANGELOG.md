@@ -2,7 +2,11 @@
 
 ## v0.0.9 (TODO)
 
-Add fine-tuning functionality, introduce LoRA support, and add fine-tuning scripts and tutorials.
+Add content related to spine aware
+
+Refactor part of the code
+
+Prepare the first official version 0.1.0
 
 ## v0.0.8
 
@@ -13,6 +17,8 @@ Add nonlinearity, NormGate, GatedGate.
 Add interface to torchSim.  
 
 Substantially refactor the code by moving Cartesian tensor operations from tace to cartnn, removing unnecessary tace components. 
+
+Add fine-tuning functionality, introduce LoRA support, and add fine-tuning scripts and tutorials.
 
 ## v0.0.7
 

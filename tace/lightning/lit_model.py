@@ -264,7 +264,7 @@ class LightningWrapperModel(L.LightningModule):
 
         return model.to(map_location)
 
-def load_tace(
+def _load_tace(
     model: str | Path | torch.nn.Module,
     device: Optional[str | torch.device] = None,
     strict: Optional[bool] = True,
@@ -296,6 +296,27 @@ def load_tace(
         model = model.to(device)
     else:
         raise TypeError("Model must be a path or torch.nn.Module")
+
+    return model
+
+def load_tace(
+    model: str | Path | torch.nn.Module,
+    device: Optional[str | torch.device] = None,
+    strict: Optional[bool] = True,
+    use_ema: bool = True,
+    target_property: Optional[list[str]] = None,
+    **kwargs: Any,
+):
+    model = _load_tace(
+        model=model,
+        device=device,
+        strict=strict,
+        use_ema=use_ema,
+        **kwargs,
+    )
+
+    if target_property:
+        model.reset_target_property(target_property)
 
     return model
 

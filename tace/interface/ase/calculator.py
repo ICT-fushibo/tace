@@ -9,7 +9,6 @@ from typing import Optional
 
 import torch
 from ase import units
-from ase.stress import full_3x3_to_voigt_6_stress
 from ase.calculators.calculator import Calculator, all_changes
 from ase.calculators.mixing import SumCalculator
 from torch_geometric.loader import DataLoader
@@ -45,7 +44,13 @@ class TACEAseCalc(Calculator):
     dtype : str, optional, default=None
         Model dtype for computations, e.g., float32 or float64.
     level : int
-        Specify which fidelity level to use. The default is the first.
+        Specify which fidelity level to use. 
+    spin_off : bool
+        If your model uses spin_off uie embedding, you can control whether 
+        your calculation enables spin polarization.
+    target_property: list(str)
+        Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
+        If you want to use this parameter, you must provide all the required physical quantities.
     neighborlist_backend: str
         Support backend in one of [ase, matscipy, vesin], recommend matscipy
     **kwargs
@@ -58,13 +63,21 @@ class TACEAseCalc(Calculator):
         *,
         dtype: Optional[str] = None,
         device: Optional[str] = None,
-        level: int = 0,
+        level: Optional[int] = None,
+        spin_off: Optional[bool] = None,
+        target_property: Optional[list[str]] = None,
         neighborlist_backend: str = "matscipy",
         **kwargs,
     ):
         super().__init__(**kwargs)
         # === init ===
-        model = load_tace(model, device, strict=True, use_ema=True)
+        model = load_tace(
+            model, 
+            device, 
+            strict=True, 
+            use_ema=True, 
+            target_property=target_property
+        )
         model_dtype = model.readout_fn.cutoff.dtype
         dtype = dtype or model_dtype
         self.dtype = DTYPE[dtype]
@@ -78,8 +91,14 @@ class TACEAseCalc(Calculator):
         model = model.to(dtype=self.dtype)
         self.target_property = list(set(model.target_property))
         self.embedding_property = model.embedding_property
-        self.implemented_properties = self.target_property + ["free_energy"]
-        self.universal_embedding = model.universal_embedding
+        self.implemented_properties = []
+        for p in self.target_property:
+            ase_name = PROPERTY[p]['ase_name']
+            save_name = ase_name if ase_name else p
+            if save_name == 'energy':
+                self.implemented_properties.extend(["energy" ,"free_energy"])
+            else:
+                self.implemented_properties.append(save_name)
         self.max_neighbors = getattr(model.readout_fn, "max_neighbors", None)
         self.cutoff = float(model.readout_fn.cutoff.item())
         self.element = TorchElement([int(z) for z in model.readout_fn.atomic_numbers.cpu().tolist()])
@@ -90,9 +109,19 @@ class TACEAseCalc(Calculator):
 
         self.keySpecification = KeySpecification()
         update_keyspec_from_kwargs(self.keySpecification, KEYS)
-  
-        self.level = level
-        model.level = self.level 
+ 
+        if level is not None:
+            self.level = level
+            model.reset_computing_level(level) 
+        else:
+            self.level = model.get_computing_level()
+
+        if spin_off is not None:
+            self.spin_off = spin_off
+            model.reset_spin_off(spin_off) 
+        else:
+            self.spin_off = model.get_spin_off() 
+
         self.model = model.to(self.device)
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
@@ -108,7 +137,7 @@ class TACEAseCalc(Calculator):
                 target_property=self.target_property,
                 embedding_property=self.embedding_property,
                 keyspec=self.keySpecification,
-                universal_embedding=self.universal_embedding,
+                universal_embedding=self.model.universal_embedding,
                 training=False,
                 neighborlist_backend=self.neighborlist_backend,
             ) 
@@ -121,38 +150,33 @@ class TACEAseCalc(Calculator):
         )
 
         batch = next(iter(dataloader)).to(self.device)
-        for p in self.target_property:
-            for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-                batch[requires_grad_p].requires_grad_(True)
-
+   
         # === forward ===
         outs = self.model(batch)
         # === update ===
         self.results = {}
         for p in self.target_property:
-            p_scope = PROPERTY[p]['scope']
             p_rank = PROPERTY[p]['rank']
+            p_scope = PROPERTY[p]['scope']
+            ase_name = PROPERTY[p]['ase_name']
+            save_name = ase_name if ase_name else p
             prop = outs[p]
             if p_scope == 'per-system':
                 if p_rank == 0:
                     if p == 'energy':
                         energy = prop.detach().cpu().item()
-                        self.results[p] = energy
-                        self.results["free_energy"] = self.results[p]
+                        self.results['energy'] = energy
+                        self.results["free_energy"] = self.results['energy']
                     else:
-                        self.results[p] = prop.detach().cpu().item()
-                elif set([p]) & {'stress', 'virials'} :
-                    prop = prop.detach().cpu().numpy().squeeze(0)
-                    prop = full_3x3_to_voigt_6_stress(prop)
-                    self.results[p] = prop
+                        self.results[save_name] = prop.detach().cpu().item()
                 else:
-                    self.results[p] = outs[p].detach().cpu().numpy().squeeze(0)
+                    self.results[save_name] = prop.detach().cpu().numpy().squeeze(0)
             elif p_scope == 'per-atom':
-                self.results[p] = prop.detach().cpu().numpy()
+                self.results[save_name] = prop.detach().cpu().numpy()
             elif p_scope == 'per-edge':
-                raise
+                self.results[save_name] = prop.detach().cpu().numpy()
             else:
-                raise
+                self.results[save_name] = prop.detach().cpu().numpy()
 
         
     # def get_hessians(self, atoms=None):

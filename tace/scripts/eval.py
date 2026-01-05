@@ -156,19 +156,13 @@ def main():
                     if p_rank == 0:
                         atoms_i.info[f"TACE_{p}"] = pred[p][i].item()
                     else:
-                        atoms_i.info[f"TACE_{p}"] = pred[p][i].numpy().reshape(-1)
+                        atoms_i.info[f"TACE_{p}"] = pred[p][i].detach().cpu().numpy().reshape(-1)
                 elif p_scope == 'per-atom':
-                    atoms_i.arrays[f"TACE_{p}"] = pred[p][start:end].numpy().reshape(-1, 3**p_rank)
-                elif p_scope == 'edge':
-                    raise TypeError(
-                        f"Property '{p}' has unsupported scope '{p_scope}'. "
-                        "Only 'per-system' and 'per-atom' types are supported for writing to ASE files now."
-                    )
+                    atoms_i.arrays[f"TACE_{p}"] = pred[p][start:end].detach().cpu().numpy().reshape(-1, 3**p_rank)
+                elif p_scope == 'per-edge':
+                    atoms_i.info[f"TACE_{p}"] = pred[p][i].detach().cpu().numpy().reshape(-1)
                 else:
-                    raise TypeError(
-                        f"Property '{p}' has unsupported scope '{p_scope}'. "
-                        "Only 'per-system' and 'per-atom' types are supported for writing to ASE files now."
-                    )
+                    atoms_i.info[f"TACE_{p}"] = pred[p][i].detach().cpu().numpy().reshape(-1)
             pred_atoms_list.append(atoms_i)
             structure_index += 1  # move to next structure
 

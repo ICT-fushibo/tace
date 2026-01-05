@@ -29,11 +29,12 @@ from tace.interface.torchsim import TACETorchSimCalc
 # === Input ===
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = "../TACE-v1-OMat24-L.pt" # Your Model
+model = "../TACE-v1-OMat24-M.pt" # Your Model
 level = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
     level=level,
+    spin_off=True,
     device=device,
     dtype=dtype, 
     compute_forces=True,

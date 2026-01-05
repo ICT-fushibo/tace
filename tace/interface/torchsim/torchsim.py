@@ -14,7 +14,7 @@ systems simultaneously.
 
 from collections.abc import Callable
 from pathlib import Path
-
+from typing import Optional
 
 import torch
 import torch_sim as ts
@@ -30,7 +30,9 @@ class TACETorchSimCalc(ModelInterface):
         self,
         model: str | Path | torch.nn.Module | None = None,
         *,
-        level: int = 0,
+        level: Optional[int] = None,
+        spin_off: Optional[bool] = None,
+        target_property: Optional[list[str]] = None,
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float64, 
         neighbor_list_fn: Callable = vesin_nl_ts,
@@ -44,6 +46,14 @@ class TACETorchSimCalc(ModelInterface):
         and system indices, or these can be provided during the forward pass.
 
         Args:
+            level : int
+                Specify which fidelity level to use. 
+            spin_off : bool
+                If your model uses spin_off uie embedding, you can control whether 
+                your calculation enables spin polarization.
+            target_property: list(str)
+                Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
+                If you want to use this parameter, you must provide all the required physical quantities.
             atomic_numbers (torch.Tensor | None): Atomic numbers with shape [n_atoms].
                 If provided at initialization, cannot be provided again during forward.
             system_idx (torch.Tensor | None): System indices with shape [n_atoms]
@@ -62,11 +72,26 @@ class TACETorchSimCalc(ModelInterface):
         self._memory_scales_with = "n_atoms_x_density"
 
         # Load TACE model
-        model = load_tace(model, self._device, strict=True, use_ema=True) 
+        model = load_tace(
+            model, 
+            self._device, 
+            strict=True, 
+            use_ema=True, 
+            target_property=target_property
+        ) 
+        if level is not None:
+            self.level = level
+            model.reset_computing_level(level) 
+        else:
+            self.level = model.get_computing_level()
+        if spin_off is not None:
+            self.spin_off = spin_off
+            model.reset_spin_off(spin_off) 
+        else:
+            self.spin_off = model.get_spin_off() 
         model.eval()
         for param in model.parameters():
             param.requires_grad = False
-        model.level = level
         self.model = model
         if self.dtype is not None:
             self.model = self.model.to(dtype=self.dtype)

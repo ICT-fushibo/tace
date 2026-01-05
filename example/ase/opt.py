@@ -40,7 +40,7 @@ from tace.interface.ase import TACEAseCalc, add_dispersion
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 level = 0  # first fidelity
-model = "../TACE-v1-OMat24-L.pt"  # Your Model
+model = "../TACE-v1-OMat24-M.pt"  # Your Model
 dispersion = False
 filter = "frechet"
 optimizer = "FIRE"

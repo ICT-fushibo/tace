@@ -33,6 +33,7 @@ tmp/
 test/
 xzm/
 v2/
+draw/
 
 # Ignore specific files
 .DS_Store

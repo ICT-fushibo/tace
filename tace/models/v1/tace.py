@@ -480,4 +480,7 @@ class TACEV1(torch.nn.Module):
     def forward(self, data: Dict[str, torch.Tensor], graph: Graph) -> Dict[str, Any]:
         outs = self.descriptor(data, graph)
         return self.readout_fn(data, graph, outs)
+    
+    def _reset_target_property(self, target_property: List[str]):
+        self.target_property = target_property
 

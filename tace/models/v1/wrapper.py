@@ -10,7 +10,7 @@ import torch
 from torch import Tensor
 from e3nn.util.jit import compile_mode
 
-
+from .tace import TACEV1
 from .utils import Graph
 from ...dataset.quantity import PROPERTY, ComputeFlag
 from ...utils.torch_scatter import scatter_sum
@@ -18,18 +18,55 @@ from ...utils.torch_scatter import scatter_sum
 
 @compile_mode("script")
 class WrapModelV1(torch.nn.Module):
-    def __init__(self, readout_fn: torch.nn.Module):
-        super().__init__()
-        # === init and compute flag ===
-        self.level = 0
-        target = set(readout_fn.target_property)
-        self.target_property = readout_fn.target_property
-        self.embedding_property = readout_fn.embedding_property
-        self.universal_embedding = readout_fn.universal_embedding
-        self.readout_fn = readout_fn
-        self.lmp = False
 
-        # === Compute Flag ===
+    def __init__(self, readout_fn: TACEV1):
+        super().__init__()
+        self.readout_fn = readout_fn
+        target_property = readout_fn.target_property
+        self._set_target_property(target_property)
+        self._set_lammps_mliap()
+        self.set_embedding_property()
+        self.set_universal_embedding()
+        self._set_spin_off()
+        self._set_computing_level()
+   
+    def _set_spin_off(self, enable: bool = False):
+        self.spin_off = enable
+
+    def reset_spin_off(self, enable: bool = True):
+        assert isinstance(enable, List)
+        self._set_spin_off(enable)
+
+    def get_spin_off(self):
+        return self.spin_off
+
+    def set_embedding_property(self):
+        self.embedding_property = getattr(
+            self.readout_fn, "embedding_property", []
+        )
+
+    def set_universal_embedding(self):
+        self.universal_embedding = getattr(
+            self.readout_fn, "universal_embedding", {}
+        )
+
+    def _set_computing_level(self, level: int = 0):
+        self.level = level
+        
+    def reset_computing_level(self, level: int = 0):
+        assert isinstance(level, int) and level >= 0
+        self.level = level
+
+    def get_computing_level(self):
+        return self.level
+
+    def _set_target_property(self, target_property: List[str]):
+
+        self.target_property = target_property
+
+        # # TODO, call readout_fn reset
+        # aaa
+
         self.flags = ComputeFlag()
         for k in self.target_property:
             setattr(self.flags, f"compute_{k}", k in self.target_property)
@@ -44,19 +81,24 @@ class WrapModelV1(torch.nn.Module):
             if PROPERTY[p]['second_derivative']:
                 self.compute_second_derivative = True
 
-        if target & {"forces", "hessians"}:
-            self.flags.compute_forces = True
-        if 'electric_field' in self.universal_embedding['equivariant_embedding_property']:
-            if target & {"polarization", "conservative_dipole", "conservative_polarizability", "born_effective_charges"}:
-                self.flags.compute_polarization = True
-        if 'magnetic_field' in self.universal_embedding['equivariant_embedding_property']:
-            if target & {"magnetization", "magnetic_susceptibility"}:
-                self.flags.compute_magnetization = True
-
         self.retain_graph = self.compute_second_derivative
         self.create_graph = self.compute_second_derivative
 
-  
+    def reset_target_property(self, target_property: List[str]):
+        assert isinstance(target_property, List)
+        self._set_target_property(target_property)
+        self.readout_fn._reset_target_property(target_property)
+
+    def get_target_property(self):
+        return self.target_property
+
+    def _set_lammps_mliap(self, enable: bool = False):
+        self.lmp = enable
+
+    def reset_lammps_mliap(self, enable: bool = True):
+        assert isinstance(enable, List)
+        self._set_lammps_mliap(enable)
+
     def forward(self, data: Dict[str, Tensor]) -> Dict[str, Optional[Tensor]]:
         # === pre processing ===
         graph = self.prepare_graph(data)
@@ -126,7 +168,9 @@ class WrapModelV1(torch.nn.Module):
             inputs.append(data["initial_collinear_magmoms"])
         if self.flags.compute_noncollinear_magnetic_forces:
             inputs.append(data["initial_noncollinear_magmoms"])
-        if self.flags.compute_edge_forces:
+        if self.flags.compute_edge_forces or \
+            self.flags.compute_atomic_virials or \
+            self.flags.compute_atomic_stresses:
             inputs.append(graph.edge_vector)
             
         if self.compute_first_derivative:
@@ -162,7 +206,9 @@ class WrapModelV1(torch.nn.Module):
         if self.flags.compute_noncollinear_magnetic_forces:
             NC_MAG_F = -grads[idx]
             idx += 1
-        if self.flags.compute_edge_forces:
+        if self.flags.compute_edge_forces or \
+            self.flags.compute_atomic_virials or \
+            self.flags.compute_atomic_stresses:
             EDGE_F = grads[idx] # consistency with LAMMPS
             idx += 1
             A_V, A_S = self.compute_atomic_virials_stresses(
@@ -272,7 +318,7 @@ class WrapModelV1(torch.nn.Module):
             CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
 
         if self.flags.compute_hessians:
-            H = self.H_FN(first_derivative["forces"], data, data["ptr"], self.training)
+            H = self.H_FN(first_derivative["forces"], data["positions"], data["ptr"])
             if H is None:
                 H = torch.zeros(
                     POS.shape[0] * POS.shape[0],
@@ -331,20 +377,19 @@ class WrapModelV1(torch.nn.Module):
         atomic_virials = None
         atomic_stresses = None
 
-        if self.flags.compute_atomic_virials:
+        if self.flags.compute_atomic_virials or self.flags.compute_atomic_stresses:
             edge_virials = torch.einsum("zi,zj->zij", edge_forces, graph.edge_vector)
             atomic_virials_source = scatter_sum(
-                source=edge_virials, index=edge_index[0], dim=0, dim_size=node_attrs.size(0)
+                edge_virials, edge_index[0], dim=0, dim_size=node_attrs.size(0)
             )
             atomic_virials_target = scatter_sum(
-                source=edge_virials, index=edge_index[1], dim=0, dim_size=node_attrs.size(0)
+                edge_virials, edge_index[1], dim=0, dim_size=node_attrs.size(0)
             )
             atomic_virials = (atomic_virials_source + atomic_virials_target) / 2
             atomic_virials = -1 * (atomic_virials + atomic_virials.transpose(-1, -2)) / 2
 
-        if self.flags.compute_atomic_stresses:
             volume = torch.linalg.det(lattice).abs().unsqueeze(-1)
-            atomic_stresses = -1* atomic_virials / volume[batch].view(-1, 1, 1)
+            atomic_stresses = -1 * atomic_virials / volume[batch].view(-1, 1, 1)
             atomic_stresses = torch.where(
                 torch.abs(atomic_stresses) < 1e10, atomic_stresses, torch.zeros_like(atomic_stresses)
             )
@@ -385,9 +430,12 @@ class WrapModelV1(torch.nn.Module):
             lmp_natoms = (nlocal, nghosts)
             num_atoms_arange = torch.arange(nlocal, device=positions.device, dtype=torch.int64)
         else:
+            requires_grad_p_list = []
             for p in self.target_property:
                 for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-                    data[requires_grad_p].requires_grad_(True)
+                    requires_grad_p_list.append(requires_grad_p)
+                    if requires_grad_p != "edge_vector":
+                        data[requires_grad_p].requires_grad_(True)
             dtype = data["node_attrs"].dtype
             device =  data["node_attrs"].device 
             positions = data["positions"]
@@ -407,6 +455,8 @@ class WrapModelV1(torch.nn.Module):
                     "ni,nij->nj", data["edge_shifts"], data["lattice"][edge_batch]
                 )
             )
+            if set(self.target_property) & {"edge_vector", "atomic_stresses", "atomic_virials"}:
+                    edge_vector.requires_grad_(True)
             edge_length = (edge_vector**2).sum(dim=1, keepdim=True).sqrt() + 1e-9
             lattice = data['lattice']
             lmp_data = None
@@ -436,7 +486,7 @@ class WrapModelV1(torch.nn.Module):
                 inputs=[positions],
                 grad_outputs=torch.ones_like(grad_elem),
                 retain_graph=True,
-                create_graph=self.trainging,
+                create_graph=self.training,
                 allow_unused=False,
             )[0]
             hess_row = hess_row.detach()
@@ -521,6 +571,9 @@ class WrapModelV1(torch.nn.Module):
             block = block.reshape(N_i * N_i, 3, 3)
             blocks.append(block)
         return torch.cat(blocks, dim=0)
+
+
+
 
 
 
