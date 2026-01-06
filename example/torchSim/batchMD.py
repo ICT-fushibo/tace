@@ -18,23 +18,28 @@ import ase
 from ase.io import read
 
 
+from tace.foundations import tace_foundations
 from tace.interface.torchsim import TACETorchSimCalc
 
 # === model ===
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-water = read('liquid-64.xyz', '0')
+water = read('../liquid-64.xyz', '0')
 init_conf = water
 # init_conf = water.repeat((2,2,2))
 
-init_atomsList = [init_conf] * 5
-model = "../TACE-v1-OMat24-M.pt" # Your Model
+init_atomsList = [init_conf] * 2
+# Put your (auto)download model in ~/.cache/tace
+model = tace_foundations["TACE-v1-OAM-M"]
+
+dtype = 'float32'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 level = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
     level=level,
-    spin_off=True,
+    spin_on=False,
     device=device,
     dtype=dtype, 
     compute_forces=True,

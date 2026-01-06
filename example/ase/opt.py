@@ -33,14 +33,17 @@ optimizer_cls = {
     "GOQN": ase.optimize.GoodOldQuasiNewton,
 }
 
-
+from tace.foundations import tace_foundations
 from tace.interface.ase import TACEAseCalc, add_dispersion
 
+
+# Put your (auto)download model in ~/.cache/tace
+model = tace_foundations["TACE-v1-OAM-M"]
 
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 level = 0  # first fidelity
-model = "../TACE-v1-OMat24-M.pt"  # Your Model
+
 dispersion = False
 filter = "frechet"
 optimizer = "FIRE"

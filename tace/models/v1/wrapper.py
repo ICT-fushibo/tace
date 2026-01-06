@@ -195,14 +195,18 @@ class WrapModelV1(torch.nn.Module):
             self.flags.compute_atomic_stresses:
             EDGE_F = grads[idx] # consistency with LAMMPS
             idx += 1
-            A_V, A_S = compute_atomic_virials_stresses(
-                graph.edge_vector,
-                EDGE_F,
-                data['edge_index'],
-                graph.lattice,
-                data['batch'],
-                data['node_attrs'].size(0),
-            )
+            if not self.lmp:
+                A_V, A_S = compute_atomic_virials_stresses(
+                    graph.edge_vector,
+                    EDGE_F,
+                    data['edge_index'],
+                    graph.lattice,
+                    data['batch'],
+                    data['node_attrs'].size(0),
+                    True,
+                    True,
+                )
+                
         return {
             "forces": F,
             "virials": V,

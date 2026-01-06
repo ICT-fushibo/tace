@@ -58,7 +58,7 @@ class CachedModelRegistry(Mapping):
 
     def __getitem__(self, key: str) -> Path:
         if key not in self._registry:
-            logging.error(f"Unknown pretrained model: {key}")
+            print(f"[ERROR], Unknown pretrained model: {key}")
             self.print_models()
             raise KeyError(key)
 
@@ -101,9 +101,9 @@ class CachedModelRegistry(Mapping):
         return sorted(self._registry.keys())
 
     def print_models(self):
-        logging.info("Available pretrained models:")
+        print("Available pretrained models:")
         for name in self.list_models():
-            logging.info(f"  - {name}")
+            print(f"  - {name}")
 
 
 tace_foundations = CachedModelRegistry(

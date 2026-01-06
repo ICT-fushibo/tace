@@ -48,25 +48,26 @@ def compute_symmetric_displacement(
 
 
 def compute_atomic_virials_stresses(
-    self,
     edge_vector: torch.Tensor,
     edge_forces: torch.Tensor,
     edge_index: torch.Tensor, 
     lattice: torch.Tensor, 
     batch: torch.Tensor,
     num_nodes: torch.Tensor,
+    compute_atomic_virials: bool,
+    compute_atomic_stresses: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     
     atomic_virials = None
     atomic_stresses = None
 
-    if self.flags.compute_atomic_virials or self.flags.compute_atomic_stresses:
+    if compute_atomic_virials or compute_atomic_stresses:
         edge_virials = torch.einsum("zi,zj->zij", edge_forces, edge_vector)
         atomic_virials_source = scatter_sum(
-            edge_virials, edge_index[0], dim=0, dim_size=num_nodes.size(0)
+            edge_virials, edge_index[0], dim=0, dim_size=num_nodes
         )
         atomic_virials_target = scatter_sum(
-            edge_virials, edge_index[1], dim=0, dim_size=num_nodes.size(0)
+            edge_virials, edge_index[1], dim=0, dim_size=num_nodes
         )
         atomic_virials = (atomic_virials_source + atomic_virials_target) / 2
         atomic_virials = -1 * (atomic_virials + atomic_virials.transpose(-1, -2)) / 2

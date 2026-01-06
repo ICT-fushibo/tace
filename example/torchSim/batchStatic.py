@@ -11,17 +11,21 @@ import torch_sim as ts
 from ase.io import read, write
 
 
+from tace.foundations import tace_foundations
 from tace.interface.torchsim import TACETorchSimCalc
 
 # === Input ===
-dtype = torch.float32
+
+# Put your (auto)download model in ~/.cache/tace
+model = tace_foundations["TACE-v1-OAM-M"]
+
+dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = "../TACE-v1-OMat24-M.pt" # Your Model
 level = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
     level=level,
-    spin_off=True,
+    spin_on=False,
     device=device,
     dtype=dtype, 
     compute_forces=True,
@@ -29,7 +33,7 @@ model = TACETorchSimCalc(
 )
 
 # === input atoms ===
-atomsList = read('../unrelaxed.xyz', index=':')
+atomsList = read('../unrelaxed.xyz', index=':')[:2]
 
 # Automatically manage the memory of multiple Gpus to full capacity
 results = ts.static(
@@ -57,5 +61,3 @@ for idx, result in enumerate(results):
     atomsList[idx].arrays['forces'] = forces
     atomsList[idx].info['stress'] = stress
     write('static.xyz', atomsList)
-
-from torch_sim.models.metatomic import MetatomicModel

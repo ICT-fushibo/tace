@@ -23,7 +23,7 @@ dependencies = [
     "configargparse",
     "pandas",
     "lmdb",
-    "torch-sim-atomistic",
+    "torch-sim-atomistic!=0.5.0",
     "wandb",
     "huggingface_hub",
 ]
