@@ -43,35 +43,6 @@ def add_dict_to_right(
     return T2
 
 
-def satisfy(r_1:int, r_2: int, restriction, r_o: Optional[int] = None):
-    r_1_r_2 = None; bool_1 = True
-    r_o_r_1 = None; bool_2 = True
-
-    if isinstance(restriction, str):
-        r_1_r_2 = restriction
-    elif isinstance(restriction, Dict):
-        r_1_r_2 = restriction.get('r_1_r_2', None)
-        r_o_r_1 = restriction.get('r_o_r_1', None)
-    else:
-        return True
-    
-    if r_1_r_2 == "<=":
-        bool_1 = (r_1 <= r_2)
-    elif r_1_r_2 == "==":
-        bool_1 = (r_1 == r_2)
-    else:
-        bool_1 = True
-    
-    if r_o is not None:
-        if r_o_r_1 == "<=":
-            bool_2 = (r_o <= r_1)
-        elif r_o_r_1 == "==":
-            bool_2 = (r_o == r_1)
-        else:
-            bool_2 = True
-    return bool_1 and bool_2
-
-
 def compute_fixed_charge_dipole(
     charges: torch.Tensor,
     positions: torch.Tensor,
@@ -100,23 +71,6 @@ def torch_full_3x3_to_voigt_6_stress(stress_tensor: torch.Tensor) -> torch.Tenso
         dim=-1,
     )
     return s_voigt
-
-
-def vec_to_skew(v: torch.Tensor) -> torch.Tensor:
-    """ TODO, maybe not (1,1,1) to (2,1,1), should use basis change
-    v: (B, 3) tensor
-    return: (B, 3, 3) skew-symmetric matrix
-    """
-    x, y, z = v[:, 0], v[:, 1], v[:, 2]
-    zero = torch.zeros_like(x)
-
-    row1 = torch.stack([zero, -z, y], dim=1)
-    row2 = torch.stack([z, zero, -x], dim=1)
-    row3 = torch.stack([-y, x, zero], dim=1)
-
-    skew = torch.stack([row1, row2, row3], dim=1)
-    return skew
-
 
 def select_corresponding_level(
         x: torch.Tensor, node_level: torch.Tensor, num_levels: int

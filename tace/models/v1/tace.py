@@ -181,6 +181,12 @@ class TACEV1(torch.nn.Module):
                     "Supported methods are ['lagrangian', 'uniform_distribution']."
                 )
             
+        # === Direct Hessians ===
+        if 'direct_hessians' in self.target_property:
+            self.direct_hessians_readout0s = build_scalar_readout(**for_scalar_readout)
+            self.direct_hessians_readout2s = build_tensor_readout(l=2, **for_tensor_readout)
+            self.direct_hessians_basis_change = PropertyBasisChange["direct_hessians"]() 
+
         # === Universal Invariant Embedding, not allow multi-head ===
         if cfg['readout_emlp'].get('enable_uie_readout', False) \
         and self.universal_embedding['invariant_embedding_property']:
@@ -399,6 +405,42 @@ class TACEV1(torch.nn.Module):
                 c_delta_node = (c_graph - data["total_charge"]) / (data["ptr"][1:] - data["ptr"][:-1])
                 CHARGES = c_node + c_delta_node[batch]
 
+        # === Direct Polarizability ===
+        D_HESSIANS = None
+        if 'direct_hessians' in self.target_property:
+            d_hessians0_list = []; d_hessians2_list = []
+            for ii, (direct_hessians_readout0, direct_hessians_readout2) in enumerate(
+                zip(self.direct_hessians_readout0s, self.direct_hessians_readout2s)
+            ):
+                if not self.use_all_layer:
+                    ii = -1
+                d_hessians0_list.append(
+                    direct_hessians_readout0(
+                        descriptors[ii][0],
+                    )[num_atoms_arange, node_level]
+                )
+                d_hessians2_list.append(
+                    direct_hessians_readout2(
+                        descriptors[ii][2],
+                        node_level,
+                    )[num_atoms_arange, node_level, :, :]
+                )
+            d_hessians0_node = torch.sum(torch.stack(d_hessians0_list, dim=-1), dim=-1)
+            d_hessians2_node = torch.sum(torch.stack(d_hessians2_list, dim=-1), dim=-1)
+            d_hessians_node = self.direct_hessians_basis_change(d_hessians0_node, d_hessians2_node)
+
+            d_hessians_list = []
+            for idx in range(num_graphs):
+                start = data["ptr"][idx]
+                end = data["ptr"][idx+1]
+                this_d_hessians_node = d_hessians_node[start:end, :, :]
+                d_hessians_list.append(
+                    (
+                        0.5 * (this_d_hessians_node[:, None, :, :] + this_d_hessians_node[None, :, :, :] )
+                    ).reshape(-1, 3, 3)
+                ) 
+            D_HESSIANS = torch.cat(d_hessians_list, dim=0)
+            
         if hasattr(self, 'les'):
             les_lq_list = []
             for ii, les_readout in enumerate(self.les_readouts):
@@ -462,12 +504,13 @@ class TACEV1(torch.nn.Module):
             
         return {
             "energy": E,
-            "node_energy": e_node, # TODO, check the inside of les
+            "node_energy": e_node, # TODO, BUG check the inside of les
             "direct_dipole": D,
             "direct_polarizability": ALPHA,
             "direct_forces": D_F,
             "direct_virials": D_V,
             "direct_stress": D_S,
+            "direct_hessians": D_HESSIANS,
             "charges": CHARGES,
             "les_energy": LES_E,
             "les_latent_charges": LES_LQ,

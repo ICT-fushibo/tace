@@ -31,7 +31,7 @@ class TACEAseCalc(Calculator):
     """
     Initialize a TACEAseCalc. We support the most fundamental potential energy surface property and multi-fidelity, 
     multi-head, etc. For some advanced features, you need to store the attributes that need to be embedded in atoms.info, 
-    atmos.arrays or add a funciton by yourself. If you only need to predict, you can directly use the `tace-eval` 
+    atoms.arrays or add a funciton by yourself. If you only need to predict, you can directly use the `tace-eval` 
     command. It will output the predicted files, and if you add the `--test` option, it will also output the errors.
 
     Parameters
@@ -45,8 +45,8 @@ class TACEAseCalc(Calculator):
         Model dtype for computations, e.g., float32 or float64.
     level : int
         Specify which fidelity level to use. 
-    spin_off : bool
-        If your model uses spin_off uie embedding, you can control whether 
+    spin_on : bool
+        If your model uses spin_on uie embedding, you can control whether 
         your calculation enables spin polarization.
     target_property: list(str)
         Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
@@ -64,7 +64,7 @@ class TACEAseCalc(Calculator):
         dtype: Optional[str] = None,
         device: Optional[str] = None,
         level: Optional[int] = None,
-        spin_off: Optional[bool] = None,
+        spin_on: Optional[bool] = None,
         target_property: Optional[list[str]] = None,
         neighborlist_backend: str = "matscipy",
         **kwargs,
@@ -116,11 +116,11 @@ class TACEAseCalc(Calculator):
         else:
             self.level = model.get_computing_level()
 
-        if spin_off is not None:
-            self.spin_off = spin_off
-            model.reset_spin_off(spin_off) 
+        if spin_on is not None:
+            self.spin_on = spin_on
+            model.reset_spin_on(spin_on) 
         else:
-            self.spin_off = model.get_spin_off() 
+            self.spin_on = model.get_spin_on() 
 
         self.model = model.to(self.device)
 
@@ -160,95 +160,22 @@ class TACEAseCalc(Calculator):
             p_scope = PROPERTY[p]['scope']
             ase_name = PROPERTY[p]['ase_name']
             save_name = ase_name if ase_name else p
-            prop = outs[p]
             if p_scope == 'per-system':
                 if p_rank == 0:
                     if p == 'energy':
-                        energy = prop.detach().cpu().item()
+                        energy = outs[p].detach().cpu().item()
                         self.results['energy'] = energy
                         self.results["free_energy"] = self.results['energy']
                     else:
-                        self.results[save_name] = prop.detach().cpu().item()
+                        self.results[save_name] = outs[p].detach().cpu().item()
                 else:
-                    self.results[save_name] = prop.detach().cpu().numpy().squeeze(0)
+                    self.results[save_name] = outs[p].detach().cpu().numpy().squeeze(0)
             elif p_scope == 'per-atom':
-                self.results[save_name] = prop.detach().cpu().numpy()
+                self.results[save_name] = outs[p].detach().cpu().numpy()
             elif p_scope == 'per-edge':
-                self.results[save_name] = prop.detach().cpu().numpy()
+                self.results[save_name] = outs[p].detach().cpu().numpy()
             else:
-                self.results[save_name] = prop.detach().cpu().numpy()
-
-        
-    # def get_hessians(self, atoms=None):
-    #     self.target_property = list(set(self.target_property+'hessians'))
-    #     self.model.compute_forces = True
-    #     self.model.compute_hessians = True
-    #     self.model.compute_first_derivative = True
-
-    #     data = [
-    #         from_atoms(
-    #             self.element,
-    #             atoms,
-    #             self.cutoff,
-    #             max_neighbors=self.max_neighbors,
-    #             target_property=self.target_property,
-    #             embedding_property=self.embedding_property,
-    #             keyspec=self.keySpecification,
-    #             universal_embedding=self.universal_embedding,
-    #             training=False,
-    #             neighborlist_backend=self.neighborlist_backend,
-    #         ) 
-    #     ]
-
-    #     dataloader = DataLoader(
-    #         dataset=data,
-    #         batch_size=1,
-    #         shuffle=False,
-    #         drop_last=False,
-    #     )
-
-    #     batch = next(iter(dataloader))
-    #     batch.to(self.device)
-    #     for p in self.target_property:
-    #         for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-    #             batch[requires_grad_p].requires_grad_(True)
-    #     outs = self.model(batch)
-
-    #     return outs["hessians"].detach().cpu().numpy() 
-
-
-    # def get_direct_polarizability(self, atoms=None):
-    #     self.target_property = list(set(self.target_property+'direct_polarizability'))
-    #     data = [
-    #         from_atoms(
-    #             self.element,
-    #             atoms,
-    #             self.cutoff,
-    #             max_neighbors=self.max_neighbors,
-    #             target_property=self.target_property,
-    #             embedding_property=self.embedding_property,
-    #             keyspec=self.keySpecification,
-    #             universal_embedding=self.universal_embedding,
-    #             training=False,
-    #             neighborlist_backend=self.neighborlist_backend,
-    #         ) 
-    #     ]
-
-    #     dataloader = DataLoader(
-    #         dataset=data,
-    #         batch_size=1,
-    #         shuffle=False,
-    #         drop_last=False,
-    #     )
-
-    #     batch = next(iter(dataloader))
-    #     batch.to(self.device)
-    #     for p in self.target_property:
-    #         for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-    #             batch[requires_grad_p].requires_grad_(True)
-    #     outs = self.model(batch)
-    #     return outs['direct_polarizability'] .detach().cpu().numpy() 
-
+                self.results[save_name] = outs[p].detach().cpu().numpy()
 
 def add_dispersion(
     base_calc: Calculator,

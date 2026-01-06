@@ -37,7 +37,7 @@ class LightningWrapperModel(L.LightningModule):
         self.cfg = cfg
         self.statistics = statistics  # TODO
         model = from_lora_to_merged_model(model)
-        self.model = to_lora_model(cfg['finetune'], model)
+        self.model = to_lora_model(cfg.get('finetune', {}), model)
 
         # === Loss === 
         self.loss_fn = instantiate(cfg["loss"])  # TODO
@@ -269,7 +269,6 @@ def _load_tace(
     device: Optional[str | torch.device] = None,
     strict: Optional[bool] = True,
     use_ema: bool = True,
-    # backend: str = 'torch',
     **kwargs: Any,
 ):
     device = DEVICE[device]
@@ -282,22 +281,28 @@ def _load_tace(
                 strict=strict,
                 use_ema=use_ema,
             )
-        elif model_path.endswith(".pt") or model_path.endswith(".pth"):
-            model = torch.load(
-                model_path, 
-                weights_only=False, 
-                # strict=strict, 
+        elif (model_path.endswith(".pt") or model_path.endswith(".pth")):
+            obj = torch.load(
+                model_path,
                 map_location=device,
+                weights_only=False,
                 **kwargs,
             )
+            if isinstance(obj, dict) and "state_dict" in obj:
+                model = select_model(
+                    **{k: v for k, v in obj.items() if k != "state_dict"}
+                )
+                model.load_state_dict(obj["state_dict"])
+            elif isinstance(obj, torch.nn.Module):
+                model = obj
         else:
-            raise ValueError("❌ Model path must end with '.ckpt', '.pt', or '.pth'")
+            raise ValueError("❌ Model path must end with .ckpt, .pt or .pth")
     elif isinstance(model, torch.nn.Module):
-        model = model.to(device)
+        pass
     else:
         raise TypeError("Model must be a path or torch.nn.Module")
 
-    return model
+    return model.to(device)
 
 def load_tace(
     model: str | Path | torch.nn.Module,

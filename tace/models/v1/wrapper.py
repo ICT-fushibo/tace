@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
 
 import torch
@@ -11,6 +11,12 @@ from torch import Tensor
 from e3nn.util.jit import compile_mode
 
 from .tace import TACEV1
+from .wrapper_utils import (
+    compute_symmetric_displacement, 
+    compute_atomic_virials_stresses,
+    compute_hessians_vmap,
+    sample_force_jacobian,
+)
 from .utils import Graph
 from ...dataset.quantity import PROPERTY, ComputeFlag
 from ...utils.torch_scatter import scatter_sum
@@ -18,6 +24,9 @@ from ...utils.torch_scatter import scatter_sum
 
 @compile_mode("script")
 class WrapModelV1(torch.nn.Module):
+
+    level: int
+    spin_on: int
 
     def __init__(self, readout_fn: TACEV1):
         super().__init__()
@@ -27,18 +36,18 @@ class WrapModelV1(torch.nn.Module):
         self._set_lammps_mliap()
         self.set_embedding_property()
         self.set_universal_embedding()
-        self._set_spin_off()
+        self._set_spin_on()
         self._set_computing_level()
    
-    def _set_spin_off(self, enable: bool = False):
-        self.spin_off = enable
+    def _set_spin_on(self, enable: bool = False):
+        self.spin_on = 1 if enable else 0
 
-    def reset_spin_off(self, enable: bool = True):
-        assert isinstance(enable, List)
-        self._set_spin_off(enable)
+    def reset_spin_on(self, enable: bool = True):
+        assert isinstance(enable, bool)
+        self._set_spin_on(enable)
 
-    def get_spin_off(self):
-        return self.spin_off
+    def get_spin_on(self) -> int:
+        return self.spin_on
 
     def set_embedding_property(self):
         self.embedding_property = getattr(
@@ -57,15 +66,19 @@ class WrapModelV1(torch.nn.Module):
         assert isinstance(level, int) and level >= 0
         self.level = level
 
-    def get_computing_level(self):
+    def get_computing_level(self) -> int:
         return self.level
 
     def _set_target_property(self, target_property: List[str]):
 
-        self.target_property = target_property
+        if 'direct_hessians' in target_property:
+            raise
+        if 'final_collinear_magmoms' in target_property:
+            raise
+        if 'final_noncollinear_magmoms' in target_property:
+            raise
 
-        # # TODO, call readout_fn reset
-        # aaa
+        self.target_property = target_property
 
         self.flags = ComputeFlag()
         for k in self.target_property:
@@ -82,24 +95,24 @@ class WrapModelV1(torch.nn.Module):
                 self.compute_second_derivative = True
 
         self.retain_graph = self.compute_second_derivative
-        self.create_graph = self.compute_second_derivative
-
+        self.create_graph = self.compute_second_derivative\
+        
     def reset_target_property(self, target_property: List[str]):
         assert isinstance(target_property, List)
         self._set_target_property(target_property)
         self.readout_fn._reset_target_property(target_property)
 
-    def get_target_property(self):
+    def get_target_property(self) -> List[str]:
         return self.target_property
 
     def _set_lammps_mliap(self, enable: bool = False):
         self.lmp = enable
 
     def reset_lammps_mliap(self, enable: bool = True):
-        assert isinstance(enable, List)
+        assert isinstance(enable, bool)
         self._set_lammps_mliap(enable)
 
-    def forward(self, data: Dict[str, Tensor]) -> Dict[str, Optional[Tensor]]:
+    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Optional[torch.Tensor | List[torch.Tensor]]]:
         # === pre processing ===
         graph = self.prepare_graph(data)
 
@@ -108,36 +121,8 @@ class WrapModelV1(torch.nn.Module):
         FIRST = self.first_derivative_fn(data, graph, RESULTS)
         SECOND = self.second_derivative_fn(data, graph, RESULTS, FIRST)
 
-        return {
-            "energy": RESULTS["energy"],
-            "node_energy": RESULTS['node_energy'],
-            "charges": RESULTS["charges"],
-            "forces": FIRST["forces"],
-            "edge_forces": FIRST["edge_forces"],
-            "collinear_magnetic_forces": FIRST["collinear_magnetic_forces"],
-            "noncollinear_magnetic_forces": FIRST["noncollinear_magnetic_forces"],
-            "virials": FIRST["virials"],
-            "stress": FIRST["stress"],
-            "atomic_virials":FIRST["atomic_virials"],
-            "atomic_stresses": FIRST["atomic_stresses"],
-            "direct_dipole": RESULTS['direct_dipole'],
-            "conservative_dipole": FIRST["polarization"],
-            "polarization": FIRST["polarization"],
-            "magnetization": FIRST["magnetization"],
-            "conservative_polarizability": SECOND["conservative_polarizability"],
-            "direct_polarizability": RESULTS["direct_polarizability"],
-            "born_effective_charges": SECOND["born_effective_charges"],
-            "hessians": SECOND["hessians"],
-            "magnetic_susceptibility": SECOND["magnetic_susceptibility"],
-            "les_latent_charges": RESULTS["les_latent_charges"],
-            "les_born_effective_charges": RESULTS["les_born_effective_charges"],
-            "scalar_descriptor": RESULTS['scalar_descriptor'],
-            "direct_forces": RESULTS["direct_forces"],
-            "direct_virials": RESULTS["direct_virials"],
-            "direct_stress": RESULTS["direct_stress"],
-            "final_collinear_magmoms": RESULTS["final_collinear_magmoms"],
-            "final_noncollinear_magmoms": RESULTS["final_noncollinear_magmoms"],
-        }
+        return {**RESULTS, **FIRST, **SECOND}
+
 
     def first_derivative_fn(
         self, data: Dict[str, Tensor], graph: Graph, results: Dict[str, Tensor]
@@ -183,7 +168,6 @@ class WrapModelV1(torch.nn.Module):
                 create_graph=self.training or self.create_graph,
                 allow_unused=True,
             )
-
         idx = 0
         if self.flags.compute_forces:
             F = -grads[idx]
@@ -211,13 +195,13 @@ class WrapModelV1(torch.nn.Module):
             self.flags.compute_atomic_stresses:
             EDGE_F = grads[idx] # consistency with LAMMPS
             idx += 1
-            A_V, A_S = self.compute_atomic_virials_stresses(
-                graph,
+            A_V, A_S = compute_atomic_virials_stresses(
+                graph.edge_vector,
                 EDGE_F,
                 data['edge_index'],
-                data['node_attrs'],
-                data['batch'],
                 graph.lattice,
+                data['batch'],
+                data['node_attrs'].size(0),
             )
         return {
             "forces": F,
@@ -240,20 +224,23 @@ class WrapModelV1(torch.nn.Module):
         first_derivative: Dict[str, torch.Tensor],
     ) -> Dict[str, torch.Tensor]:
 
-        POS = graph.positions
+        forces = first_derivative["forces"]
         polarization = first_derivative["polarization"]
         magnetization = first_derivative["magnetization"]
 
         inputs_list: List[Tensor] = []
         if self.flags.compute_born_effective_charges:
-            inputs_list.append(data["positions"])
+            inputs_list.append(graph.positions)
         if self.flags.compute_conservative_polarizability:
             inputs_list.append(data["electric_field"])
 
         BEC = None
         ALPHA = None
         CHI_M = None
-        H = None
+        HESSIANS = None
+        jacs_per_graph = None
+        samples_per_graph = None
+
         BECList = []
         ALPHAList = []
         CHI_MList = []
@@ -281,11 +268,11 @@ class WrapModelV1(torch.nn.Module):
 
                 if BEC is None:
                     BEC = torch.zeros(
-                        POS.shape[0],
+                        graph.positions.shape[0],
                         3,
                         3,
-                        device=POS.device,
-                        dtype=POS.dtype,
+                        device=graph.positions.device,
+                        dtype=graph.positions.dtype,
                     )
                 if ALPHA is None:
                     ALPHA = torch.zeros_like(data["electric_field"])
@@ -317,85 +304,28 @@ class WrapModelV1(torch.nn.Module):
                 CHI_MList.append(CHI_M)  # [B,3]
             CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
 
+
         if self.flags.compute_hessians:
-            H = self.H_FN(first_derivative["forces"], data["positions"], data["ptr"])
-            if H is None:
-                H = torch.zeros(
-                    POS.shape[0] * POS.shape[0],
-                    3,
-                    3,
-                    device=POS.device,
-                    dtype=POS.dtype,
+            if self.training:
+                jacs_per_graph, samples_per_graph = sample_force_jacobian(
+                    forces, 
+                    graph.positions, 
+                    data["ptr"], 
+                    num_samples=2,
+                    create_graph=self.training,
                 )
+            else:
+                HESSIANS = compute_hessians_vmap(forces, graph.positions)
 
         return {
-            "hessians": H,
+            "hessians": HESSIANS,
+            "jacs_per_graph": jacs_per_graph,
+            "samples_per_graph": samples_per_graph,
             "conservative_polarizability": ALPHA,
             "born_effective_charges": BEC,
             "magnetic_susceptibility": CHI_M,
         }
 
-    def compute_symmetric_displacement(self, data: Dict[str, Tensor], num_graphs: int) -> Tensor:
-
-        displacement = torch.zeros(
-            (num_graphs, 3, 3),
-            dtype=data["positions"].dtype,
-            device=data["positions"].device,
-        )
-        displacement.requires_grad_(True)
-        symmetric_displacement = 0.5 * (displacement + displacement.transpose(-1, -2))
-
-        positions = data["positions"]
-        positions.requires_grad_(True)
-        if data["lattice"] is None:
-            data["lattice"] = torch.zeros(
-                num_graphs * 3,
-                3,
-                dtype=data["positions"].dtype,
-                device=data["positions"].device,
-            )
-
-        data["positions"] = positions + torch.einsum(
-            "be,bec->bc", positions, symmetric_displacement[data["batch"]]
-        )
-
-        lattice = data["lattice"]
-        data["lattice"] = lattice + torch.matmul(lattice, symmetric_displacement)
-
-        return displacement
-
-    def compute_atomic_virials_stresses(
-        self,
-        graph: Graph,
-        edge_forces: Tensor,
-        edge_index: Tensor, 
-        node_attrs: Tensor,
-        batch: Tensor,
-        lattice: Tensor, 
-    ) -> Tuple[Tensor, Optional[Tensor]]:
-        
-        atomic_virials = None
-        atomic_stresses = None
-
-        if self.flags.compute_atomic_virials or self.flags.compute_atomic_stresses:
-            edge_virials = torch.einsum("zi,zj->zij", edge_forces, graph.edge_vector)
-            atomic_virials_source = scatter_sum(
-                edge_virials, edge_index[0], dim=0, dim_size=node_attrs.size(0)
-            )
-            atomic_virials_target = scatter_sum(
-                edge_virials, edge_index[1], dim=0, dim_size=node_attrs.size(0)
-            )
-            atomic_virials = (atomic_virials_source + atomic_virials_target) / 2
-            atomic_virials = -1 * (atomic_virials + atomic_virials.transpose(-1, -2)) / 2
-
-            volume = torch.linalg.det(lattice).abs().unsqueeze(-1)
-            atomic_stresses = -1 * atomic_virials / volume[batch].view(-1, 1, 1)
-            atomic_stresses = torch.where(
-                torch.abs(atomic_stresses) < 1e10, atomic_stresses, torch.zeros_like(atomic_stresses)
-            )
-
-        return atomic_virials, atomic_stresses
-    
     def prepare_graph(self, data: Dict[str, torch.Tensor]) -> Graph:
 
         node_level = (
@@ -403,6 +333,9 @@ class WrapModelV1(torch.nn.Module):
             if "level" in data
             else torch.full_like(data['batch'], self.level, dtype=torch.int64)
         )  # used for multi-fidelity and multi-head
+
+        if "spin_on" not in data: # used for uie
+            data['spin_on'] = torch.tensor([self.spin_on], device=data["node_attrs"].device, dtype=torch.int64)
 
         if self.lmp:
             for p in self.target_property:
@@ -444,7 +377,7 @@ class WrapModelV1(torch.nn.Module):
                 (num_graphs, 3, 3), dtype=dtype, device=device
             )
             if self.flags.compute_virials or self.flags.compute_stress:
-                displacement = self.compute_symmetric_displacement(data, num_graphs)
+                displacement = compute_symmetric_displacement(data, num_graphs)
             source = data["edge_index"][0]
             target = data["edge_index"][1]
             edge_batch = data["batch"][source]
@@ -477,103 +410,5 @@ class WrapModelV1(torch.nn.Module):
             num_atoms_arange=num_atoms_arange,
         )
     
-    def compute_hessians_loop(self, forces: Tensor, positions: Tensor) -> Tensor:
-        """from MACE"""
-        hessian = []
-        for grad_elem in forces.view(-1):
-            hess_row = torch.autograd.grad(
-                outputs=[-1 * grad_elem],
-                inputs=[positions],
-                grad_outputs=torch.ones_like(grad_elem),
-                retain_graph=True,
-                create_graph=self.training,
-                allow_unused=False,
-            )[0]
-            hess_row = hess_row.detach()
-            if hess_row is None:
-                hessian.append(torch.zeros_like(positions))
-            else:
-                hessian.append(hess_row)
-        hessian = torch.stack(hessian)
-        return hessian
-
-
-    # @torch.jit.unused
-    # def hessians_fn(
-    #     forces: Tensor,
-    #     positions: Tensor,
-    # ) -> Tensor:
-    #     """from MACE"""
-    #     forces_flatten = forces.view(-1)
-    #     numel = forces_flatten.shape[0]
-
-    #     def get_vjp(v):
-    #         return torch.autograd.grad(
-    #             -1 * forces_flatten,
-    #             positions,
-    #             v,
-    #             retain_graph=True,
-    #             create_graph=False,
-    #             allow_unused=False,
-    #         )
-
-    #     I_N = torch.eye(numel).to(forces.device)
-    #     try:
-    #         chunk_size = 1 if numel < 64 else 16
-    #         gradient = torch.vmap(get_vjp, in_dims=0, out_dims=0, chunk_size=chunk_size)(
-    #             I_N
-    #         )[0]
-    #     except RuntimeError:
-    #         gradient = compute_hessians_loop(forces, positions)
-    #     if gradient is None:
-    #         return torch.zeros((positions.shape[0], forces.shape[0], 3, 3))
-    #     return gradient
-
-
-
-    def H_FN(
-        self,
-        forces: Tensor,
-        positions: Tensor,
-        PTR: Tensor,
-    ) -> Tensor:
-        forces_flatten = forces.view(-1)
-        numel = forces_flatten.shape[0]
-
-        def get_vjp(v):
-            return torch.autograd.grad(
-                -1 * forces_flatten,
-                positions,
-                v,
-                retain_graph=True,
-                create_graph=self.training,
-                allow_unused=False,
-            )
-
-        I_N = torch.eye(numel).to(forces.device)
-        try:
-            chunk_size = 1 if numel < 64 else 16
-            gradient = torch.vmap(get_vjp, in_dims=0, out_dims=0, chunk_size=chunk_size)(
-                I_N
-            )[0]
-        except RuntimeError:
-            gradient = self.compute_hessians_loop(forces, positions)
-        if gradient is None:
-            gradient = torch.zeros((forces.shape[0], positions.shape[0], 3, 3))
-        N = gradient.shape[1]
-        hessian = gradient.view(N, 3, N, 3).permute(0, 2, 1, 3).contiguous()
-        blocks = []
-        for i in range(len(PTR) - 1):
-            start = PTR[i]
-            end = PTR[i + 1]
-            N_i = end - start
-            block = hessian[start:end, start:end, :, :]
-            block = block.reshape(N_i * N_i, 3, 3)
-            blocks.append(block)
-        return torch.cat(blocks, dim=0)
-
-
-
-
 
 

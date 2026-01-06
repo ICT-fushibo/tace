@@ -14,8 +14,8 @@ from ..dataset.statistics import Statistics
 from ..utils.utils import deep_convert
 
 
-def select_wrapper(cfg: Dict) -> Any:
-    wrapper_path = cfg["model"]["config"].get("wrapper", {}).get("_target_", "tace.models.WrapModelV1")
+def select_wrapper(model_config: Dict) -> Any:
+    wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.WrapModelV1")
     module_name, class_name = wrapper_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     wrap_cls = getattr(module, class_name)
@@ -27,18 +27,23 @@ def select_model(
     statistics: Optional[Statistics],
     target_property: List[str],
     embedding_property: List[str],
+    **kwargs,
 ) -> torch.nn.Module:
-    # === wrapper ===
-    WRAPPER_CLS = select_wrapper(cfg)
+    
+    if "model" in cfg:
+        model_config = (cfg['model']['config'])
+    else:
+        model_config = cfg
+
+    # === wrapper cls ===
+    WRAPPER_CLS = select_wrapper(model_config)
 
     # === model cls ===
-    model_path = cfg['model']['config'].get('_target_', 'tace.models.TACEV1')
-    if model_path == "tace.models.tace.TACE": # for compatible with earlier version
-        model_path = "tace.models.TACEV1"
+    model_path = model_config.get('_target_', 'tace.models.TACEV1')
     module_name, class_name = model_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     MODEL_CLS = getattr(module, class_name)
-    model_config = deep_convert(cfg['model']['config'])
+    model_config = deep_convert(model_config)
     # === instantiate ===
     try:
         MODEL = WRAPPER_CLS(

@@ -17,12 +17,12 @@ from ..utils._global import CACHE_DIR
 
 
 OAM_SERIES = {
-    "TACE-v1-OMat24-M": "https://huggingface.co/xvzemin/tace-oam/resolve/main/TACE-v1-OMat24-M.pt",
-    "TACE-v1-OAM-M": "https://huggingface.co/xvzemin/tace-oam/resolve/main/TACE-v1-OAM-M.pt",
+    "TACE-v1-OMat24-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OMat24-M.pt",
+    "TACE-v1-OAM-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OAM-M.pt",
 }
 
 REICO_SERIES = {
-    "TACE-v1-REICO-PdAgCHO": "https://huggingface.co/xvzemin/tace-recio/resolve/main/TACE-v1-REICO-5-PdAgCHO.pt",
+    # "TACE-v1-REICO-PdAgCHO": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-REICO-5-PdAgCHO.pt",
 }
 
 

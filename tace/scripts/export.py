@@ -13,7 +13,7 @@ from ..lightning import load_tace
 from ..utils._global import DTYPE
 
 
-ALLOWED_BACKEND = ["lammps", "torch"]
+ALLOWED_BACKEND = ["state_dict", "whole_model", "lammps"]
 
 
 def parse_args():
@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument(
         "-l", "--level",
         type=int,
-        default=0,
+        default=None,
         help="Which fidelity to use",
     )
     parser.add_argument(
@@ -49,7 +49,7 @@ def parse_args():
     parser.add_argument(
         "--backend", 
         type=str, 
-        default="lammps",
+        default="state_dict",
         choices=ALLOWED_BACKEND, 
         help="Specify the backend to export"
     )
@@ -64,16 +64,28 @@ def main():
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
     torch.set_default_dtype(args_dtype)
-    model.level = args.level
+    if args.level is not None:
+        model.level = args.level
     model.to(dtype=args_dtype, device=args.device)
-    
-    if args.backend == "lammps":
+
+    if args.backend == "state_dict":
+        torch.save(
+            {
+                "state_dict": model.state_dict(),
+                "cfg": model.readout_fn.model_config,
+                "target_property": model.readout_fn.target_property,
+                "embedding_property": model.readout_fn.embedding_property,
+                "statistics": model.readout_fn.statistics,
+            }, 
+            args.model + "-state.pt"
+        )
+    elif args.backend == "whole_model":
+        torch.save(model, args.model + "-whole.pt") 
+    elif args.backend == "lammps":
         from ..interface.lammps import TACELammpsCalc
         model.lmp = True
         lammps_model = TACELammpsCalc(model)
         torch.save(lammps_model, args.model + "-lammps_mliap.pt")
-    elif args.backend == "torch":
-        torch.save(model, args.model + "-torch.pt") 
     else:
         raise ValueError(f"Unsupported backend '{args.backend}'. One of {ALLOWED_BACKEND} is available.")
 

@@ -120,6 +120,7 @@ dataset:
     forces_key: forces
     stress_key: stress
     virials_key: virials
+    hessians_key: hessians
     charges_key: charges
     total_charge_key: total_charge
     spin_multiplicity_key: spin_multiplicity
@@ -144,6 +145,8 @@ dataset:
     total_noncollinear_magmoms_key: total_noncollinear_magmoms
     collinear_magnetic_forces_key: collinear_magnetic_forces
     noncollinear_magnetic_forces_key: noncollinear_magnetic_forces
+    spin_on_key: spin_on
+
 
   train_dataloader:
     _target_: torch_geometric.loader.DataLoader

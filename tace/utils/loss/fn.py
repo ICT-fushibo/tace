@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, Callable
+from typing import Dict, Callable, List
 
 
 import torch
@@ -266,12 +266,12 @@ def mse_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor
     total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
     return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
 
-# @register_loss
-# def mse_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-#     key = "final_collinear_magmoms"
-#     batch = label.batch
-#     total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
-#     return torch.mean(torch.square(abs(pred[key]) - abs(label[key])) * total_weight)
+@register_loss
+def mse_abs_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "final_collinear_magmoms"
+    batch = label.batch
+    total_weight = (label.entropy * label.final_collinear_magmoms_weight)[batch]
+    return torch.mean(torch.square(abs(pred[key]) - abs(label[key])) * total_weight)
 
 @register_loss
 def mse_final_noncollinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
@@ -333,14 +333,42 @@ def mse_total_noncollinear_magmom_per_atom(pred: Dict[str, Tensor], label: Dict[
         torch.square((label[key] - pred[key]) / num_atoms) * total_weight
     )
 
-# TODO for xzm, not allowed for user now
-@register_loss
-def mse_hessians(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    batch = label.batch
-    total_weight = (label.entropy * label.hessians_weight)[batch][batch]  # TODO check
-    total_weight = total_weight.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-    return torch.mean(
-        torch.square((label["hessians"] - pred["hessians"]))
-        * total_weight  # hessians shape: [atoms*atom, 3, 3]
-    )
 
+@register_loss
+def l2ne_hessians(
+        pred: Dict[str, Tensor], 
+        label: Dict[str, Tensor],
+    ) -> torch.Tensor:
+
+    scale = 10.0
+    true_hessian_flat = label["hessians"]
+    num_atoms_per_graph = label["ptr"][1:] - label["ptr"][:-1]
+    jacs_per_graph = pred["jacs_per_graph"]
+    samples_per_graph = pred["samples_per_graph"]
+
+    offset = 0
+    losses = []
+
+    for jac_pred, samples, n_g in zip(jacs_per_graph, samples_per_graph, num_atoms_per_graph):
+        hess_size = n_g * 3 * n_g * 3
+        hess_flat_g = true_hessian_flat[offset : offset + hess_size]
+        hess_true = hess_flat_g.reshape(n_g, 3, n_g, 3)
+        offset += hess_size
+
+        atom_idx = samples[:, 0]
+        xyz_idx = samples[:, 1]
+        jac_true = hess_true[atom_idx, xyz_idx]
+        diff = jac_pred - jac_true  # (k_g, n_g, 3)
+        row_norm = torch.norm(diff, p=2, dim=-1)  # (k_g, n_g)
+        loss_g = row_norm.sum(dim=1).mean(dim=0)
+        if hess_true.abs().max().item() > 1e4:
+            loss_g = loss_g * 1e-8
+        losses.append(loss_g)
+
+    total_loss = torch.stack(losses).sum()
+
+    num_graphs = len(jacs_per_graph)
+    total_loss = total_loss / num_graphs
+    total_loss = total_loss * scale
+
+    return total_loss

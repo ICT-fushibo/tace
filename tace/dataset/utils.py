@@ -46,17 +46,18 @@ def default_value_for_rank4_graph(num_atoms: int,  class_: str, **kwargs):
 
 
 def default_value_for_hessians(num_atoms: int, class_: str, **kwargs):
-    return np.zeros((num_atoms * num_atoms, 3, 3))
+    return np.zeros((num_atoms * 3 * num_atoms * 3))
 
 
 def shape_fn_for_hessians(t: Tensor, num_atoms: int, **kwargs):
-    assert t.ndim == num_atoms * num_atoms * 3 * 3, "hessians shape is not correct"
-    t = (
-        t.reshape(num_atoms, 3, num_atoms, 3)
-        .permute(0, 2, 1, 3)
-        .reshape(num_atoms * num_atoms, 3, 3)
+    # assert np.allclose(t, t.T, atol=1e-6)
+    shape1 = (num_atoms * 3 , num_atoms * 3)
+    shape2 = (num_atoms * 3 * num_atoms * 3)
+    assert t.shape == shape1 or t.shape == shape2, (
+        f"hessians shape mismatch: got {tuple(t.shape)}, expected {shape1} or {shape2}"
     )
-    return t
+    return t.view(-1)
+
 
 
 def voigt_to_matrix(t: Tensor, **kwargs):

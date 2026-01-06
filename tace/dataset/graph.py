@@ -154,7 +154,7 @@ def from_atoms(
                 if shape_fn is not None:
                     p = shape_fn(
                         p,
-                        num_aotms=num_atoms,
+                        num_atoms=num_atoms,
                     )
             pDict.update({name: p.view(*in_data)})
         except Exception as e:

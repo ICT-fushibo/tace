@@ -1,5 +1,5 @@
-LAMMPS-MLIAP Tutorial
-=====================
+LAMMPS-ML-IAP Tutorial
+======================
 
 This tutorial demonstrates how to use a TACE model in LAMMPS.
 

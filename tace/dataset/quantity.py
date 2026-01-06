@@ -26,8 +26,6 @@ from .utils import (
 )
 
 
-# TODO BUG only update exist keys, keep the default keys
-
 PROPERTY = {
     "level": {
         "ase_name": None,
@@ -133,7 +131,7 @@ PROPERTY = {
         "rank": 2,
         "abbreviation": "HESSIAN",
         "shape": {
-            "in_data": (-1, 3, 3),
+            "in_data": (-1,),
             "shape_fn": shape_fn_for_hessians,
         },
         "default_value_fn": default_value_for_hessians,
@@ -141,7 +139,7 @@ PROPERTY = {
             1: ['energy', 'forces'],
         },
         "conflict_with": {},
-        "enable_prediction": False, # In principle, it is also supported, but the code is a bit cumbersome.
+        "enable_prediction": True,
         "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": True,
@@ -154,13 +152,13 @@ PROPERTY = {
         "rank": 2,
         "abbreviation": "D_HESSIAN",
         "shape": {
-            "in_data": (-1, 3, 3),
+            "in_data": (-1,),
             "shape_fn": shape_fn_for_hessians,
         },
         "default_value_fn": default_value_for_hessians,
         "must_be_with": {},
         "conflict_with": {},
-        "enable_prediction": False, # In principle, it is also supported, but the code is a bit cumbersome.
+        "enable_prediction": True,
         "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": False,
@@ -743,6 +741,25 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
+    "spin_on": {
+        "ase_name": None,
+        'type': 'int',
+        "scope": "per-system",
+        "rank": 0,
+        "abbreviation": "SPIN_ON",
+        "shape": {
+            "in_data": (1,),
+            "shape_fn": None,
+        },
+        "default_value_fn": default_value_for_rank0_graph,
+        "must_be_with": {},
+        "conflict_with": {},
+        "enable_prediction": False,   
+        "enable_embedding": True,
+        "first_derivative": False,
+        "second_derivative": False,
+        "requires_grad_with": [],
+    },
 }
 
 SUPPORT_PREDICT_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_prediction']]
@@ -769,6 +786,7 @@ class DefaultKeys(Enum):
     DIRECT_VIRIALS = "direct_virials"
     DIRECT_DIPOLE = "direct_dipole"
     DIRECT_POLARIZABILITY = "direct_polarizability"
+    DIRECT_HESSIANS = "direct_hessians"
 
     # charges
     CHARGES = "charges"
@@ -794,6 +812,7 @@ class DefaultKeys(Enum):
     NONCOLLINEAR_MAGNETIC_FORCES = "noncollinear_magnetic_forces"
     TOTAL_COLLINEAR_MAGMOM = "total_collinear_magmom"
     TOTAL_NONCOLLINEAR_MAGMOM = "total_noncollinear_magmom"
+    SPIN_ON = "spin_on"
 
     # only for embedding
     LEVEL = 'level'
@@ -837,8 +856,8 @@ def update_keyspec_from_kwargs(
     keyspec: KeySpecification, keydict: Dict[str, str]
 ) -> KeySpecification:
     '''Modify from MACE to simplify reading property'''
-    infos = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] == 'per-system')]
-    arrays = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] != 'per-system')] # not correct,but for convenience now
+    infos = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] != 'per-atom')]
+    arrays = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] == 'per-atom')]
     info_keys = {}
     arrays_keys = {}
     for key in infos:
@@ -911,28 +930,32 @@ def get_embedding_property(cfg: Dict, separate: bool = False) -> List[str] | Tup
 MAE_PROPERTY = [
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        # and p != "final_collinear_magmoms"
+        and p != "final_collinear_magmoms"
+        and p != "hessians"
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        # and p != "final_collinear_magmoms"
+        and p != "final_collinear_magmoms"
+        and p != "hessians"
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization"
-    # and p != "final_collinear_magmoms"
+    and p != "final_collinear_magmoms"
     and p != "stress"   
     and p != "direct_stress"  
+        and p != "hessians"
 ]
 RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization" 
-    # and p != "final_collinear_magmoms"
+    and p != "final_collinear_magmoms"
     and p != "stress"    
-    and p != "direct_stress"    
+    and p != "direct_stress"   
+    and p != "hessians" 
 ]
 
 
@@ -953,4 +976,5 @@ def get_target_irreps(target_property: List[str]):
         "direct_virials" in target_property else None
     target_irreps.extend([1]) if "direct_dipole" in target_property else None
     target_irreps.extend([1]) if "direct_forces" in target_property else None
+    target_irreps.extend([0, 2]) if "direct_hessians" in target_property else None
     return sorted(list(set(target_irreps)))

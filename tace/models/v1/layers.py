@@ -13,6 +13,17 @@ from .linear import Linear
 from .gate import NormGate, GatedGate
 
 
+def format_list(obj, ndigits=4):
+    if isinstance(obj, int):
+        return str(obj)
+    elif isinstance(obj, float):
+        return f"{obj:.{ndigits}f}"
+    elif isinstance(obj, (list, tuple)):
+        return "[" + ", ".join(format_list(x, ndigits) for x in obj) + "]"
+    else:
+        return str(obj)
+  
+  
 class OneHotToAtomicEnergy(torch.nn.Module):
     def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
         super().__init__()
@@ -34,7 +45,17 @@ class OneHotToAtomicEnergy(torch.nn.Module):
         return torch.matmul(x, self.atomic_energy.T)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(atomic_eneries={[f'{x:.4f}' for x in self.atomic_energy.reshape(-1).tolist()]})"
+        s = f"{self.__class__.__name__}(\n"
+        s += "  atomic_energies = {\n"
+
+        data = self.atomic_energy.detach().cpu().numpy()
+
+        for i in range(data.shape[0]):
+            s += f"    level {i}: {format_list(data[i].tolist(), 4)}\n"
+
+        s += "  }\n"
+        s += ")"
+        return s
 
 
 class ScaleShift(torch.nn.Module):
@@ -110,12 +131,15 @@ class ScaleShift(torch.nn.Module):
         return node_energy
 
     def __repr__(self):
+
         s = f"{self.__class__.__name__}(\n"
         s += f"  atomic_numbers = {self.atomic_numbers.tolist()}\n"
+
         if self.has_scale:
             s += "  scale = {\n"
             for lvl in range(self.scale.shape[0]):
-                s += f"    level {lvl}: {self.scale[lvl].detach().cpu().numpy().tolist()}\n"
+                data = self.scale[lvl].detach().cpu().numpy().tolist()
+                s += f"    level {lvl}: {format_list(data, 4)}\n"
             s += "  }\n"
         else:
             s += "  scale = None\n"
@@ -123,14 +147,15 @@ class ScaleShift(torch.nn.Module):
         if self.has_shift:
             s += "  shift = {\n"
             for lvl in range(self.shift.shape[0]):
-                s += f"    level {lvl}: {self.shift[lvl].detach().cpu().numpy().tolist()}\n"
+                data = self.shift[lvl].detach().cpu().numpy().tolist()
+                s += f"    level {lvl}: {format_list(data, 4)}\n"
             s += "  }\n"
         else:
             s += "  shift = None\n"
 
         s += ")"
         return s
-
+    
     @classmethod
     def build_from_config(cls, statistics, cfg: Dict):
         required_keys = [

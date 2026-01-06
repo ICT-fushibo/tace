@@ -104,9 +104,13 @@ config:
         enable: false
         num_embeddings: 5 # (int) the number of different DFT computational levels
       
-      spin_multiplicity:
+      spin_on:
         enable: false
         num_embeddings: 2 # (int) 
+
+      spin_multiplicity:
+        enable: false
+        num_embeddings: 3 # (int) 
       
       charges:
         enable: false
@@ -140,6 +144,10 @@ config:
       magnetic_field:
         enable: false
         normalizer: 1.0 # (float)
+
+  special: # this field can be thoroughly ignored if you only interested in E/F/S training
+    hessians:
+      num_samples: 2 # traing E/F/Hessian, for each graph, <= num_samples atoms's hessians will be used to train
 
 
 

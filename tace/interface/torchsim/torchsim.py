@@ -31,7 +31,7 @@ class TACETorchSimCalc(ModelInterface):
         model: str | Path | torch.nn.Module | None = None,
         *,
         level: Optional[int] = None,
-        spin_off: Optional[bool] = None,
+        spin_on: Optional[bool] = None,
         target_property: Optional[list[str]] = None,
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float64, 
@@ -48,8 +48,8 @@ class TACETorchSimCalc(ModelInterface):
         Args:
             level : int
                 Specify which fidelity level to use. 
-            spin_off : bool
-                If your model uses spin_off uie embedding, you can control whether 
+            spin_on : bool
+                If your model uses spin_on uie embedding, you can control whether 
                 your calculation enables spin polarization.
             target_property: list(str)
                 Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
@@ -84,11 +84,11 @@ class TACETorchSimCalc(ModelInterface):
             model.reset_computing_level(level) 
         else:
             self.level = model.get_computing_level()
-        if spin_off is not None:
-            self.spin_off = spin_off
-            model.reset_spin_off(spin_off) 
+        if spin_on is not None:
+            self.spin_on = spin_on
+            model.reset_spin_on(spin_on) 
         else:
-            self.spin_off = model.get_spin_off() 
+            self.spin_on = model.get_spin_on() 
         model.eval()
         for param in model.parameters():
             param.requires_grad = False

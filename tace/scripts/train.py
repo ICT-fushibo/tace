@@ -123,6 +123,8 @@ def build(cfg: DictConfig):
             )
         cfg['model']['config'] = model.readout_fn.model_config
         statistics = model.readout_fn.statistics
+        cfg['finetune'] = cfg.get('finetune', {})
+
     else: # finetune_from_model or from scratch
         model = select_model(cfg, statistics, target_property, embedding_property)
 
