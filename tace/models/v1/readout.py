@@ -157,19 +157,7 @@ class TensorReadOut(torch.nn.Module):
             for idx, linear in enumerate(self.linears_1):
                 t = self.gates[idx](linear(t))
             return self.linear_2(t)
-            
-    def forward(self, x, node_level=None):
-        if self.use_multi_head:
-            if self.last_readout:
-                x = self.mlp_1(x)
-                x = select_corresponding_level(x, node_level, self.num_levels)
-                x = self.mlp_2(x)
-            else:
-                x = self.mlp(x)
-            return x
-        else:
-            return self.mlp(x)
-        
+                    
 def build_scalar_readout(
     in_dim: int,
     hidden_dim: List[int],
@@ -181,6 +169,9 @@ def build_scalar_readout(
     use_all_layer: bool,
 ):
     
+    if use_multi_head:
+        assert len(hidden_dim) <= 1
+
     if use_multi_head:
         out_dim = num_levels
     else:
@@ -229,7 +220,10 @@ def build_tensor_readout(
     num_layers: int,
     use_all_layer: bool,
 ):
-    
+
+    if use_multi_head:
+        assert len(hidden_dim) <= 1
+
     if use_multi_head:
         out_dim = num_levels
     else:
