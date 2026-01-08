@@ -156,21 +156,31 @@ def compute_atomic_energy_per_level(
 def compute_atomic_energy(
     points: Atoms, element: Element, keyspec: KeySpecification, num_levels: int,
 ) -> Dict[int, float]:
+    
     atomic_energies = []
     len_train = len(points)
-    for level_idx in range(num_levels):
-        points_per_level = []
-        for i in range(len_train):
-            level = points[i].info.get(keyspec.info_keys['level'], 0)
 
-            if level == level_idx:
-                points_per_level.append(points[i])
-        assert len(points_per_level) > 0
+    if num_levels > 1:
+        for level_idx in range(num_levels):
+            points_per_level = []
+            for i in range(len_train):
+                level = points[i].info.get(keyspec.info_keys['level'], 0)
+
+                if level == level_idx:
+                    points_per_level.append(points[i])
+            assert len(points_per_level) > 0
+            atomic_energies.append(
+                compute_atomic_energy_per_level(
+                    points_per_level, element, keyspec,
+                )
+            )
+    else:
         atomic_energies.append(
             compute_atomic_energy_per_level(
-                points_per_level, element, keyspec,
+                points, element, keyspec,
             )
         )
+            
     return atomic_energies
 
 def analyze_dataset_statistics(
