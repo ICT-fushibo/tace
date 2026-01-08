@@ -40,9 +40,7 @@ class ScalarReadOut(torch.nn.Module):
         self.is_nonlinear = False
         self.enable_layer_norm = enable_layer_norm
         self.num_levels = num_levels
-        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
-        if self.use_multi_head:
-            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_mlp.hidden_dim must be only one neuron'
+        self.use_multi_head = (use_multi_head) and (num_levels > 1) 
 
         # === build the MLP + weight init ===
         mlp = []
@@ -78,17 +76,26 @@ class ScalarReadOut(torch.nn.Module):
                 mlp.append(act)
                 self.is_nonlinear = True
 
+        self.last_readout = True if len(hidden_dim) > 0 else False
+
         if self.use_multi_head: 
-            self.mlp_1 = torch.nn.Sequential(*mlp[:-1]) 
-            self.mlp_2 = torch.nn.Sequential(mlp[-1])   
+            if self.last_readout:
+                self.mlp_1 = torch.nn.Sequential(*mlp[:-1]) 
+                self.mlp_2 = torch.nn.Sequential(mlp[-1])   
+            else:
+                self.mlp = torch.nn.Sequential(mlp[-1])    
         else:
             self.mlp = torch.nn.Sequential(*mlp)
 
     def forward(self, x, node_level=None):
         if self.use_multi_head:
-            x = self.mlp_1(x)
-            x = select_corresponding_level(x, node_level, self.num_levels)
-            return self.mlp_2(x)
+            if self.last_readout:
+                x = self.mlp_1(x)
+                x = select_corresponding_level(x, node_level, self.num_levels)
+                x = self.mlp_2(x)
+            else:
+                x = self.mlp(x)
+            return x
         else:
             return self.mlp(x)
 
@@ -107,9 +114,7 @@ class TensorReadOut(torch.nn.Module):
 
         self.l = l
         self.num_levels = num_levels
-        self.use_multi_head = (use_multi_head) and (num_levels > 1) and len(hidden_dim) > 0
-        if self.use_multi_head:
-            assert len(hidden_dim) == 1, 'For multihead training, cfg.model.config.readout_emlp.hidden_dim must be only one neuron'
+        self.use_multi_head = (use_multi_head) and (num_levels > 1)
 
         self.linears_1 = torch.nn.ModuleList()
         prev_dim = in_dim
@@ -135,14 +140,36 @@ class TensorReadOut(torch.nn.Module):
             l=self.l,
         )
 
+        self.last_readout = True if len(hidden_dim) > 0 else False
+
     def forward(self, t: torch.Tensor, node_level: torch.Tensor) -> torch.Tensor:
-        for idx, linear in enumerate(self.linears_1):
-            t = self.gates[idx](linear(t))
         if self.use_multi_head:
-            t = select_corresponding_level(t, node_level, self.num_levels)
-        return self.linear_2(t)
-
-
+            if self.last_readout:
+                for idx, linear in enumerate(self.linears_1):
+                    t = self.gates[idx](linear(t))
+                    t = select_corresponding_level(t, node_level, self.num_levels)
+                return self.linear_2(t)
+            else:
+                for idx, linear in enumerate(self.linears_1):
+                    t = self.gates[idx](linear(t))
+                return self.linear_2(t)     
+        else:
+            for idx, linear in enumerate(self.linears_1):
+                t = self.gates[idx](linear(t))
+            return self.linear_2(t)
+            
+    def forward(self, x, node_level=None):
+        if self.use_multi_head:
+            if self.last_readout:
+                x = self.mlp_1(x)
+                x = select_corresponding_level(x, node_level, self.num_levels)
+                x = self.mlp_2(x)
+            else:
+                x = self.mlp(x)
+            return x
+        else:
+            return self.mlp(x)
+        
 def build_scalar_readout(
     in_dim: int,
     hidden_dim: List[int],
@@ -153,35 +180,37 @@ def build_scalar_readout(
     num_layers: int,
     use_all_layer: bool,
 ):
+    
+    if use_multi_head:
+        out_dim = num_levels
+    else:
+        out_dim = 1
+
     readouts = []
     for idx in range(num_layers):
+
         if idx == (num_layers-1):
             if use_multi_head:
                 hidden_dim_ = [d * num_levels for d in hidden_dim]
-                out_dim_ = num_levels
             else:
                 hidden_dim_ = hidden_dim
-                out_dim_ = 1
             act_ = act
-            use_multi_head_ = use_multi_head
             forward_weight_init = False
         else:
             hidden_dim_ = []
-            out_dim_ = 1
             act_ = None
-            use_multi_head_ = False
             forward_weight_init = True
 
         readouts.append(
             ScalarReadOut(
                 in_dim=in_dim,
-                out_dim=out_dim_,
+                out_dim=out_dim,
                 hidden_dim=hidden_dim_,
                 act=act_,
                 bias=bias,
                 forward_weight_init=forward_weight_init,
                 num_levels=num_levels,
-                use_multi_head=use_multi_head_,
+                use_multi_head=use_multi_head,
             )
         )
     if use_all_layer:
@@ -200,32 +229,34 @@ def build_tensor_readout(
     num_layers: int,
     use_all_layer: bool,
 ):
+    
+    if use_multi_head:
+        out_dim = num_levels
+    else:
+        out_dim = 1
+
     readouts = []
     for idx in range(num_layers):
         if idx == num_layers - 1:
             if use_multi_head:
                 hidden_dim_ = [d * num_levels for d in hidden_dim]
-                out_dim_ = num_levels
             else:
                 hidden_dim_ = hidden_dim
-                out_dim_ = 1
             gate_ = gate
-            use_multi_head_ = use_multi_head
         else:
             hidden_dim_ = []
-            out_dim_ = 1
             gate_ = None
-            use_multi_head_ = False
+
 
         readouts.append(
             TensorReadOut(
                 l=l,
                 in_dim=in_dim,
                 hidden_dim=hidden_dim_,
-                out_dim=out_dim_,
+                out_dim=out_dim,
                 gate=gate_,
                 num_levels=num_levels,
-                use_multi_head=use_multi_head_,
+                use_multi_head=use_multi_head,
             )
         ) 
     if use_all_layer:

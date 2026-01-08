@@ -15,6 +15,7 @@
 *.h5
 *.zip
 *.gz
+*.whl
 
 # Ignore all dir
 .idea/
