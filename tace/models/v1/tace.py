@@ -79,6 +79,7 @@ class TACEV1(torch.nn.Module):
         self.embedding_property = cfg['embedding_property']
         self.conservation = cfg['conservation']
         self.universal_embedding = cfg['universal_embedding']
+        self.special = cfg['special']
         self.target_irreps = get_target_irreps(self.target_property)
         if max(cfg['Lmax']) < max(self.target_irreps):
                 raise ValueError(
@@ -498,10 +499,7 @@ class TACEV1(torch.nn.Module):
                     ii = -1
                 f_c_m_list.append(final_collinear_magmoms_readout(descriptors[ii][0])[num_atoms_arange, node_level])
             F_C_MAG = torch.sum(torch.stack(f_c_m_list, dim=0), dim=0)
-            # print('initial', data['initial_collinear_magmoms'][:5])
-            # print('final', data['final_collinear_magmoms'][:5])
-            # print('predict', F_C_MAG[:5])
-            
+
         return {
             "energy": E,
             "node_energy": e_node, # TODO, BUG check the inside of les

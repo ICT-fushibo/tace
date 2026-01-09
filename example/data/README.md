@@ -1,0 +1,1 @@
+BaTiO3.xyz from https://github.com/mir-group/allegro-pol

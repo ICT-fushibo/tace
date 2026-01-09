@@ -47,7 +47,7 @@ level = 0  # first fidelity
 dispersion = False
 filter = "frechet"
 optimizer = "FIRE"
-unrelaxed_atomsList = read('../unrelaxed.xyz', index=':')
+unrelaxed_atomsList = read('data/BaTiO3.xyz', index=':')
 
 fmax = 0.05
 MAX_STEP = 3000

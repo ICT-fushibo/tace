@@ -236,6 +236,9 @@ def analyze_dataset_statistics(
             else:
                 level = torch.zeros(num_graphs, dtype=torch.int64, device=device)
 
+            if num_levels == 1:
+                assert torch.allclose(level, torch.zeros(num_graphs, dtype=torch.int64, device=device))
+
             node_level = level[data['batch']]
             num_atoms_arange = torch.arange(
                 data["node_attrs"].size(0), 

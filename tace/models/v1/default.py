@@ -105,6 +105,10 @@ UNIVERSAL_EMBEDDING = {
             "enable": False,
             "num_embeddings": -1,
         },
+        "spin_on": {
+            "enable": False,
+            "num_embeddings": 2,
+        },
         "spin_multiplicity": {
             "enable": False,
             "num_embeddings": -1,
@@ -146,6 +150,11 @@ UNIVERSAL_EMBEDDING = {
     },
 }
 
+SPECIAL = {
+    "hessians":{
+        'num_samples': 2
+    }    
+}
 
 from typing import Dict, Any, List, Tuple
 
@@ -198,8 +207,8 @@ def check_model_config(cfg: Dict[str, Any]):
         cfg['atomic_energies'] = None
 
     # short_range and long_range
-    cfg['short_range'] = cfg.get('short_range', {}) or SHORT_RANGE
-    cfg['long_range'] = cfg.get('long_range', {}) or LONG_RANGE
+    cfg['short_range'] = cfg.get('short_range', SHORT_RANGE) 
+    cfg['long_range'] = cfg.get('long_range', LONG_RANGE)
  
     # inter
     if isinstance(cfg['inter']['l1l2'], str) or cfg['inter']['l1l2'] == None:
@@ -228,6 +237,9 @@ def check_model_config(cfg: Dict[str, Any]):
             universal_embedding['equivariant_embedding_property'].append(k)
 
     # === conservation ===
-    cfg['conservation'] = cfg.get('conservation', {}) or CONSERVATION
+    cfg['conservation'] = cfg.get('conservation', CONSERVATION)
+
+    # === special ===
+    cfg['special'] = cfg.get('special', SPECIAL)
 
     return cfg

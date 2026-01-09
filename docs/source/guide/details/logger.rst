@@ -10,7 +10,7 @@ Example
 
     logger:
     _target_: lightning.pytorch.loggers.WandbLogger
-    project: 3bpa
+    project: ${misc.project_name} 
     name: ${misc.project_name} 
     # entity: xxxxxx-nanjing-university 
     log_model: final  # all, final

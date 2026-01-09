@@ -33,7 +33,7 @@ model = TACETorchSimCalc(
 )
 
 # === input atoms ===
-atomsList = read('../unrelaxed.xyz', index=':')[:2]
+atomsList = read('data/BaTiO3.xyz', index=':')[:2]
 
 # Automatically manage the memory of multiple Gpus to full capacity
 results = ts.static(

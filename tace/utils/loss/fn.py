@@ -340,7 +340,6 @@ def l2ne_hessians(
         label: Dict[str, Tensor],
     ) -> torch.Tensor:
 
-    scale = 10.0
     true_hessian_flat = label["hessians"]
     num_atoms_per_graph = label["ptr"][1:] - label["ptr"][:-1]
     jacs_per_graph = pred["jacs_per_graph"]
@@ -365,10 +364,4 @@ def l2ne_hessians(
             loss_g = loss_g * 1e-8
         losses.append(loss_g)
 
-    total_loss = torch.stack(losses).sum()
-
-    num_graphs = len(jacs_per_graph)
-    total_loss = total_loss / num_graphs
-    total_loss = total_loss * scale
-
-    return total_loss
+    return torch.stack(losses).mean()

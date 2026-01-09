@@ -16,6 +16,8 @@
 *.zip
 *.gz
 *.whl
+*.xyz
+*.extxyz
 
 # Ignore all dir
 .idea/
@@ -44,3 +46,4 @@ draw/
 # White list
 !arch.png
 !requirements.txt
+!BaTiO3.xyz

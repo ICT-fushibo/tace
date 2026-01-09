@@ -117,8 +117,8 @@ class TACEAseCalc(Calculator):
             self.level = model.get_computing_level()
 
         if spin_on is not None:
-            self.spin_on = spin_on
-            model.reset_spin_on(spin_on) 
+            self.spin_on = 1 if spin_on else 0
+            model.reset_spin_on(self.spin_on) 
         else:
             self.spin_on = model.get_spin_on() 
 

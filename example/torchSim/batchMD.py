@@ -25,9 +25,8 @@ from tace.interface.torchsim import TACETorchSimCalc
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-water = read('../liquid-64.xyz', '0')
-init_conf = water
-# init_conf = water.repeat((2,2,2))
+BaTiO3 = read('data/BaTiO3.xyz', '0')
+init_conf = BaTiO3
 
 init_atomsList = [init_conf] * 2
 # Put your (auto)download model in ~/.cache/tace

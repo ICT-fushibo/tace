@@ -59,6 +59,6 @@ Dispersion Correction (Optional)
 --------------------------------
 
 Dispersion interactions can also be supported by calling third-party libraries.
-For detailed instructions, see `ase tutorial <ase.rst>`_.
+For detailed instructions, see ase guide.
 
 

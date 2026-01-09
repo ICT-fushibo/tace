@@ -43,7 +43,6 @@ class WrapModelV1(torch.nn.Module):
         self.spin_on = 1 if enable else 0
 
     def reset_spin_on(self, enable: bool = True):
-        assert isinstance(enable, bool)
         self._set_spin_on(enable)
 
     def get_spin_on(self) -> int:
@@ -59,11 +58,17 @@ class WrapModelV1(torch.nn.Module):
             self.readout_fn, "universal_embedding", {}
         )
 
+    def set_special(self):
+        self.special = getattr(
+            self.readout_fn, "special", {}
+        )
+
     def _set_computing_level(self, level: int = 0):
         self.level = level
         
     def reset_computing_level(self, level: int = 0):
-        assert isinstance(level, int) and level >= 0
+        level = int(level)
+        assert level >= 0
         self.level = level
 
     def get_computing_level(self) -> int:
@@ -109,7 +114,6 @@ class WrapModelV1(torch.nn.Module):
         self.lmp = enable
 
     def reset_lammps_mliap(self, enable: bool = True):
-        assert isinstance(enable, bool)
         self._set_lammps_mliap(enable)
 
     def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Optional[torch.Tensor | List[torch.Tensor]]]:
@@ -315,7 +319,7 @@ class WrapModelV1(torch.nn.Module):
                     forces, 
                     graph.positions, 
                     data["ptr"], 
-                    num_samples=2,
+                    num_samples=self.special.get("special", 2),
                     create_graph=self.training,
                 )
             else:

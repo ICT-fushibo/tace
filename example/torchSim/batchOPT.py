@@ -53,7 +53,7 @@ outDir = "results"
 # === unrelaxed atoms ===
 outDir = Path(outDir)
 outDir.mkdir(exist_ok=True)
-unrelaxed_atomsList = read('../unrelaxed.xyz', index=':')[:2]
+unrelaxed_atomsList = read('data/BaTiO3.xyz', index=':')[:2]
 
 # filter
 # === torchSim ===

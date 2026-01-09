@@ -32,7 +32,7 @@ It can be safely ignored if everything is written in a single YAML file.
 
 .. note::
 
-  Example yaml files are provided in the `GitHub repository example <https://github.com/xvzemin/tace/tree/main/example/train/from_scratch/3bpa-example>`_. 
+  Example yaml files are provided in the `GitHub repository example <https://github.com/xvzemin/tace/tree/main/example/train>`_. 
 
   The configurations we provide are:
 
