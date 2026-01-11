@@ -34,11 +34,23 @@ class WrapModelV1(torch.nn.Module):
         target_property = readout_fn.target_property
         self._set_target_property(target_property)
         self._set_lammps_mliap()
-        self.set_embedding_property()
-        self.set_universal_embedding()
+        self._set_special
+        self._set_embedding_property()
+        self._set_universal_embedding()
         self._set_spin_on()
         self._set_computing_level()
    
+    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Optional[torch.Tensor | List[torch.Tensor]]]:
+        # === pre processing ===
+        graph = self.prepare_graph(data)
+
+        # === predict ===
+        RESULTS = self.readout_fn(data, graph)
+        FIRST = self.first_derivative_fn(data, graph, RESULTS)
+        SECOND = self.second_derivative_fn(data, graph, RESULTS, FIRST)
+
+        return {**RESULTS, **FIRST, **SECOND}
+    
     def _set_spin_on(self, enable: bool = False):
         self.spin_on = 1 if enable else 0
 
@@ -48,17 +60,17 @@ class WrapModelV1(torch.nn.Module):
     def get_spin_on(self) -> int:
         return self.spin_on
 
-    def set_embedding_property(self):
+    def _set_embedding_property(self):
         self.embedding_property = getattr(
             self.readout_fn, "embedding_property", []
         )
 
-    def set_universal_embedding(self):
+    def _set_universal_embedding(self):
         self.universal_embedding = getattr(
             self.readout_fn, "universal_embedding", {}
         )
 
-    def set_special(self):
+    def _set_special(self):
         self.special = getattr(
             self.readout_fn, "special", {}
         )
@@ -100,7 +112,7 @@ class WrapModelV1(torch.nn.Module):
                 self.compute_second_derivative = True
 
         self.retain_graph = self.compute_second_derivative
-        self.create_graph = self.compute_second_derivative\
+        self.create_graph = self.compute_second_derivative
         
     def reset_target_property(self, target_property: List[str]):
         assert isinstance(target_property, List)
@@ -115,18 +127,6 @@ class WrapModelV1(torch.nn.Module):
 
     def reset_lammps_mliap(self, enable: bool = True):
         self._set_lammps_mliap(enable)
-
-    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Optional[torch.Tensor | List[torch.Tensor]]]:
-        # === pre processing ===
-        graph = self.prepare_graph(data)
-
-        # === predict ===
-        RESULTS = self.readout_fn(data, graph)
-        FIRST = self.first_derivative_fn(data, graph, RESULTS)
-        SECOND = self.second_derivative_fn(data, graph, RESULTS, FIRST)
-
-        return {**RESULTS, **FIRST, **SECOND}
-
 
     def first_derivative_fn(
         self, data: Dict[str, Tensor], graph: Graph, results: Dict[str, Tensor]

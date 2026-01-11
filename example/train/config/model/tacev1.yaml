@@ -1,23 +1,18 @@
-# Here we provide a default model architecture that balances accuracy, speed,
-# and memory consumption.
+# Here we provide a default model architecture that balances accuracy, speed, and 
+# memory consumption. In general, TACE provides two alternative architecture configurations.
 
-# If you are very familiar with model architectures, you may notice that our
-# default setup does not use the traditional ACE configuration (with two
-# interaction layers and correlation = 3). In general, traditional ACE tends
-# to achieve higher accuracy and better extrapolation performance for organic
-# molecular systems.
+# 1. Using 2-layer architecture combined with correlation 3. 
+
+# 2. Using 3–5 layer architecture with correlation 2, together with the constraint l1 ≤ l2.
+
+# In most cases, the first option is sufficient. While the second option may offer 
+# advantages for more complex datasets. 
+
+# The inclusion of nonlinear modules in the interaction term should be handled 
+# with caution and is typically disabled by default.
 
 # Note that all results reported in our original paper were obtained using
-# the traditional two-layer ACE configuration. https://arxiv.org/abs/2509.14961
-
-# However, in practice we found that for more complex datasets (e.g., OMat24, RECIO),
-# nonlinear interactions are crucial for model performance. In particular,
-# multi-layer message passing and nonlinearity play an important role in capturing
-# complex chemical environments.
-
-# Therefore, our default settings no longer use the traditional 2-layer ACE
-# (correlation = 3). Instead, we adopt multi-layer message passing (3–5 layers)
-# with correlation = 2 and the constraint l1 <= l2.
+# 2-layer ACE configuration. https://arxiv.org/abs/2509.14961
 
 config:
   _target_: tace.models.TACEV1 # only TACEV1 are avaliable now
@@ -35,7 +30,7 @@ config:
   use_multi_fidelity: false # (bool)
   Lmax: 2 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
   lmax: 3 # (int, list), Truncation for edge, 3 is recommended, 2 for higher speed. If >3, recommend set `l1l2 = <=`
-  num_layers: 4 # (int), 2 for correlation >=2, can be higher when correlation=2
+  num_layers: 2 # (int), 2 for correlation >=2, can be higher when correlation=2
   bias: true # (bool), false is more safe, but true sometimes give better results
   num_channel: 48 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
   num_channel_hidden: ${model.config.num_channel} # (int), equal num_channel is the best
@@ -54,26 +49,26 @@ config:
     norm: true      # (bool), always set this to true
 
   radial_mlp:
-    hidden: [64, 64] # (list(int), list(list(int)))
+    hidden: [64, 64, 64] # (list(int), list(list(int)))
     act: 'silu'   # (str, null)
     bias: false   # (bool)
 
   inter:
-    l1l2: <= # (null | str | list), choices: [null, <=], restriction for each layer
-    conv_weights: [edge_ij, node_i, node_j] # list, subset of [edge_ij, node_i, node_j], at least [edge_ij]
-    normalizer: density_v1  # str, choices: [avg_num_neighbors, density_v1]
+    l1l2: null # (null | str | list), choices: [null, <=], restriction for each layer
+    conv_weights: [edge_ij] # list, subset of [edge_ij, node_i, node_j], at least [edge_ij]
+    normalizer: avg_num_neighbors  # str, choices: [avg_num_neighbors, density_v1]
     nonlinearity:
-      type: norm # (null | str), choices: [null, norm, gated]
+      type: null # (null | str), choices: [null, norm, gated]
       gate: 'silu' # (null | str)
     sc: # self connection
       use_first_sc: false    # (bool), false is recommended
       from: current_message  # (str), choices: [current_message, last_product]
-    use_resnet: true        # (bool), recommend true when use nonlinearity gate, else false
+    use_resnet: false        # (bool), recommend true when use nonlinearity gate, else false
 
   prod:
-    l1l2: <=  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=]
+    l1l2: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=]
     l3l1: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=, ==]
-    correlation: 2 # (int | list) body-order, 3 is recommended
+    correlation: 3 # (int | list) body-order, 3 is recommended
     element_aware: true # (bool) always set this to true
     coupled_channel: true # (bool) always set this to true
  
@@ -165,8 +160,6 @@ config:
       initial_noncollinear_magmoms:
         enable: false
         normalizer: 1.0 # (float)
-
-
 
   special: # this field can be thoroughly ignored if you only interested in E/F/S training
     hessians:

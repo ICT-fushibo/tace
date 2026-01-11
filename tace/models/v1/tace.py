@@ -35,7 +35,7 @@ class TACEV1(torch.nn.Module):
     def __init__(
         self,
         cutoff: float,
-        statistics: List[Type[Statistics]],
+        statistics: List[Statistics],
         max_neighbors: Optional[int] = None,
         lmax: int | List[int] = 3,
         Lmax: int | List[int] = 2,

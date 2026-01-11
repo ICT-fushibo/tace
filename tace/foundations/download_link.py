@@ -22,7 +22,7 @@ OAM_SERIES = {
 }
 
 REICO_SERIES = {
-    # "TACE-v1-REICO-PdAgCHO": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-REICO-5-PdAgCHO.pt",
+    "TACE-v1-LES-REICO-5-PdAgCHO.pt": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-LES-REICO-5-PdAgCHO.pt",
 }
 
 
