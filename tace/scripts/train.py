@@ -42,7 +42,7 @@ register_resolvers()
 
 def initialize(cfg):
     cfg = deep_convert(cfg)
-    set_logger()
+    set_logger(cfg["misc"].get("log_level", "info"))
     if cfg['misc'].get('ignore_warning', True): 
         try:
             warnings.simplefilter("ignore", FutureWarning)
@@ -58,6 +58,7 @@ def initialize(cfg):
     return cfg
 
 
+
 def build(cfg: DictConfig):
     cfg = initialize(OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
     target_property = get_target_property(cfg)
@@ -68,8 +69,8 @@ def build(cfg: DictConfig):
     update_keyspec_from_kwargs(keyspec, userKeys)
     num_levels = cfg['model']['config'].get("num_levels", 1)
 
+    # train from scratch, calculate statistics
     statistics = None
-    # finetune or reusme, statistics is no need to recalculate
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
         statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
@@ -80,11 +81,13 @@ def build(cfg: DictConfig):
                     statistics.append(Statistics(**statistics_data))
             for idx, yaml_file in enumerate(statistics_yaml):
                 logging.info(f"Using statistics_yaml from '{str(yaml_file)}' for level {idx}")
+            atomic_numbers = statistics[0]["atomic_numbers"]
         else:
             logging.info(f"Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
                 cfg, target_property, embedding_property, keyspec, num_levels
             )
+            atomic_numbers = element.atomic_numbers
             statistics = compute_statistics(
                 cfg, 
                 target_property, 
@@ -94,19 +97,22 @@ def build(cfg: DictConfig):
                 element,
                 threeAtomsList,
                 atomic_energies,
+                dataloader_train=None,
             )
 
+    # finetune or reusme, statistics is no need to recalculate
     if cfg.get("finetune_from_model", None):
         model = finetune(cfg)
-        cfg['model']['config'] = model.readout_fn.model_config
         statistics = model.readout_fn.statistics
+        atomic_numbers = statistics[0]["atomic_numbers"]
+        cfg['model']['config'] = model.readout_fn.model_config
         finetune_cfg = cfg.get('finetune', {})
         if finetune_cfg:
-            logging.info(f"finetune_config field found in your main train config, use lora and parameter freezing")
+            logging.info(f"Using finetune_config from your main train config.")
         else:
             yaml_path = Path("finetune_config.yaml")
             if yaml_path.exists():
-                logging.info(f"{yaml_path} found, use lora and parameter freezing")
+                logging.info(f"Using finetune_config from {yaml_path}.")
                 try:
                     finetune_cfg = yaml.safe_load(yaml_path.read_text())
                 except Exception as e:
@@ -121,14 +127,21 @@ def build(cfg: DictConfig):
                 strict=True,
                 use_ema=True,
             )
-        cfg['model']['config'] = model.readout_fn.model_config
         statistics = model.readout_fn.statistics
+        atomic_numbers = statistics[0]["atomic_numbers"]
+        cfg['model']['config'] = model.readout_fn.model_config
         cfg['finetune'] = cfg.get('finetune', {})
-
-    else: # finetune_from_model or from scratch
+    else: # From scratch
         model = select_model(cfg, statistics, target_property, embedding_property)
 
-    datamodule = build_datamodule(cfg, target_property, embedding_property, keyspec, num_levels, statistics)
+    datamodule = build_datamodule(
+        cfg, 
+        atomic_numbers, #
+        target_property, 
+        embedding_property, 
+        num_levels, 
+        keyspec, 
+    )
 
     return cfg, statistics, target_property, embedding_property, model, datamodule
 

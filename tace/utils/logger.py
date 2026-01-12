@@ -21,11 +21,16 @@ LOG_LEVELS = {
     30: logging.WARNING,
     40: logging.ERROR,
     50: logging.CRITICAL,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "crittical": logging.CRITICAL,
 }
 
 
-def set_logger(_level: int = 20, _rank_zero_only: bool = True) -> None:
-    assert _level in [10, 20, 30, 40, 50]
+def set_logger(_level: int | str = "info", _rank_zero_only: bool = True) -> None:
+    log_level = LOG_LEVELS[_level]
     root_logger = logging.getLogger()
     if root_logger.handlers:
         formatter = logging.Formatter("[%(levelname)s] %(message)s")
@@ -33,10 +38,10 @@ def set_logger(_level: int = 20, _rank_zero_only: bool = True) -> None:
             handler.setFormatter(formatter)
     else:
         logging.basicConfig(
-            level=LOG_LEVELS[_level],
+            level=log_level,
             format="[%(levelname)s] %(message)s",
         )
-    root_logger.setLevel(LOG_LEVELS[_level])
+    root_logger.setLevel(log_level)
     if _rank_zero_only:
         logging.debug = rank_zero_only(logging.debug)
         logging.info = rank_zero_only(logging.info)

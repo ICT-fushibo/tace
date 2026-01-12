@@ -281,7 +281,6 @@ class GraphDataModule(LightningDataModule):
         self,
         cfg: dict,
         element: TorchElement,
-        statistics: Statistics,
         target_property: List[str],
         keyspec: KeySpecification,
         embedding_property: List[str],
@@ -292,7 +291,6 @@ class GraphDataModule(LightningDataModule):
         self.keyspec = keyspec
         self.element = element
         self.num_levels = num_levels
-        self.statistics = statistics
         self.target_property = target_property
         self.embedding_property = embedding_property
 
@@ -475,17 +473,16 @@ class GraphDataModule(LightningDataModule):
 # === Datamodule Builder ===
 def build_datamodule(
     cfg: Dict,
+    atomic_numbers: List[int],
     target_property: List[str],
     embedding_property: List[str],
-    keyspec: KeySpecification,
     num_levels: int,
-    statistics: List[Statistics],
+    keyspec: KeySpecification,
 ):
-    element = build_element_lookup(statistics[0]['atomic_numbers'])
+    element = build_element_lookup(atomic_numbers)
     datamodule = GraphDataModule(
         cfg,
         element,
-        statistics,
         target_property,
         keyspec,
         embedding_property,

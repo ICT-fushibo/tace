@@ -9,7 +9,7 @@ defaults:
 resume_from_model: null
 
 # Specify the model to be fine-tuned. Files must be end with .ckpt, .pt, or .pth
-finetune_from_model: null 
+finetune_from_model: TACE-v1-OAM-M.pt
 
 finetune: null # this field equals ./finetune_config.yaml, auto read or write directly here
 
@@ -21,6 +21,7 @@ misc:
   ignore_warning: true 
   env: # You can specify here the environment variables that should always be used.
     WANDB_MODE: offline # For the convenience of Chinese users
+  log_level: info       # debug or info
 
 trainer:
   # As long as your system has NVIDIA GPUs, the following configuration will automatically detect and use all available GPUs for training.
@@ -91,14 +92,14 @@ dataset:
   valid_from_index: false # split train and val from train.index and valid.index in current directory
   no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
   neighborlist_backend: matscipy # [ase, vesin, matscipy] recommend matscipy
-  storage_mode: memory # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
+  storage_mode: lmdb # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
   shard_dirs: # if lmdb model, specify a list of path where you save you graph
     - graphCache
   # If using LMDB mode, you must allocate a reasonable pre-storage size.  
   # Generally, if the number of neighboring atoms is around 60, about 200 KB per graph is sufficient.
   shard_size: 50000 # number of graphs stored per file in LMDB mode, should be large, here is just an example, if small, it will be slow and may be error
   cache_size: 1024 # cache for faster load data from dataloader
-  avg_graph_size_in_KB: 200 # in KB, the total disk usage equals the size of this multiplied by the total number of your structures.
+  avg_graph_size_in_KB: 500 # 200 # in KB, the total disk usage equals the size of this multiplied by the total number of your structures.
   lmdb_wait_timeout: 86400 # in seconds; when training with multi-GPU, the maximum waiting time.
   force_dtype: null # 32 or 64, if your data grapg saved in lmdb, but original float64, you can force to float32 for convenience
   keys: # all default key name is the property name

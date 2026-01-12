@@ -14,7 +14,7 @@ from tqdm import tqdm
 from hydra.utils import instantiate
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 
-from .element import build_element_lookup
+from .element import build_element_lookup, TorchElement
 from .read import _read
 from .graph import from_atoms
 from .statistics import compute_atomic_energy, _compute_statistics, Statistics
@@ -27,6 +27,7 @@ def create_graphs_for_main_rank(atomsList, element, for_dataset, stage):
     for atoms in tqdm(atomsList, desc=f"Building graphs for {stage}"):
         dataset.append(from_atoms(element, atoms, **for_dataset))
     return dataset
+
 
 @rank_zero_only
 def build_atomsList(
@@ -111,6 +112,7 @@ def build_atomsList(
         element = build_element_lookup(atomic_numbers_from_dataset)
     return element, threeAtomsList, atomic_energies
 
+
 @rank_zero_only
 def compute_statistics(
     cfg: Dict,
@@ -118,24 +120,13 @@ def compute_statistics(
     embedding_property: List[str],
     keyspec: KeySpecification,
     num_levels: int,
-    element,
+    element: TorchElement,
     threeAtomsList,
-    atomic_energies,
+    atomic_energies: List[Dict[int, float]],
+    dataloader_train = None,
 ):
-    # === compute statistics ===
-    statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
-    all_exist = all(p.exists() for p in statistics_yaml)
-    if all_exist:
-        with open(statistics_yaml[0], "r") as f:
-            statistics_data = yaml.safe_load(f)
-        if element.atomic_numbers == statistics_data.get('atomic_numbers', []):
-            recompute = False
-        else:
-            recompute = True
-    else:
-        recompute = True
-
-    if recompute:
+  
+    if dataloader_train is None:
         for_dataset = {
             "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
             "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
@@ -147,36 +138,23 @@ def compute_statistics(
             .get("universal_embedding", None),
             "neighborlist_backend": cfg.get("dataset", {}).get("neighborlist_backend", "matscipy"),
         }
-
-        dataloader_train = None
         dataset_train = create_graphs_for_main_rank(threeAtomsList[0], element, for_dataset, 'train')
         dataloader_train = instantiate(
             cfg["dataset"]["train_dataloader"],
             dataset=dataset_train
         )
-        logging.info(f"Number of configs in train: {len(threeAtomsList[0])}")
+        import sys 
+        sys.exit()
 
-        statistics = _compute_statistics(
-            dataloader_train,
-            # dataloader_valid,
-            sorted(element.atomic_numbers),
-            atomic_energies,
-            target_property=target_property,
-            device=cfg.get("misc", {}).get("device", "cpu"),
-            num_levels=num_levels,
-        )
-    else:
-        # To ensure complete reproducibility, since the statistics were originally 
-        # computed by going through the training dataloader once, we need to go through 
-        # it again here to ensure consistency.
-        with torch.no_grad():
-            for data in dataloader_train:
-                batch = data['batch']
-        statistics = []
-        for yaml_file in statistics_yaml:
-            with open(yaml_file, "r") as f:
-                statistics_data = yaml.safe_load(f)
-            statistics.append(Statistics(**statistics_data))
+    statistics = _compute_statistics(
+        dataloader_train,
+        # dataloader_valid,
+        sorted(element.atomic_numbers),
+        atomic_energies,
+        target_property=target_property,
+        device=cfg.get("misc", {}).get("device", "cpu"),
+        num_levels=num_levels,
+    )
 
     del dataloader_train
     gc.collect()
