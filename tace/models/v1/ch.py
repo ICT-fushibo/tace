@@ -12,8 +12,7 @@ import torch
 from torch import Tensor
 
 
-from .ictd import ICTD
-from .utils import expand_dims_to
+from cartnn import ICTD, expand_dims_to
 
 
 def factorial(n: int) -> int:

@@ -104,13 +104,14 @@ class Statistics:
 
 def _compute_statistics(
     dataloader_train: DataLoader,
-    # dataloader_valid: DataLoader,
     atomic_numbers: List[str],
     atomic_energies: List[Dict[int, float]],
     target_property: List[str],
     device: str = "cpu",
     num_levels: int = 1,
 ) -> List[Statistics]:
+    
+
     return [
             Statistics(**stat)
             for stat in analyze_dataset_statistics(
@@ -123,6 +124,7 @@ def _compute_statistics(
                 num_levels,
             )
         ]
+
 
 def compute_atomic_energy_per_level(
     points: Atoms, element: Element, keyspec: KeySpecification,
@@ -153,6 +155,7 @@ def compute_atomic_energy_per_level(
             atomic_energy[z] = 0.0
     return atomic_energy
 
+
 def compute_atomic_energy(
     points: Atoms, element: Element, keyspec: KeySpecification, num_levels: int,
 ) -> Dict[int, float]:
@@ -182,6 +185,7 @@ def compute_atomic_energy(
         )
             
     return atomic_energies
+
 
 def analyze_dataset_statistics(
     dataloader_train,
@@ -231,10 +235,10 @@ def analyze_dataset_statistics(
             neighbor_sum_per_element += neighbor_sum
             count_per_element += element_count.long()
 
-            if "level" in data:
-                level = data["level"]
-            else:
+            if "level" not in data or num_levels == 1:
                 level = torch.zeros(num_graphs, dtype=torch.int64, device=device)
+            else:
+                level = data["level"]
 
             if num_levels == 1:
                 assert torch.allclose(level, torch.zeros(num_graphs, dtype=torch.int64, device=device))

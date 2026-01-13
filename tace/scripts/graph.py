@@ -42,6 +42,7 @@ def main(cfg: DictConfig):
 
     # train from scratch, calculate statistics
     statistics = None
+    threeAtomsList = None
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
         statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
@@ -54,7 +55,6 @@ def main(cfg: DictConfig):
                 logging.info(f"Using statistics_yaml from '{str(yaml_file)}' for level {idx}")
             atomic_numbers = statistics[0]["atomic_numbers"]
         else:
-            logging.info(f"Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
                 cfg, target_property, embedding_property, keyspec, num_levels
             )
@@ -100,7 +100,8 @@ def main(cfg: DictConfig):
         target_property, 
         embedding_property, 
         num_levels, 
-        keyspec, 
+        keyspec,
+        threeAtomsList,
     )
 
     datamodule.prepare_data()

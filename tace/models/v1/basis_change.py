@@ -5,9 +5,11 @@
 
 from typing import Dict, Type
 
+
 import torch
 
-from .ictd import ICTD
+
+from cartnn import ICTD
 
 
 class DirectPolarizability(torch.nn.Module):

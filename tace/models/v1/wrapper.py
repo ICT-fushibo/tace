@@ -88,12 +88,9 @@ class WrapModelV1(torch.nn.Module):
 
     def _set_target_property(self, target_property: List[str]):
 
-        if 'direct_hessians' in target_property:
-            raise
-        if 'final_collinear_magmoms' in target_property:
-            raise
-        if 'final_noncollinear_magmoms' in target_property:
-            raise
+        assert 'direct_hessians' not in target_property
+        assert 'final_collinear_magmoms' not in target_property
+        assert 'final_noncollinear_magmoms' not in target_property
 
         self.target_property = target_property
 
@@ -341,6 +338,8 @@ class WrapModelV1(torch.nn.Module):
             if "level" in data
             else torch.full_like(data['batch'], self.level, dtype=torch.int64)
         )  # used for multi-fidelity and multi-head
+
+        # node_level = torch.full_like(data['batch'], 0, dtype=torch.int64)
 
         if "spin_on" not in data: # used for uie
             data['spin_on'] = torch.tensor([self.spin_on], device=data["node_attrs"].device, dtype=torch.int64)

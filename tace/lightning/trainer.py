@@ -175,7 +175,7 @@ def train(
             ckpt_path=resume_ckpt,
         )
     else:
-        logging.info(lit_model)
+        logging.debug(lit_model)
         log_parameters(model)
         trainer.fit(
             lit_model,

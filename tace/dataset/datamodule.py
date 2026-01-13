@@ -22,7 +22,7 @@ from hydra.utils import instantiate
 
 from .graph import from_atoms
 from .element import build_element_lookup, TorchElement
-from .read import _read
+from .read import tace_read_all_files
 from .statistics import Statistics
 from .quantity import KeySpecification
 
@@ -284,7 +284,8 @@ class GraphDataModule(LightningDataModule):
         target_property: List[str],
         keyspec: KeySpecification,
         embedding_property: List[str],
-        num_levels: int = 1
+        num_levels: int = 1,
+        threeAtomsList = None,
     ):
         super().__init__()
         self.cfg = cfg
@@ -297,7 +298,7 @@ class GraphDataModule(LightningDataModule):
         self.train_dataset = None
         self.val_dataset = None
         self.test_datasets = None
-        self.threeAtomsList = None
+        self.threeAtomsList = threeAtomsList
 
         self.storage_mode = cfg.get("dataset", {}).get("storage_mode", "memory")
         self.shard_dirs = [Path(p) for p in cfg.get("dataset", {}).get("shard_dirs", ["graphCache"])]
@@ -345,13 +346,14 @@ class GraphDataModule(LightningDataModule):
                 return
 
         logging.info("[prepare_data] Reading raw atoms from source files...")
-        self.threeAtomsList = _read(
-            self.cfg,
-            self.target_property,
-            self.embedding_property,
-            self.keyspec,
-            in_datamodule=True,
-        )
+        if self.threeAtomsList is None:
+            self.threeAtomsList = tace_read_all_files(
+                self.cfg,
+                self.target_property,
+                self.embedding_property,
+                self.keyspec,
+                in_datamodule=True,
+            )
 
     def setup(self, stage: Optional[str] = None):
         """
@@ -478,6 +480,7 @@ def build_datamodule(
     embedding_property: List[str],
     num_levels: int,
     keyspec: KeySpecification,
+    threeAtomsList,
 ):
     element = build_element_lookup(atomic_numbers)
     datamodule = GraphDataModule(
@@ -487,5 +490,6 @@ def build_datamodule(
         keyspec,
         embedding_property,
         num_levels,
+        threeAtomsList,
     )
     return datamodule

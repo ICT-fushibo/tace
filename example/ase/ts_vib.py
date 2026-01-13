@@ -5,6 +5,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import torch
 from ase.io import read, write
 from ase.vibrations import Vibrations
@@ -22,20 +23,22 @@ calc = TACEAseCalc(
     level=0,
 )
 
-TS = list(Path("O5").rglob("*xyz")) # Use your own approximate transition state structure
+# ts_file = f = Path(str("o5_aa.ts_opt.traj")) # run ts_opt.py first
+# TS = read(ts_file, 0)
 
-for file in TS:
-    file = str(file)
-    atoms = read(file, -1)
-    atoms.calc = None   
-    atoms.calc = calc   
-    print(f">>> Running Vibration Analysis: {file}")
-    vib = Vibrations(
-        atoms,
-        name='tmp',
-        delta=0.015,
-        nfree=2
-    )
-    vib.run()
-    vib.summary()
-    vib.clean()
+ts_file = f = Path(str("o5_aa.neb.traj")) # run ts_opt.py first
+neb_atomsList = read(ts_file, index=":")
+energies = np.array([atoms.get_potential_energy() for atoms in neb_atomsList])
+TS = neb_atomsList[energies.argmax()]
+
+
+TS.calc = calc   
+vib = Vibrations(
+    TS,
+    name='tmp',
+    delta=0.015, # 0.01 ~ 0.03
+    nfree=2
+)
+vib.run()
+vib.summary()
+vib.clean()

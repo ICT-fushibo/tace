@@ -2,6 +2,9 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
+"""
+pip install sella
+"""
 
 from pathlib import Path
 
@@ -22,45 +25,31 @@ calc = TACEAseCalc(
     level=0,
 )
 
-TS = list(Path("O5").rglob("*xyz")) # Use your own approximate transition state structure
-
-
 fmax = 0.01
 steps = 1000
 
-for file in TS:
-    file = Path(str(file))
-    print(f">>> Running IRC {file}")
-    atoms = read(file, -1)   
 
-    print(">>> Running IRC (forward direction)")
-    atoms_fwd = atoms.copy()
-    atoms_fwd.calc = calc
-    irc_fwd = IRC(
-        atoms_fwd,
-        logfile="-",
-        trajectory=str(file.with_suffix(".fwd.traj")),
-        dx=0.1,    # default 0.1, unit Angstrom * sqrt(amu), larger, faster, less true traj
-        eta=1e-4,  # default 1e-4
-        gamma=0.1, # default 0.1
-        # gamma=0.4, # default 0.1
-        keep_going=False, 
-    )
-    irc_fwd.run(fmax=fmax, steps=steps, direction='forward')
+TS = read("o5_aa.ts_opt.traj", -1)
+TS.calc = calc   
+irc_file = Path("o5_aa.irc.traj")
+irc = IRC(
+    TS,
+    logfile="-",
+    trajectory=str(irc_file),
+    dx=0.1,    # default 0.1, unit Angstrom * sqrt(amu), larger, faster, less true traj
+    eta=1e-4,  # default 1e-4
+    gamma=0.1, # default 0.1
+    # gamma=0.4, # default 0.1
+    keep_going=False, 
+)
+irc.run(fmax=fmax, steps=steps, direction='forward')
+split = irc.nsteps
+irc.run(fmax=fmax, steps=steps, direction='reverse')
+tmp_atomsList = read(str(irc_file), ':')
+forward = tmp_atomsList[:split+1]
+forward.reverse()
+backward = tmp_atomsList[split+1:]
+irc_file.unlink()
+write(str(irc_file), forward + backward)
 
-
-    print(">>> Running IRC (backward direction)")
-    atoms_bwd = atoms.copy()
-    atoms_bwd.calc = calc
-    irc_bwd = IRC(
-        atoms_bwd,
-        logfile="-",
-        trajectory=str(file.with_suffix(".bwd.traj")),
-        dx=0.1,    # default 0.1, unit Angstrom * sqrt(amu), larger, faster, less true traj
-        eta=1e-4,  # default 1e-4
-        gamma=0.1, # default 0.1
-        # gamma=0.4, # default 0.1
-        keep_going=False, 
-    )
-    irc_bwd.run(fmax=fmax, steps=steps, direction='reverse')
 

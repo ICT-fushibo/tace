@@ -14,13 +14,12 @@ import torch
 from torch import Tensor
 
 
+from cartnn import ICTD, expand_dims_to
 from .mlp import MLP
 from .linear import SelfInteraction, LinearDict
 from .ctr import Contraction
 from .utils import Graph, LAMMPS_MP, dict2flatten, flatten2dict, add_dict_to_left
 from .layers import NormNonlinearity, GatedNonlinearity
-from .ictd import ICTD
-from .utils import expand_dims_to
 from ...utils.torch_scatter import scatter_sum
 
 

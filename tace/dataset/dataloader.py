@@ -4,18 +4,16 @@
 ################################################################################
 
 import gc
-import yaml
 import logging
 from typing import Dict, List
-from pathlib import Path
 
-import torch
+
 from tqdm import tqdm
 from hydra.utils import instantiate
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 
 from .element import build_element_lookup, TorchElement
-from .read import _read
+from .read import tace_read_all_files
 from .graph import from_atoms
 from .statistics import compute_atomic_energy, _compute_statistics, Statistics
 from .quantity import KeySpecification
@@ -24,7 +22,9 @@ from .quantity import KeySpecification
 @rank_zero_only
 def create_graphs_for_main_rank(atomsList, element, for_dataset, stage):
     dataset = []
-    for atoms in tqdm(atomsList, desc=f"Building graphs for {stage}"):
+    # for atoms in tqdm(atomsList, desc=f"Building graphs for {stage}"):
+    #     dataset.append(from_atoms(element, atoms, **for_dataset))
+    for atoms in atomsList:
         dataset.append(from_atoms(element, atoms, **for_dataset))
     return dataset
 
@@ -37,7 +37,7 @@ def build_atomsList(
     keyspec: KeySpecification,
     num_levels: int,
 ):
-    threeAtomsList = _read(cfg, target_property, embedding_property, keyspec)
+    threeAtomsList = tace_read_all_files(cfg, target_property, embedding_property, keyspec)
 
     # ==== read atomic_numbers and atomic_energy from dataset and cfg ===
     try:
@@ -143,12 +143,9 @@ def compute_statistics(
             cfg["dataset"]["train_dataloader"],
             dataset=dataset_train
         )
-        import sys 
-        sys.exit()
 
     statistics = _compute_statistics(
         dataloader_train,
-        # dataloader_valid,
         sorted(element.atomic_numbers),
         atomic_energies,
         target_property=target_property,

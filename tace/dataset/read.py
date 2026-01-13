@@ -3,7 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from __future__ import annotations
 import logging
 from typing import List, Dict
 from pathlib import Path
@@ -11,10 +10,8 @@ import multiprocessing
 from concurrent.futures import as_completed
 from concurrent.futures import ProcessPoolExecutor
 
-
+import numpy as np
 from ase import Atoms
-from ase.io import read
-from ase.db import connect
 from ase.calculators.calculator import all_properties
 
 
@@ -27,6 +24,7 @@ class DatasetsSplit:
         self.train = train
         self.valid = valid
         self.test = test
+
 
 class ThreeDataset:
     def __init__(self, train, valid, test=None):
@@ -94,40 +92,105 @@ def check_keys(
     return atomsList
 
 
-def read_file(fpath: str, target_property, keyspec, embedding_property):
+def ase_io_read(filename: str):
     from ase.io import read
-    from pathlib import Path
+    return read(filename, index=":")
 
-    fpath = Path(fpath)
+
+def ase_db_connect(filename: str):
+    from ase.db import connect
+    return [row.toatoms() for row in connect(filename).select()]
+
+
+def aqcat25_aselmdb(filename: str):
+    from ase.db import connect
+    atomsList = []
+    with connect(filename) as db:
+        for idx in range(1, len(db) + 1):
+            row = db.get(idx)
+            if not row:
+                continue
+            atoms = row.toatoms()
+            atoms.info = row.data 
+            atoms.info["level"] = atoms.info.get("level", 1) # default to second level
+            # move_mask
+            atoms.arrays["move_mask"] = np.array(
+                [0 if tag == 0 else 1 for tag in atoms.get_tags()], dtype=np.int64
+            )
+            # spin_on
+            is_spin_off = atoms.info.get("is_spin_off", None)
+            if is_spin_off is False:
+                atoms.info["spin_on"] = 1
+            elif is_spin_off is True: 
+                atoms.info["spin_on"] = 0
+            else:
+                raise ValueError(f"is_spin_off not found or invalid in {filename}, idx={idx}")
+            atomsList.append(atoms)
+    return atomsList
+
+
+def fair_aselmdb(filename: str):
+    raise NotImplementedError("fair_lmdb is not yet implemented")
+
+
+def torchsim_h5(filename: str):
+    raise NotImplementedError("torchsim_h5 is not yet implemented")
+
+
+RGLOB = {
+    "ase": ["*.xyz", "*.extxyz", "*.traj"],
+    "ase_db": ["*.db"],
+    "aqcat25_aselmdb": ["*.aselmdb"],
+    "fair_aselmdb": ["*.aselmdb"],
+    "torchsim_h5": ["*.h5"],
+}
+
+
+HOW_TO_READ = {
+    "ase": ase_io_read,
+    "ase_db": ase_db_connect,
+    "aqcat25_aselmdb": aqcat25_aselmdb,
+    "fair_aselmdb": fair_aselmdb,
+    "torchsim_h5": torchsim_h5,
+}
+
+
+def read_single_file(fpath: str, target_property, keyspec, embedding_property, backend="ase"):
+    atomsList = HOW_TO_READ[backend](fpath)
+
     try:
-        return check_keys(read(fpath, index=":"), target_property, keyspec, embedding_property)
+        return check_keys(atomsList, target_property, keyspec, embedding_property)
     except Exception as e:
         logging.warning(f"Failed to read {fpath}: {e}, pass")
         return []
+    
 
-def ase_io_read(
-    filename: str,
+def read_all_files(
+    filename: str | List[str],
     target_property: List[str],
     keyspec,
     embedding_property: List[str],
     num_workers: int = None,
+    backend="ase",
 ):
     """
     Behavior
     --------
-    - If 'filename' is a file: read it normally using ASE.
-    - If 'filename' is a directory: search for all '.xyz' and '.extxyz' files
-      (recursively), read them in parallel (using 1/4 of available CPUs),
-      and aggregate all structures.
+    - filename can be:
+        * a single file path
+        * a single directory path
+        * a list of files and/or directories (mixed)
+    - Directories are searched recursively for possible files.
+    - All discovered files are read and aggregated.
 
     Parameters
     ----------
-    filename : str
-        Path to a file or directory.
+    filename : str or List[str]
+        File path(s) or directory path(s).
     target_property : List[str]
         List of target properties to check.
     keyspec :
-        Specification of property keys (type depends on your check_keys implementation).
+        Specification of property keys.
     embedding_property : List[str]
         List of embedding-related properties.
 
@@ -137,87 +200,86 @@ def ase_io_read(
         Aggregated structures passed to check_keys().
     """
 
-    path = Path(filename)
-
     if num_workers is None:
         num_workers = max(1, multiprocessing.cpu_count() // 4)
 
-    all_structures = []
-
-    if path.is_dir():
-        logging.info(f"'{path}' is a directory. Searching for all '.xyz' and '.extxyz' files recursively...")
-
-        xyz_files = list(path.rglob("*.xyz")) + list(path.rglob("*.extxyz"))
-        if not xyz_files:
-            raise FileNotFoundError(f"No '.xyz' or '.extxyz' files found in directory '{path}'.")
-
-        logging.info(f"Found {len(xyz_files)} files. Reading them in parallel...")
-        logging.info(f"Using {num_workers} processes for parallel reading.")
-
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = {
-                executor.submit(read_file, str(f), target_property, keyspec, embedding_property): f
-                for f in xyz_files
-            }
-
-            # for future in tqdm(as_completed(futures), total=len(futures), desc="Reading files"):
-            #     all_structures.extend(future.result())
-
-            for future in as_completed(futures):
-                all_structures.extend(future.result())
-
-        logging.info(f"Successfully read {len(all_structures)} structures from {len(xyz_files)} files.")
+    if isinstance(filename, (str, Path)):
+        paths = [Path(filename)]
     else:
-        all_structures = check_keys(read(path, index=":"), target_property, keyspec, embedding_property)
+        paths = [Path(f) for f in filename]
 
-    return all_structures
-    
+    all_files: List[Path] = []
 
-def ase_db_connect(
-    filename: str,
-    target_property: List[str],
-    keyspec: KeyboardInterrupt,
-    embedding_property: List[str],
-    num_workers: int = max(1, multiprocessing.cpu_count() // 4),
-):
-    return check_keys(
-        [row.toatoms() for row in connect(filename).select()],
-        target_property,
-        keyspec,
-        embedding_property,
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Path does not exist: {path}")
+
+        if path.is_file():
+            all_files.append(path)
+
+        elif path.is_dir():
+            all_files.extend(
+                f
+                for pattern in RGLOB[backend]
+                for f in path.rglob(pattern)
+            )
+
+        else:
+            raise ValueError(f"Unsupported path type: {path}")
+
+    all_files = sorted(set(all_files))
+
+    if not all_files:
+        raise FileNotFoundError("No dataset files found in the provided paths")
+
+    logging.info(f"Found {len(all_files)} files in total")
+    logging.info(f"Using {num_workers} processes for parallel reading")
+
+    all_structures = []
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        futures = {
+            executor.submit(
+                read_single_file,
+                str(f),
+                target_property,
+                keyspec,
+                embedding_property,
+                backend,
+            ): f
+            for f in all_files
+        }
+
+        for future in as_completed(futures):
+            all_structures.extend(future.result())
+
+    logging.info(
+        f"Successfully read {len(all_structures)} structures from {len(all_files)} files"
     )
 
-
-def fair_lmdb(filename: str):
-    raise NotImplementedError("fair_lmdb is not yet implemented")
-
-def torchsim_h5(filename: str):
-    raise NotImplementedError("torchsim_h5 is not yet implemented")
-
-HOW_TO_READ = {"ase": ase_io_read, "ase_db": ase_db_connect, "fair": fair_lmdb, "torchsim": torchsim_h5}
+    return all_structures
 
 
-def _read(
+def tace_read_all_files(
     cfg: Dict,
     target_property: List[str],
     embedding_property: List[str],
     keyspec: KeyboardInterrupt,
     in_datamodule: bool = False,
 ) -> ThreeDataset:
-    file_type = cfg.get("dataset", {}).get("type", "ase")
-    no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
-    num_workers = cfg.get("dataset", {}).get("num_workers", max(1, multiprocessing.cpu_count() // 4))
-    try:
-        train_file = cfg["dataset"]["train_file"]
-    except Exception as e:
-        raise RuntimeError(
-            "Failed to retrieve 'cfg.dataset.train_file' from configuration"
-        ) from e
+    
+    file_type = cfg["dataset"].get("type", "ase")
+    no_valid_set = cfg["dataset"].get("no_valid_set", False)
+    num_workers = max(1, multiprocessing.cpu_count() // 4)
+    num_workers = cfg["dataset"].get("num_workers", num_workers)
+
+    train_file = cfg["dataset"]["train_file"]
+    assert train_file, "No valid training dataset provided. Please check cfg.dataset.train_file"
     valid_file = cfg.get("dataset", {}).get("valid_file", None)
     test_files = cfg.get("dataset", {}).get("test_files", None)
+
     try:
-        tmp_train_atoms_list = HOW_TO_READ[file_type](
-            train_file, target_property, keyspec, embedding_property, num_workers
+        tmp_train_atoms_list = read_all_files(
+            train_file, target_property, keyspec, embedding_property, num_workers, file_type
         )
     except Exception as e:
         raise RuntimeError(
@@ -225,8 +287,8 @@ def _read(
         )
     try:
         tmp_valid_atoms_list = (
-            HOW_TO_READ[file_type](
-                valid_file, target_property, keyspec, embedding_property, num_workers
+            read_all_files(
+                valid_file, target_property, keyspec, embedding_property, num_workers, file_type
             )
             if valid_file is not None
             else None
@@ -239,14 +301,14 @@ def _read(
         if test_files is not None:
             if isinstance(test_files, str):
                 test_atoms_list = [
-                    HOW_TO_READ[file_type](
-                        test_files, target_property, keyspec, embedding_property, num_workers
+                    read_all_files(
+                        test_files, target_property, keyspec, embedding_property, num_workers, file_type
                     )
                 ]
             elif isinstance(test_files, list):
                 test_atoms_list = [
-                    HOW_TO_READ[file_type](
-                        f, target_property, keyspec, embedding_property, num_workers
+                    read_all_files(
+                        f, target_property, keyspec, embedding_property, num_workers, file_type
                     )
                     for f in test_files
                 ]
@@ -315,7 +377,7 @@ def _read(
             logging.info(
                 f"Using training set from: {train_file}",
             )
-            logging.info(
+            logging.warning(
                 f"This training has no validation set, you must use lr_scheduler not depending on validation set",
             )
             if test_atoms_list is not None:

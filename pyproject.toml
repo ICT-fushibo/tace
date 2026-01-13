@@ -95,7 +95,7 @@ tace-download = "tace.scripts.download:main"
 tace-average = "tace.scripts.average:main"
 
 [tool.setuptools.packages.find]
-include = ["tace", "tace.*"]
+include = ["tace", "tace.*", "cartnn", "cartnn.*"]
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]

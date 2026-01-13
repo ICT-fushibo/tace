@@ -9,7 +9,7 @@ defaults:
 resume_from_model: null
 
 # Specify the model to be fine-tuned. Files must be end with .ckpt, .pt, or .pth
-finetune_from_model: TACE-v1-OAM-M.pt
+finetune_from_model: null
 
 finetune: null # this field equals ./finetune_config.yaml, auto read or write directly here
 
@@ -38,7 +38,7 @@ trainer:
   # strategy: # Recommended for multi-GPU training. 
   #   _target_: tace.utils.strategy.SimpleDDPStrategy                                                  
   gradient_clip_val: 1.0
-  enable_progress_bar: true # If you don't want to see the progress bar, you can turn it off
+  enable_progress_bar: false # If you don't want to see the progress bar, you can turn it off
   log_every_n_steps: 100
 
   # Generally, no modification is required
@@ -92,7 +92,7 @@ dataset:
   valid_from_index: false # split train and val from train.index and valid.index in current directory
   no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
   neighborlist_backend: matscipy # [ase, vesin, matscipy] recommend matscipy
-  storage_mode: lmdb # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
+  storage_mode: memory # memory or lmdb, if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
   shard_dirs: # if lmdb model, specify a list of path where you save you graph
     - graphCache
   # If using LMDB mode, you must allocate a reasonable pre-storage size.  

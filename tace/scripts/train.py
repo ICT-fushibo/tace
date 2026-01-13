@@ -58,7 +58,6 @@ def initialize(cfg):
     return cfg
 
 
-
 def build(cfg: DictConfig):
     cfg = initialize(OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
     target_property = get_target_property(cfg)
@@ -71,6 +70,7 @@ def build(cfg: DictConfig):
 
     # train from scratch, calculate statistics
     statistics = None
+    threeAtomsList = None
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
         statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
@@ -141,6 +141,7 @@ def build(cfg: DictConfig):
         embedding_property, 
         num_levels, 
         keyspec, 
+        threeAtomsList,
     )
 
     return cfg, statistics, target_property, embedding_property, model, datamodule

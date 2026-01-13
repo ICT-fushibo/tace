@@ -15,7 +15,7 @@ model = tace_foundations["TACE-v1-OAM-M"]
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 level = 0  # first fidelity
-atoms = read('data/BaTiO3.xyz', index=0)
+atoms = read('../data/BaTiO3.xyz', index=0)
 
 
 # The training property of TACE-v1-OAM-M.pt are ['energy', 'forces', 'stress'],

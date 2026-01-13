@@ -2,7 +2,12 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-
+"""
+see 
+https://www.jmlr.org/papers/v26/25-0134.html for ICTD
+https://arxiv.org/abs/2509.14961 for TACE
+https://arxiv.org/abs/2512.16882 for Cartesian-3j, Cartesian-nj
+"""
 from typing import Tuple, List
 
 

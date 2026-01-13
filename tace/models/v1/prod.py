@@ -6,10 +6,11 @@
 
 from typing import Dict, List
 
+
 import torch
 
 
-from .ictd import ICTD
+from cartnn import ICTD
 from .utils import add_dict_to_left
 from .paths import satisfy, generate_prod_paths
 from .linear import SelfInteraction, LinearDict
