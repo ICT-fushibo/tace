@@ -283,17 +283,17 @@ def mse_final_noncollinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Ten
     return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_magnetic_collinear_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    key = "magnetic_collinear_forces"
+def mse_collinear_magnetic_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "collinear_magnetic_forces"
     batch = label.batch
-    total_weight = (label.entropy * label.magnetic_collinear_forces_weight)[batch]
+    total_weight = (label.entropy * label.collinear_magnetic_forces_weight)[batch]
     return torch.mean(torch.square(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_magnetic_noncollinear_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
-    key = "magnetic_noncollinear_forces"
+def mse_noncollinear_magnetic_forces(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    key = "noncollinear_magnetic_forces"
     batch = label.batch
-    total_weight = label.entropy[batch].unsqueeze(-1) * label.magnetic_noncollinear_forces_weight[
+    total_weight = label.entropy[batch].unsqueeze(-1) * label.noncollinear_magnetic_forces_weight[
         batch
     ].unsqueeze(-1)
     return torch.mean(

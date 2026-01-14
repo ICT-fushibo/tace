@@ -597,14 +597,14 @@ PROPERTY = {
         },
         "default_value_fn": default_value_for_rank0_atom,
         "must_be_with": {
-            1: ["magmoms_0"]
+            1: ["initial_collinear_magmoms"]
         },
         "conflict_with": {},
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
         "second_derivative": False,
-        "requires_grad_with": ['magmoms_0'],
+        "requires_grad_with": ['initial_collinear_magmoms'],
     },
     "noncollinear_magnetic_forces": {
         "ase_name": None,
@@ -618,14 +618,14 @@ PROPERTY = {
         },
         "default_value_fn": default_value_for_rank1_atom,
         "must_be_with": {
-            1: ["magmoms_1"]
+            1: ["initial_noncollinear_magmoms"]
         },
         "conflict_with": {},
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
         "second_derivative": False,
-        "requires_grad_with": ['magmoms_1'],
+        "requires_grad_with": ['initial_noncollinear_magmoms'],
     },
     "total_collinear_magmom": {
         "ase_name": "magmoms",
