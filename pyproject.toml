@@ -29,6 +29,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ 
+openmm = [
+    "openmm",
+    "openmm-ml",
+    "openmmtorch",
+    # conda install -c conda-forge nnpops
+]
 
 lammps = [
     "lammps",

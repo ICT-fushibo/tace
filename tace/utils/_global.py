@@ -16,6 +16,12 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 BOOL = {
     0: False,
     1: True,
+    "f": False,
+    "t": True,
+    "false": False,
+    "true": True,
+    "False": False,
+    "True": True,
 }
 
 
@@ -24,6 +30,9 @@ DTYPE = {
     16: torch.float16,
     32: torch.float32,
     64: torch.float64,
+    "half": torch.float16,
+    "single": torch.float32,
+    "double": torch.float64,
     "fp16": torch.float16,
     "fp32": torch.float32,
     "fp64": torch.float64,
@@ -36,7 +45,7 @@ DTYPE = {
 }
 
 
-num_gpus = 128
+num_gpus = 32
 DEVICE = {
     None: None,
     "cpu": torch.device("cpu"),

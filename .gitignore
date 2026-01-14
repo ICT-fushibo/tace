@@ -37,6 +37,9 @@ test/
 xzm/
 v2/
 draw/
+openmm/
+3bpa/
+
 
 # Ignore specific files
 .DS_Store

@@ -13,4 +13,4 @@ making a best effort to remain **directly transferable to other packages** for
 broader reuse by the community.
 
 For details on **Cartesian-3j**, **Cartesian-nj**, and the construction of the
-corresponding **Cartesian product basis**, see:  https://arxiv.org/abs/2512.16882
+corresponding **precomputed Cartesian product basis**, see:  https://arxiv.org/abs/2512.16882

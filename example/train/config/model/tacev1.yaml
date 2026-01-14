@@ -71,6 +71,7 @@ config:
     correlation: 3 # (int | list) body-order, 3 is recommended
     element_aware: true # (bool) always set this to true
     coupled_channel: true # (bool) always set this to true
+    precompute: false # only allowed correlation = 2, 3 is to large, l1l2, l3l1 is useless when this is True
  
   readout_emlp:
     hidden: [16] # (list(int)) always set this to [16]

@@ -13,7 +13,7 @@ from .radial import RadialBasis
 from .ch import LegacyCartesianHarmonics2
 from .mlp import MLP
 from .inter import Interaction
-from .prod import SelfContraction
+from .prod import SelfContraction, PrecomputedSelfContraction
 from .embedding import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .utils import Graph
 
@@ -127,23 +127,42 @@ class TACEDescriptor(torch.nn.Module):
         )
 
         # === Product Layer ===
-        self.products = nn.ModuleList(
-            [
-                SelfContraction(
-                    num_channel,
-                    num_channel_hidden,
-                    max(ls_hidden[idx]),
-                    ls_out[idx],
-                    atomic_numbers,
-                    prod,
-                    bias,
-                    idx,
-                    num_layers,
-                )
-                for idx in range(num_layers)
-            ]
-        )
- 
+        self.precompute = prod.get("precompute", False)
+        if not self.precompute:
+            self.products = nn.ModuleList(
+                [
+                    SelfContraction(
+                        num_channel,
+                        num_channel_hidden,
+                        max(ls_hidden[idx]),
+                        ls_out[idx],
+                        atomic_numbers,
+                        prod,
+                        bias,
+                        idx,
+                        num_layers,
+                    )
+                    for idx in range(num_layers)
+                ]
+            )
+        else:
+             self.products = nn.ModuleList(
+                [
+                    PrecomputedSelfContraction(
+                        num_channel,
+                        num_channel_hidden,
+                        max(ls_hidden[idx]),
+                        ls_out[idx],
+                        atomic_numbers,
+                        prod,
+                        bias,
+                        idx,
+                        num_layers,
+                    )
+                    for idx in range(num_layers)
+                ]
+            )
+             
     def forward(self, data: Dict[str, Tensor], graph: Graph) -> Dict[str, Any]:
 
         lmp = graph.lmp

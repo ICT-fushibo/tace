@@ -4,13 +4,13 @@
 ################################################################################
 
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 import torch
 
 
-from cartnn import ICTD
+from cartnn import ICTD, Irreps, SymmetricContraction
 from .utils import add_dict_to_left
 from .paths import satisfy, generate_prod_paths
 from .linear import SelfInteraction, LinearDict
@@ -43,7 +43,6 @@ class SelfContraction(torch.nn.Module):
             del DS
         
         # === used in init === 
-        
         l1l2 = prod.get("l1l2", [None] * num_layers)[layer]
         l3l1 = prod.get("l3l1", [None] * num_layers)[layer]
         correlation = prod.get("correlation", [3,] * num_layers)[layer]
@@ -205,5 +204,131 @@ class SelfContraction(torch.nn.Module):
                     out_dict[l3] += out
                 else:
                     out_dict[l3] = out
+
+        return add_dict_to_left(self.linear(out_dict), sc)
+
+
+
+
+class DictToIrreps(torch.nn.Module):
+    def __init__(
+            self, 
+            forward_irreps, 
+            inverse_irreps, 
+            num_channel: int
+        ) -> None:
+        super().__init__()
+        self.num_channel = num_channel
+        self.slices = Irreps(inverse_irreps).slices()
+
+    def forward(self, in_dict: Dict[int, torch.Tensor], inverse: bool = False, sc: bool = False) -> torch.Tensor:
+        if inverse:
+            new_dict = {}
+            B = in_dict.size(0)
+            C = self.num_channel
+            for i, slice in enumerate(self.slices):
+                new_dict[i] = in_dict[:, slice].reshape(B, C, *(3,)*i)
+            return new_dict
+        else:
+            if in_dict:
+                B, C = in_dict[0].size()[:2]
+                feats_list = []
+                if sc:
+                    for k in sorted(in_dict):
+                        feats = in_dict[k].view(B, -1)
+                        feats_list.append(feats)
+                else:
+                    for k in sorted(in_dict):
+                        feats = in_dict[k].view(B, C, -1)
+                        feats_list.append(feats)
+                return torch.cat(feats_list, dim=-1)
+            else:
+                return None
+            
+
+        
+class PrecomputedSelfContraction(torch.nn.Module):
+    def __init__(
+        self,
+        num_channel: int = 64,
+        num_channel_hidden: int = 64,
+        lmax_in: int = 3,
+        ls_out: List[int] = 2,
+        atomic_numbers: List[int] = [],
+        prod: Dict = {},
+        bias: bool = False,
+        layer: int = -1,
+        num_layers: int = 2,
+    ) -> None:
+        
+        '''
+        This product basis is different from original TACE's SelfContraction.
+        Simply put, 
+        Self contraction: tensor product + tensor contraction;
+        PrecomputedSelfContraction: tensor product and precomute cartesian_nj.
+        '''
+        super().__init__()
+
+        self.lmax_in = lmax_in
+        self.ls_out = ls_out
+        self.num_channel = num_channel
+        self.num_channel_hidden = num_channel_hidden
+
+        if isinstance(prod.get("element_aware", True), bool):
+            element_aware = {}
+            for l in ls_out:
+                element_aware[l] = prod.get("element_aware", True)
+        else:
+             element_aware = prod["element_aware"]
+        if isinstance(prod.get("coupled_channel", True), bool):
+            coupled_channel = {}
+            for l in ls_out:
+                coupled_channel[l] = prod.get("coupled_channel", True)
+        else:
+            coupled_channel = prod["coupled_channel"]
+
+        correlation = prod.get("correlation", [3,] * num_layers)[layer]
+        assert correlation == 2, "Only nu=2 precomputed product basis are useful in Cartesian space "
+    
+        node_feats_irreps = "+".join(
+            f"{num_channel_hidden}x{l}e" for l in range(lmax_in + 1)
+        )
+        target_irreps = "+".join(f"{num_channel_hidden}x{l}e" for l in ls_out)
+
+        self.symmetric_contractions = SymmetricContraction(
+            irreps_in=Irreps(node_feats_irreps),
+            irreps_out=Irreps(target_irreps),
+            correlation=correlation,
+            num_elements=len(atomic_numbers),
+            element_aware=element_aware,
+            coupled_channel=coupled_channel,
+        )
+
+        self.linear = SelfInteraction(
+            in_channel=num_channel_hidden,
+            out_channel=num_channel,
+            ls=ls_out,
+            bias=bias and layer == num_layers -1,
+        )
+
+    def forward(
+        self,
+        node_feats: Dict[int, torch.Tensor],
+        node_attrs: torch.Tensor,
+        sc: Dict[int, torch.Tensor],
+    ) -> torch.Tensor:
+        
+        B = node_feats[0].size(0)
+        C = node_feats[0].size(1)
+
+        node_feats_list = []
+        for l in range(self.lmax_in + 1):
+            node_feats_list.append(node_feats[l].view(B, C, -1))
+        node_feats = torch.cat(node_feats_list, dim=-1)
+        node_feats = self.symmetric_contractions(node_feats, node_attrs)
+
+        out_dict = {}
+        for idx, l in enumerate(self.ls_out):
+            out_dict[l] = node_feats[idx].view(*((B, self.num_channel) + (3,) * l))
 
         return add_dict_to_left(self.linear(out_dict), sc)

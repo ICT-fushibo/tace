@@ -44,6 +44,7 @@ PROD = {
     "correlation": 3,
     "element_aware": True,
     "coupled_channel": True,
+    "precompute": False,
 }
 
 
