@@ -74,6 +74,8 @@ def check_keys(
                     if p in keyspec.info_keys:
                         key = keyspec.info_keys[p]
                         debug_key = f"{key}s"
+                        if key in atoms.info.keys():
+                            continue
                         if key in all_properties:
                             atoms.info[key] = atoms.calc.results[key]
                             found = True
@@ -83,6 +85,8 @@ def check_keys(
                     if p in keyspec.arrays_keys:
                         key = keyspec.arrays_keys[p]
                         debug_key = f"{key}s"
+                        if key in atoms.arrays.keys():
+                            continue
                         if key in all_properties:
                             atoms.arrays[key] = atoms.calc.results[key]
                             found = True

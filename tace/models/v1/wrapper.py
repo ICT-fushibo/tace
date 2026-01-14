@@ -32,6 +32,7 @@ class WrapModelV1(torch.nn.Module):
         super().__init__()
         self.readout_fn = readout_fn
         target_property = readout_fn.target_property
+        self.num_levels = readout_fn.num_levels
         self._set_target_property(target_property)
         self._set_lammps_mliap()
         self._set_special
@@ -335,11 +336,9 @@ class WrapModelV1(torch.nn.Module):
 
         node_level = (
             data['level'][data['batch']]
-            if "level" in data
+            if ("level" in data) and (self.num_levels != 1)
             else torch.full_like(data['batch'], self.level, dtype=torch.int64)
         )  # used for multi-fidelity and multi-head
-
-        # node_level = torch.full_like(data['batch'], 0, dtype=torch.int64)
 
         if "spin_on" not in data: # used for uie
             data['spin_on'] = torch.tensor([self.spin_on], device=data["node_attrs"].device, dtype=torch.int64)

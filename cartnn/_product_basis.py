@@ -106,6 +106,7 @@ class Contraction(torch.nn.Module):
     ) -> None:
         super().__init__()
 
+        assert not coupled_channel, "Precompute coupled product basis is not allowed now" # TODO
 
         num_elements = num_elements if element_aware else 1
         self.element_aware = element_aware
