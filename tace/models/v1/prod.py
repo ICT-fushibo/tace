@@ -4,13 +4,13 @@
 ################################################################################
 
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 import torch
-
-
 from cartnn import ICTD, Irreps, SymmetricContraction
+
+
 from .utils import add_dict_to_left
 from .paths import satisfy, generate_prod_paths
 from .linear import SelfInteraction, LinearDict
@@ -208,45 +208,6 @@ class SelfContraction(torch.nn.Module):
         return add_dict_to_left(self.linear(out_dict), sc)
 
 
-
-
-class DictToIrreps(torch.nn.Module):
-    def __init__(
-            self, 
-            forward_irreps, 
-            inverse_irreps, 
-            num_channel: int
-        ) -> None:
-        super().__init__()
-        self.num_channel = num_channel
-        self.slices = Irreps(inverse_irreps).slices()
-
-    def forward(self, in_dict: Dict[int, torch.Tensor], inverse: bool = False, sc: bool = False) -> torch.Tensor:
-        if inverse:
-            new_dict = {}
-            B = in_dict.size(0)
-            C = self.num_channel
-            for i, slice in enumerate(self.slices):
-                new_dict[i] = in_dict[:, slice].reshape(B, C, *(3,)*i)
-            return new_dict
-        else:
-            if in_dict:
-                B, C = in_dict[0].size()[:2]
-                feats_list = []
-                if sc:
-                    for k in sorted(in_dict):
-                        feats = in_dict[k].view(B, -1)
-                        feats_list.append(feats)
-                else:
-                    for k in sorted(in_dict):
-                        feats = in_dict[k].view(B, C, -1)
-                        feats_list.append(feats)
-                return torch.cat(feats_list, dim=-1)
-            else:
-                return None
-            
-
-        
 class PrecomputedSelfContraction(torch.nn.Module):
     def __init__(
         self,
