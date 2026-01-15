@@ -89,8 +89,8 @@ class TACEAseCalc(Calculator):
                 f"This may cause silent type conversions."
             )
         model = model.to(dtype=self.dtype)
-        self.target_property = list(set(model.target_property))
-        self.embedding_property = model.embedding_property
+        self.target_property = model.get_target_property() 
+        self.embedding_property = model.get_embedding_property()
         self.implemented_properties = []
         for p in self.target_property:
             ase_name = PROPERTY[p]['ase_name']

@@ -66,6 +66,9 @@ class WrapModelV1(torch.nn.Module):
             self.readout_fn, "embedding_property", []
         )
 
+    def get_embedding_property(self):
+        return self.embedding_property
+
     def _set_universal_embedding(self):
         self.universal_embedding = getattr(
             self.readout_fn, "universal_embedding", {}
@@ -118,7 +121,7 @@ class WrapModelV1(torch.nn.Module):
         self.readout_fn._reset_target_property(target_property)
 
     def get_target_property(self) -> List[str]:
-        return self.target_property
+        return list(set(self.target_property))
 
     def _set_lammps_mliap(self, enable: bool = False):
         self.lmp = enable

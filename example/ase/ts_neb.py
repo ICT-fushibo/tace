@@ -13,6 +13,7 @@ from tace.interface.ase import TACEAseCalc
 from tace.foundations import tace_foundations
 
 model = tace_foundations["TACE-v1-LES-REICO-5-PdAgCHO.pt"]
+model = "/share2/vortex/xuzemin/last.ckpt"
 dtype = "float32"
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 calc = TACEAseCalc(
@@ -20,6 +21,7 @@ calc = TACEAseCalc(
     dtype=dtype,
     device=device,
     level=0,
+    spin_on=False,
 )
 
 fmax = 0.03

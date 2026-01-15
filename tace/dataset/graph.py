@@ -113,8 +113,8 @@ def from_atoms(
     if training:
         need_property = set(target_property + embedding_property)
     else:
-        # need_property = set(embedding_property)
-        need_property = set()
+        need_property = set(embedding_property)
+        # need_property = set()
 
     joint_property = []
     for name in need_property:

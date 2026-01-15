@@ -66,33 +66,35 @@ def check_keys(
     embedding_property: List[str] = [],
     check: bool = True,
 ):
+    if not check:
+        return atomsList
+    
     for atoms in atomsList:
-        if check:
-            if atoms.calc is not None:
-                for p in (target_property + embedding_property):
-                    found = False
-                    if p in keyspec.info_keys:
-                        key = keyspec.info_keys[p]
-                        debug_key = f"{key}s"
-                        if key in atoms.info.keys():
-                            continue
-                        if key in all_properties:
-                            atoms.info[key] = atoms.calc.results[key]
-                            found = True
-                        if not found:
-                            if debug_key in all_properties:
-                                atoms.info[key] = atoms.calc.results[debug_key]
-                    if p in keyspec.arrays_keys:
-                        key = keyspec.arrays_keys[p]
-                        debug_key = f"{key}s"
-                        if key in atoms.arrays.keys():
-                            continue
-                        if key in all_properties:
-                            atoms.arrays[key] = atoms.calc.results[key]
-                            found = True
-                        if not found:
-                            if debug_key in all_properties:
-                                atoms.arrays[key] = atoms.calc.results[debug_key]
+        if atoms.calc is not None:
+            for p in (target_property + embedding_property):
+                found = False
+                if p in keyspec.info_keys:
+                    key = keyspec.info_keys[p]
+                    debug_key = f"{key}s"
+                    if key in atoms.info.keys():
+                        continue
+                    if key in all_properties:
+                        atoms.info[key] = atoms.calc.results[key]
+                        found = True
+                    if not found:
+                        if debug_key in all_properties:
+                            atoms.info[key] = atoms.calc.results[debug_key]
+                if p in keyspec.arrays_keys:
+                    key = keyspec.arrays_keys[p]
+                    debug_key = f"{key}s"
+                    if key in atoms.arrays.keys():
+                        continue
+                    if key in all_properties:
+                        atoms.arrays[key] = atoms.calc.results[key]
+                        found = True
+                    if not found:
+                        if debug_key in all_properties:
+                            atoms.arrays[key] = atoms.calc.results[debug_key]
     return atomsList
 
 

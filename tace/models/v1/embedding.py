@@ -3,16 +3,26 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 import torch
 from torch import nn, Tensor
-
+from cartnn import ICTD
 
 from .act import ACT
+from .gate import NormGate
+from .linear import Linear
 from .utils import expand_dims_to
 from ...dataset.quantity import PROPERTY, UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
+
+
+def add_rank0_to_left(T: Dict[int, torch.Tensor], rank0: torch.Tensor) -> Dict[int, torch.Tensor]:
+    if 0 in T:
+        T[0] = T[0] + rank0
+    else:
+        T[0] = rank0
+    return T
 
 
 def add_rank1_to_left(T: Dict[int, torch.Tensor], rank1: torch.Tensor) -> Dict[int, torch.Tensor]:
@@ -40,6 +50,7 @@ def add_rank3_to_left(T: Dict[int, torch.Tensor], rank3: torch.Tensor) -> Dict[i
 
 
 ADD_FN = {
+    0: add_rank0_to_left,
     1: add_rank1_to_left,
     2: add_rank2_to_left,
     3: add_rank3_to_left,
@@ -110,7 +121,10 @@ class EquivariantEmbedding(torch.nn.Module):
         num_channel: int,
         element_trainable: bool = True,
         channel_trainable: bool = True,
-        normalizer: float = 1.0
+        normalizer: float = 1.0,
+        gate: Optional[str] = None,
+        linear: bool = False,
+        extra: Dict[str, bool] = {},
     ):
         super().__init__()
         num_elements = len(atomic_numbers)
@@ -133,10 +147,20 @@ class EquivariantEmbedding(torch.nn.Module):
                 torch.ones(num_channel, dtype=torch.get_default_dtype()),
             )
         self.p = p
-        self.add_fn = ADD_FN[rank]
-        self.scope = scope
         self.rank = rank
+        self.add_fn = ADD_FN[self.rank]
+        self.scope = scope
         self.normalizer = normalizer
+        self.gate = gate
+        self.nonlinearity = NormGate[gate](self.rank, num_channel)
+
+        if linear:
+            self.linear = Linear(
+                in_dim=num_channel,
+                out_dim=num_channel,
+                bias=False,
+                l=self.rank,
+            )
 
     def forward(
         self,
@@ -145,8 +169,12 @@ class EquivariantEmbedding(torch.nn.Module):
         batch: Tensor,
         attr: Dict[str, Tensor],
     ):
+        
         element_idx = torch.argmax(node_attrs, dim=-1)
+
         label = attr * self.normalizer
+
+        # === General ===
         if self.scope == "per-system":
             label = label[batch].unsqueeze(1)
         else:
@@ -158,9 +186,15 @@ class EquivariantEmbedding(torch.nn.Module):
         shape = (1, -1) + (1,) * self.rank
         channel_weights = self.channel_weights.view(*shape)
         
-        embedding = label * element_weights * channel_weights
+        embedding = self.nonlinearity(label * element_weights * channel_weights)
+
+        if hasattr(self, "linear"):
+            embedding = self.linear(embedding)
+
         return self.add_fn(node_feats, embedding)
   
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(rank={self.rank}, normalizer={self.normalizer}), gate={self.gate}"
 
 class UniversalEquivariantEmbedding(torch.nn.Module):
     def __init__(
@@ -183,7 +217,10 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
                     num_channel,
                     element_trainable=True,
                     channel_trainable=True,
-                    normalizer=float(v.get('normalizer', 1.0))
+                    normalizer=float(v.get('normalizer', 1.0)),
+                    gate=v.get("gate", None),
+                    linear=v.get("linear", False),
+                    extra=v.get("extra", {}),
                 )
 
     def forward(

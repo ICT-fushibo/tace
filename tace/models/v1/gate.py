@@ -131,17 +131,25 @@ class TensorNormJilu(NormGateBase):
     
 class TensorNormIdentity(torch.nn.Module):
 
-    def activate(self, t: torch.Tensor) -> torch.Tensor:
-        return t
+    r: int
 
-    def tensor_activate(self, t: torch.Tensor, r: int) -> torch.Tensor:
+    def __init__(
+        self,
+        r: int,
+        in_dim: int,
+    ) -> None:
+        super().__init__()
+
+        self.r = r
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
         return t
 
 NormGate: Dict[str | None, type[torch.nn.Module]] = {
     "silu": TensorNormSilu,
     "jilu": TensorNormJilu,
     "tanh": TensorNormTanh,
-    "relu": TensorNormRelu,
+    # "relu": TensorNormRelu,
     "None": TensorNormIdentity,
     "null": TensorNormIdentity,
     None: TensorNormIdentity,

@@ -148,19 +148,25 @@ config:
       electron_temperature:
         enable: false
         act: 'silu'   # (str, null)
-
+   
     equivariant:
       electric_field:
         enable: false
         normalizer: 1.0 # (float)
+        gate: null      # (str, null)
+        linear: False   # (bool)
 
       magnetic_field:
         enable: false
         normalizer: 1.0 # (float)
+        gate: null      # (str, null)
+        linear: False   # (bool)
 
       initial_noncollinear_magmoms:
         enable: false
         normalizer: 1.0 # (float)
+        gate: null      # (str, null)
+        linear: False   # (bool)
 
   special: # this field can be thoroughly ignored if you only interested in E/F/S training
     hessians:
