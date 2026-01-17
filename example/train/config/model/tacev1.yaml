@@ -42,7 +42,7 @@ config:
     polynomial_cutoff: 5 # (int, float)
     order: 0 # (int), specify order for jn, for j0, it is negligible, for jn, you should use float64
     trainable: false # (bool)
-    apply_cutoff: false # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
+    apply_cutoff: true # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
 
   angular_basis:
     traceless: true # (bool), always set this to true
@@ -100,11 +100,12 @@ config:
       enable: false
       les_arguments:
         n_layers: 3
-        n_hidden': [32, 16]
+        n_hidden: [32, 16]
         add_linear_nn: true
         output_scaling_factor: 0.1
         sigma: 1.0
         dl: 2.0
+        remove_self_interaction: true
         remove_mean: true
         epsilon_factor: 1.0
         use_atomwise: false

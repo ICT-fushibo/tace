@@ -499,11 +499,11 @@ class TACEV1(torch.nn.Module):
                 if not self.use_all_layer:
                     ii = -1
                 f_c_m_list.append(final_collinear_magmoms_readout(descriptors[ii][0])[num_atoms_arange, node_level])
-            F_C_MAG = torch.sum(torch.stack(f_c_m_list, dim=0), dim=0)
+            F_C_MAG = torch.abs(torch.sum(torch.stack(f_c_m_list, dim=0), dim=0))
 
         return {
             "energy": E,
-            "node_energy": e_node, # TODO, BUG check the inside of les
+            "node_energy": e_node, # not include les
             "direct_dipole": D,
             "direct_polarizability": ALPHA,
             "direct_forces": D_F,

@@ -107,7 +107,7 @@ def mse_virials_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> T
     total_weight = label.entropy * label.virials_weight
     num_atoms = (label.ptr[1:] - label.ptr[:-1]).view(-1, 1, 1)
     return torch.mean(
-        (torch.square(pred["virials"] - label["virials"]) / num_atoms)
+        torch.square((pred["virials"] - label["virials"]) / num_atoms)
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
 

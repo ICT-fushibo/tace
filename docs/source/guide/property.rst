@@ -11,7 +11,7 @@ Target & Embedding Property Tutorial
 
 The charges property can be used either as a prediction target or as an embedding feature.
 
-When charges is used as a prediction target, you must** choose one of the following options
+When charges is used as a prediction target, you must choose one of the following options
 to enforce charge conservation:
 
 - lagrangian

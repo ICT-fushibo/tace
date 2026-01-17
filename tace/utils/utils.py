@@ -3,7 +3,6 @@
 # License: Academic / Non-Commercial Use Only
 ################################################################################
 
-import pickle
 import contextlib
 import logging
 from typing import Dict, List
@@ -209,3 +208,25 @@ def voigt_to_matrix(t: Tensor, **kwargs):
     raise ValueError(
         f"Stress tensor must be of shape (6,) or (3, 3), or (9,) but has shape {t.shape}"
     )
+
+def calculate_cps(
+        f1: float, 
+        kappa_srme: float, 
+        rmsd: float, 
+        rmsd_baseline: float = 0.15
+    ) -> float:
+    """Matbench discovery CPS, using default weight"""
+    s_f1 = max(0.0, min(1.0, f1))
+    s_kappa = max(0.0, 1.0 - kappa_srme / 2.0)
+    if rmsd <= 0.0:
+        s_rmsd = 1.0
+    elif rmsd >= rmsd_baseline:
+        s_rmsd = 0.0
+    else:
+        s_rmsd = 1.0 - rmsd / rmsd_baseline
+    cps = (
+        0.5 * s_f1 +
+        0.4 * s_kappa +
+        0.1 * s_rmsd
+    )
+    return cps
