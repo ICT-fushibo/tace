@@ -101,6 +101,13 @@ def mse_stress(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
 
+@register_loss
+def mse_virials(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
+    total_weight = label.entropy * label.virials_weight
+    return torch.mean(
+        torch.square((pred["virials"] - label["virials"]))
+        * total_weight.unsqueeze(-1).unsqueeze(-1)
+    )
 
 @register_loss
 def mse_virials_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
@@ -110,7 +117,6 @@ def mse_virials_per_atom(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> T
         torch.square((pred["virials"] - label["virials"]) / num_atoms)
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
-
 
 @register_loss
 def mse_direct_dipole(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
