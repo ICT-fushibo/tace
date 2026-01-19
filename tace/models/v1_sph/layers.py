@@ -8,7 +8,7 @@ from typing import Optional
 
 import torch
 from e3nn import o3
-from .kernel import CuEquivarianceConfig, OpenEquivarianceConfig
+from .acc import AccLinear
 
 
 class LinearNodeEmbedding(torch.nn.Module):
@@ -16,15 +16,11 @@ class LinearNodeEmbedding(torch.nn.Module):
         self,
         irreps_in: o3.Irreps,
         irreps_out: o3.Irreps,
-        cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OpenEquivarianceConfig] = None,
     ):
         super().__init__()
-        self.linear = o3.Linear(
+        self.linear = AccLinear(
             irreps_in=irreps_in, 
             irreps_out=irreps_out, 
-            # cueq_config=cueq_config,
-            # oeq_config=oeq_config,
         )
 
     def forward(self, node_feats: torch.Tensor) -> torch.Tensor: 

@@ -4,7 +4,6 @@
 # Description: This file contains linear readout function for tensor rank > 0
 ################################################################################
 
-from math import sqrt
 from typing import List, Optional, Callable
 
 
@@ -14,32 +13,7 @@ from e3nn.nn import Activation
 
 
 from tace.models.v1.act import ACT
-from .kernel import CuEquivarianceConfig, OpenEquivarianceConfig
-
-
-class ScalarReadOut(torch.nn.Module):
-    def __init__(
-        self,
-        irreps_in: o3.Irreps,
-        irrep_out: o3.Irreps = o3.Irreps("0e"),
-        cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OpenEquivarianceConfig] = None, 
-    ):
-        super().__init__()
-
-        self.linear = o3.Linear(
-            irreps_in=irreps_in, 
-            irreps_out=irrep_out, 
-            # cueq_config=cueq_config,
-            # oeq_config=oeq_config,
-        )
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        level: Optional[torch.Tensor] = None, 
-    ) -> torch.Tensor:  
-        return self.linear(x)
+from .acc import AccLinear
 
 
 def mask_head(x: torch.Tensor, head: torch.Tensor, num_heads: int) -> torch.Tensor:
@@ -55,14 +29,9 @@ class LinearReadout(torch.nn.Module):
         self,
         irreps_in: o3.Irreps,
         irreps_out: o3.Irreps,
-        bias: bool,
-        cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[CuEquivarianceConfig] = None,
     ):
         super().__init__()
-        self.linear = o3.Linear(
-            irreps_in=irreps_in, irreps_out=irreps_out, biases=bias,
-        )
+        self.linear = AccLinear(irreps_in=irreps_in, irreps_out=irreps_out)
 
     def forward(
         self,
@@ -77,31 +46,22 @@ class NonLinearReadout(torch.nn.Module):
         irreps_in: o3.Irreps,
         irreps_hidden: o3.Irreps,
         irreps_out: o3.Irreps,
-        bias: bool,
         act: str | None,
         num_levels: int = 1,
-        cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OpenEquivarianceConfig] = None, 
     ):
         super().__init__()
         self.irreps_hidden = irreps_hidden
         self.num_levels = num_levels
-        self.linear_1 = o3.Linear(
+        self.linear_1 = AccLinear(
             irreps_in=irreps_in, 
             irreps_out=irreps_hidden, 
-            biases=bias,
-            # cueq_config=cueq_config,
-            # oeq_config=oeq_config,
         )
         self.nonlinearity = Activation(
             irreps_in=self.irreps_hidden, acts=[ACT[act]()]
         )
-        self.linear_2 = o3.Linear(
+        self.linear_2 = AccLinear(
             irreps_in=irreps_hidden, 
             irreps_out=irreps_out, 
-            biases=bias,
-            # cueq_config=cueq_config,
-            # oeq_config=oeq_config,
         )
 
     def forward(
@@ -123,7 +83,6 @@ def build_scalar_readout(
     num_layers: int,
     use_all_layer: bool,
 ):
-
     irreps_out = o3.Irreps([(num_levels, (0, 1))])
     
     readouts = torch.nn.ModuleList()
@@ -133,7 +92,6 @@ def build_scalar_readout(
                 LinearReadout(
                     irreps_in=irreps_in[layer],
                     irreps_out=irreps_out,
-                    bias=bias,
                 )
             )
         else:
@@ -142,7 +100,6 @@ def build_scalar_readout(
                     irreps_in=irreps_in[layer],
                     irreps_hidden=irreps_hidden,
                     irreps_out=irreps_out,
-                    bias=bias,
                     act=act,
                     num_levels=num_levels,
                 )

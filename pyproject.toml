@@ -42,7 +42,7 @@ cueq13 = [
     "cuequivariance-ops-torch-cu13",
 ]
 
-opeq = [
+oeq = [
     "openequivariance",
 ]
 

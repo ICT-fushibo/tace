@@ -4,6 +4,11 @@ config:
   wrapper:
     _target_: tace.models.WrapSphModelV1 
 
+  # tace needs restrict l1, l2, l3 simultaneously, so oeq is the best choice,
+  # product basis was not accelerate now.
+  enable_oeq: true 
+  group: SO(3) # [SO(3) or O(3)]
+
   cutoff: 5.0 # (float), recommend 6.0
   max_neighbors: null # (null, int) if you want to use tace in lammps, do not use max_neighbors
   atomic_numbers: null # (null, list), null = read from dataset.
@@ -11,13 +16,12 @@ config:
   atomic_energies: # (list[dict[int, float]], null) null = auto caculate, for each computational level
     - {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047}
   num_levels: 1
-  group: SO(3)
+
   Lmax: 2 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
   lmax: 3 # (int, list), Truncation for edge, 3 is recommended, 2 for higher speed. If >3, recommend set `l1l2 = <=`
-  num_layers: 2 # (int), 2 for correlation >=2, can be higher when correlation=2
+  num_layers: 10 # (int), 2 for correlation >=2, can be higher when correlation=2
   bias: true # (bool), false is more safe, but true sometimes give better results
   num_channel: 64 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
-  num_channel_hidden: ${model.config.num_channel} # (int), equal num_channel is the best
   
   radial_basis:
     radial_basis: j0   # [j0, jn, n_j0]
@@ -29,7 +33,7 @@ config:
     apply_cutoff: true # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
 
   radial_mlp:
-    hidden: [64, 64, 64, 1024] # (list(int), list(list(int)))
+    hidden: [64, 64, 64] # (list(int), list(list(int)))
     act: 'silu'   # (str, null)
     bias: false   # (bool)
 
@@ -48,7 +52,7 @@ config:
   prod:
     l1l2: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=]
     l3l1: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=, ==]
-    correlation: 3 # (int | list) body-order, 3 is recommended
+    correlation: 2 # (int | list) body-order, 3 is recommended
     element_aware: true # (bool) always set this to true
     coupled_channel: true # (bool) always set this to true
  

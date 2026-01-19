@@ -151,7 +151,8 @@ SPECIAL = {
     }    
 }
 
-from typing import Dict, Any, List, Tuple
+
+from typing import Dict, Any, List
 
 def check_model_config(cfg: Dict[str, Any]):
     assert isinstance(cfg['radial_basis'], Dict), "cfg.model.config.radial_basis must be a Dict"

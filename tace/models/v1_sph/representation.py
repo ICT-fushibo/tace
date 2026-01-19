@@ -30,13 +30,12 @@ class SphTACEDescriptor(torch.nn.Module):
         num_layers: int,
         atomic_numbers: List[int],
         num_channel: List[int] = 64,
-        num_channel_hidden: List[int] = 64,
-        bias: bool = False,
         radial_basis: Dict = {},
         radial_mlp: Dict = {},
         inter: Dict = {},
         prod: Dict = {},
         group: str = "SO(3)",
+        enable_oeq: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -45,13 +44,10 @@ class SphTACEDescriptor(torch.nn.Module):
         self.register_buffer("atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64))
         self.register_buffer("cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype()))
 
-
         # === element embedding ===
         self.node_embedding = LinearNodeEmbedding(
             irreps_in=o3.Irreps([(len(atomic_numbers), (0, 1))]),
             irreps_out=o3.Irreps([(num_channel, (0, 1))]),
-            cueq_config=None,
-            oeq_config=None,
         )
 
         # === radial basis ===
@@ -80,8 +76,6 @@ class SphTACEDescriptor(torch.nn.Module):
                     idx,
                     num_layers,
                     num_channel,
-                    num_channel_hidden,
-                    bias,
                     ls_in[idx],
                     ls_hidden[idx],
                     ls_out[idx],
@@ -91,12 +85,12 @@ class SphTACEDescriptor(torch.nn.Module):
                     self.radial_embedding.out_dim,
                     radial_mlp,
                     inter,
+                    enable_oeq,
                 )
                 for idx in range(num_layers)
             ]
         )
  
-
         # === Product Layer ===
         self.precompute = prod.get("precompute", False)
         self.products = nn.ModuleList(
@@ -106,7 +100,6 @@ class SphTACEDescriptor(torch.nn.Module):
                     ls_out[idx],
                     atomic_numbers,
                     prod,
-                    bias,
                     idx,
                     num_layers,
                 )

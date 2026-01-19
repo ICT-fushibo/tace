@@ -16,12 +16,13 @@ from torch import Tensor
 
 from e3nn import o3
 from e3nn.o3 import Linear as WrapLinear
-from e3nn.o3 import TensorProduct as WrapTensorProduct
+
+from .acc import FusedTensorProduct, AccLinear
 
 
 from tace.models.v1.mlp import MLP
 from tace.models.v1.utils import Graph, LAMMPS_MP
-from .linear import WrapElementLinear
+from .linear import AccElementLinear
 
 from ...utils.torch_scatter import scatter_sum
 
@@ -33,8 +34,6 @@ class InteractionBase(torch.nn.Module):
         layer: int,
         num_layers: int,
         num_channel: int,
-        num_channel_hidden: int,
-        bias: bool,
         irreps_in: int,
         irreps_out: int,
         irreps_sc: List[int],
@@ -44,13 +43,12 @@ class InteractionBase(torch.nn.Module):
         num_radial_basis: int,
         radial_mlp: Dict,
         inter: Dict,
+        enable_oeq: bool
     ) -> None:
         super().__init__()
         self.layer = layer
         self.num_layers = num_layers
         self.num_channel = num_channel
-        self.num_channel_hidden = num_channel_hidden
-        self.bias = bias
         self.irreps_in = irreps_in
         self.irreps_out = irreps_out
         self.irreps_sc = irreps_sc
@@ -61,6 +59,7 @@ class InteractionBase(torch.nn.Module):
         self.radial_mlp = radial_mlp
         self.inter = inter
         self.avg_num_neighbors = avg_num_neighbors
+        self.enable_oeq = enable_oeq
         self._setup()
     
     @abc.abstractmethod
@@ -68,11 +67,12 @@ class InteractionBase(torch.nn.Module):
         raise NotImplementedError
 
 
+
 class Interaction(InteractionBase):
     def _setup(self) -> None:
         # # === resnet === 
         # if self.inter.get('use_resnet', False):
-        #     self.resnet = WrapElementLinear(
+        #     self.resnet = AccElementLinear(
         #         num_elements=self.num_elements,
         #         irreps_in=self.irreps_in,
         #         irreps_out=self.irreps_in,
@@ -82,16 +82,14 @@ class Interaction(InteractionBase):
         #     )
 
         # === linear up ===  
-        self.linear_up = WrapLinear(
+        self.linear_up = AccLinear(
                 irreps_in=self.irreps_in,
                 irreps_out=self.irreps_in,
-                biases=self.bias,
-                # cueq_config=None,
-                # oeq_config=None,
             )
 
         # === ICTP and ICTC ===
         l1l2 = self.inter.get("l1l2", [None] * self.num_layers)[self.layer]
+
         irreps_mid, instructions = generate_inter_paths(
             self.irreps_in,
             self.sh_irreps,
@@ -99,17 +97,17 @@ class Interaction(InteractionBase):
             l1l2=l1l2,
         )
 
-        self.tc = WrapTensorProduct(
+        self.conv_tp = FusedTensorProduct(
             self.irreps_in,
             self.sh_irreps,
             irreps_mid,
             instructions=instructions,
             shared_weights=False,
             internal_weights=False,
-            # cueq_config=None,
-            # oeq_config=None,
+            enable_oeq=self.enable_oeq
         )
-        self.linear = o3.Linear(
+
+        self.linear = AccLinear(
             irreps_mid.regroup(),
             self.irreps_out,
             internal_weights=True,
@@ -122,13 +120,10 @@ class Interaction(InteractionBase):
         or self.layer > 0 \
         or self.num_layers == 1:
             self.sc_from = self.inter.get('sc', {}).get('from', "current_message") 
-            self.scs = WrapElementLinear(
+            self.scs = AccElementLinear(
                 num_elements=self.num_elements,
                 irreps_in=self.irreps_out,
                 irreps_out=self.irreps_sc,
-                bias=self.bias,
-                cueq_config=None,
-                oeq_config=None,
             )
                     
         # ==== conv weights ====
@@ -138,7 +133,7 @@ class Interaction(InteractionBase):
         need_layer_norm = radial_in_dim != self.num_radial_basis
         self.radial_net = MLP(
             radial_in_dim,
-            self.tc.weight_numel,
+            self.conv_tp.weight_numel,
             self.radial_mlp["hidden"][self.layer],
             act=self.radial_mlp["act"],
             bias=self.radial_mlp.get('bias', False),
@@ -178,12 +173,17 @@ class Interaction(InteractionBase):
             conv_weights = conv_weights * cutoff
 
         # === ICTP and ICTC ===
-        m_ij = self.tc(node_feats[edge_index[0]], edge_attrs, conv_weights)
-        m_i = scatter_sum(
-            m_ij, edge_index[1], dim=0, dim_size=node_feats.shape[0]
-        )
+        if self.enable_oeq:
+            m_i = self.conv_tp(
+                node_feats, edge_attrs, conv_weights, edge_index[0], edge_index[1]
+            )
+        else:
+            m_ij = self.conv_tp(node_feats[edge_index[0]], edge_attrs, conv_weights)
+            m_i = scatter_sum(
+                src=m_ij, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
+            )
+            
         m_i = self.linear(m_i) / self.avg_num_neighbors
-       
         scs = None
         if self.sc_from == 'current_message':
             scs = self.scs(m_i, node_attrs_total)

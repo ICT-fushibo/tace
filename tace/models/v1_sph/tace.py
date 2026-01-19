@@ -40,6 +40,7 @@ class SphTACEV1(torch.nn.Module):
         lmax: int | List[int] = 3,
         Lmax: int | List[int] = 2,
         group: str = "SO(3)",
+        enable_oeq: bool = False,
         bias: bool = False,
         num_layers: int = 2,
         num_levels: int = 1,
@@ -107,19 +108,19 @@ class SphTACEV1(torch.nn.Module):
             "cutoff": cfg['cutoff'],
             "num_layers": cfg['num_layers'],
             "num_channel": cfg['num_channel'],
-            "num_channel_hidden": cfg['num_channel_hidden'],
             "radial_basis": cfg['radial_basis'],
             "radial_mlp": cfg['radial_mlp'],
             "inter": cfg['inter'],
             "prod": cfg['prod'],
-            "bias": cfg['bias'],
             "atomic_numbers": cfg['atomic_numbers'],
             "avg_num_neighbors": cfg['avg_num_neighbors'],
             "group": cfg["group"],
+            "enable_oeq": cfg["enable_oeq"],
             "ls_in": ls_in,
             "ls_hidden": ls_hidden,
             "ls_out": ls_out,
             "sh_irreps": sh_irreps,
+
         }
         self.descriptor = SphTACEDescriptor(**for_descriptor)
 
