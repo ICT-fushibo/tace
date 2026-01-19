@@ -14,15 +14,13 @@ from typing import Dict, List, Tuple, Optional, Any
 import torch
 from torch import Tensor
 
-from e3nn import o3
-from e3nn.o3 import Linear as WrapLinear
 
-from .acc import FusedTensorProduct, AccLinear
+from .acc import FusedTensorProduct, AccLinear, AccElementLinear
 
 
 from tace.models.v1.mlp import MLP
 from tace.models.v1.utils import Graph, LAMMPS_MP
-from .linear import AccElementLinear
+from .acc import AccElementLinear
 
 from ...utils.torch_scatter import scatter_sum
 

@@ -13,8 +13,7 @@ from e3nn.o3 import TensorProduct
 
 
 from .paths import generate_prod_paths
-from .linear import AccElementLinear
-from .acc import AccLinear
+from .acc import AccLinear, AccElementLinear
 
 
 class SelfContraction(torch.nn.Module):

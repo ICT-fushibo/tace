@@ -62,7 +62,6 @@ config:
       gate: 'silu' # (null | str)
     sc: # self connection
       use_first_sc: false    # (bool), false is recommended
-      from: current_message  # (str), choices: [current_message, last_product]
     use_resnet: false        # (bool), recommend true when use nonlinearity gate, else false
 
   prod:

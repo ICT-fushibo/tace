@@ -141,11 +141,10 @@ class Interaction(InteractionBase):
         if self.inter.get('sc', {}).get('use_first_sc', False) \
         or self.layer > 0 \
         or self.num_layers == 1:
-            self.sc_from = self.inter.get('sc', {}).get('from', "current_message") 
             self.scs = torch.nn.ModuleDict()
             for l in self.ls_sc:
                     self.scs[str(l)] = LinearDict[True, False](
-                    self.num_channel if self.sc_from == 'last_product' else self.num_channel_hidden,
+                    self.num_channel_hidden,
                     self.num_channel,
                     bias=(l == 0 and self.bias),
                     atomic_numbers=self.atomic_numbers,
@@ -247,12 +246,6 @@ class Interaction(InteractionBase):
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
 
-        scs = {} # TODO, bug
-        # === self connection / skip connection ===
-        if self.sc_from == 'last_product':
-            for r in self.ls_sc:
-                scs[r] = self.scs[str(r)](m_i[r], node_attrs_total)
-
         # === residual === 
         residual = {}
         if hasattr(self, 'resnet'):
@@ -312,8 +305,9 @@ class Interaction(InteractionBase):
         if hasattr(self, 'nonlinearity_gate'):
             m_i = self.nonlinearity_linear(self.nonlinearity_gate(m_i))
 
-        # === self connection / skip connection ===
-        if self.sc_from == 'current_message':
+        scs = {}
+        # === self connection ===
+        if hasattr(self, 'scs'):
             for r in self.ls_sc:
                 scs[r] = self.scs[str(r)](m_i[r], node_attrs_total)
 
