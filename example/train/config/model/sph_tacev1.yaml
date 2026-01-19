@@ -17,11 +17,11 @@ config:
     - {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047}
   num_levels: 1
 
-  Lmax: 4 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
-  lmax: 4 # (int, list), Truncation for edge, 3 is recommended, 2 for higher speed. If >3, recommend set `l1l2 = <=`
-  num_layers: 10 # (int), 2 for correlation >=2, can be higher when correlation=2
+  Lmax: 2 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
+  lmax: 3 # (int, list), Truncation for edge, 3 is recommended, 2 for higher speed. If >3, recommend set `l1l2 = <=`
+  num_layers: 2 # (int), 2 for correlation >=2, can be higher when correlation=2
   bias: true # (bool), false is more safe, but true sometimes give better results
-  num_channel: 48 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
+  num_channel: 64 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
   
   radial_basis:
     radial_basis: j0   # [j0, jn, n_j0]
@@ -33,7 +33,7 @@ config:
     apply_cutoff: true # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
 
   radial_mlp:
-    hidden: [128] # (list(int), list(list(int)))
+    hidden: [64, 64, 64, 1024] # (list(int), list(list(int)))
     act: 'silu'   # (str, null)
     bias: false   # (bool)
 
@@ -52,13 +52,9 @@ config:
     # sph version always hardcore element aware and coupled channel
     l1l2: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=]
     l3l1: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=, ==]
-    correlation: 1 # (int | list) body-order, 3 is recommended
+    correlation: 3 # (int | list) body-order, 3 is recommended
 
   readout_emlp:
-    hidden: [16] # (list(int)) always set this to [16]
-    act: silu # (null | str) for l=0, always set this to silu
-    gate: silu # (null | str) for l>0
-    bias: false # (bool) only useful for l=0, recommended false
     use_all_layer: true # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
     enable_uie_readout: false # (bool), whether use universal invariant embedding readout
     
@@ -67,9 +63,6 @@ config:
     shift_type: mean_delta_energy_per_atom # (null | str)  add by_element can shift for each element,  for energy only, set ``null`` or ``std_energy``
     scale_trainable: false # (bool) 
     shift_trainable: false # (bool) 
-    # # Manually modify the scale and shift parameters per element using the automatically generated statistics yaml file and ignore this parameter
-    scale_dict: auto 
-    shift_dict: auto
 
   short_range:
     zbl: # metal units, for molecular dynamics, true is recommended

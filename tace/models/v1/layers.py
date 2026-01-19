@@ -163,8 +163,6 @@ class ScaleShift(torch.nn.Module):
             "shift_type",
             "scale_trainable",
             "shift_trainable",
-            "scale_dict",
-            "shift_dict",
         ]
         assert all(
             k in cfg for k in required_keys
@@ -190,21 +188,6 @@ class ScaleShift(torch.nn.Module):
 
             scale_dict = {int(k): float(v) for k, v in scale_stat.items()}
             shift_dict = {int(k): float(v) for k, v in shift_stat.items()}
-
-            if isinstance(cfg["scale_dict"], list):
-                if len(cfg["scale_dict"]) > len(scale_dicts):
-                    for k, v in cfg["scale_dict"][len(scale_dicts)].items():
-                        k = int(k)
-                        assert k in scale_dict, f"Invalid atomic number {k} in scale_dict"
-                        scale_dict[k] = float(v)
-
-            if isinstance(cfg["shift_dict"], list):
-                if len(cfg["shift_dict"]) > len(shift_dicts):
-                    for k, v in cfg["shift_dict"][len(shift_dicts)].items():
-                        k = int(k)
-                        assert k in shift_dict, f"Invalid atomic number {k} in shift_dict"
-                        shift_dict[k] = float(v)
-
             scale_dicts.append(scale_dict)
             shift_dicts.append(shift_dict)
 

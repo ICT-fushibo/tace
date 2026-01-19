@@ -104,9 +104,23 @@ class Contraction(torch.nn.Module):
                 w = w.unsqueeze(-1)
             w_out = w * out
             buffer[l3].append(w_out)
+
+        # # === legacy ===
+        # m_ji = {}
+        # for i, linear in enumerate(self.linear_downs):
+        #     m_ji[i] = linear(torch.cat(buffer[i], dim=1))
+        # m_i = {}
+        # for r in m_ji.keys():
+        #     m_i[r] = scatter_sum(
+        #         src=m_ji[r],
+        #         index=edge_index[1],
+        #         dim=0,
+        #         dim_size=num_nodes,
+        #     )
+
         m_ji = {}
-        for i, linear in enumerate(self.linear_downs):
-            m_ji[i] = linear(torch.cat(buffer[i], dim=1))
+        for l3 in range(self.lmax_out+1):
+            m_ji[l3] = torch.cat(buffer[l3], dim=1)
         m_i = {}
         for r in m_ji.keys():
             m_i[r] = scatter_sum(
@@ -115,6 +129,8 @@ class Contraction(torch.nn.Module):
                 dim=0,
                 dim_size=num_nodes,
             )
+        for i, linear in enumerate(self.linear_downs):
+            m_i[i] = linear(m_i[i])
 
         return m_i
 

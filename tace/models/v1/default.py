@@ -32,7 +32,6 @@ INTER = {
     },
     "sc": {
       "use_first_sc": False, 
-      "from": "current_message",
     },
     "use_resnet": False,   
 }
@@ -83,6 +82,7 @@ LONG_RANGE = {
             "output_scaling_factor": 0.1,
             "sigma": 1.0,
             "dl": 2.0,
+            "remove_self_interaction": True,
             "remove_mean": True,
             "epsilon_factor": 1.0,
             "use_atomwise": False,
@@ -139,14 +139,20 @@ UNIVERSAL_EMBEDDING = {
         "initial_noncollinear_magmoms": {
             "enable": False,
             "normalizer": 1.0,
+            "gate": None,
+            "linear": False,
         },
         "electric_field": {
             "enable": False,
             "normalizer": 1.0,
+            "gate": None,
+            "linear": False,
         },
         "magnetic_field": {
             "enable": False,
             "normalizer": 1.0,
+            "gate": None,
+            "linear": False,
         },
     },
 }

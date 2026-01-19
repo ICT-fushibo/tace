@@ -85,9 +85,6 @@ config:
     shift_type: null # (null | str)  add by_element can shift for each element,  for energy only, set ``null`` or ``std_energy``
     scale_trainable: false # (bool) 
     shift_trainable: false # (bool) 
-    # # Manually modify the scale and shift parameters per element using the automatically generated statistics yaml file and ignore this parameter
-    scale_dict: auto 
-    shift_dict: auto
 
   short_range:
     zbl: # metal units, for molecular dynamics, true is recommended

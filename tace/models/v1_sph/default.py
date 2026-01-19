@@ -26,7 +26,6 @@ INTER = {
     },
     "sc": {
       "use_first_sc": False, 
-      "from": "current_message",
     },
     "use_resnet": False,   
 }
@@ -36,17 +35,10 @@ PROD = {
     "l1l2": None,
     "l3l1": None,
     "correlation": 3,
-    "element_aware": True,
-    "coupled_channel": True,
-    "precompute": False,
 }
 
 
 READOUT_EMLP = {
-    "hidden": [16], 
-    "act": "silu", 
-    "gate": "silu",
-    "bias": False,
     "use_all_layer": True,
     "enable_uie_readout": False,
 }
@@ -77,6 +69,7 @@ LONG_RANGE = {
             "output_scaling_factor": 0.1,
             "sigma": 1.0,
             "dl": 2.0,
+            "remove_self_interaction": True,
             "remove_mean": True,
             "epsilon_factor": 1.0,
             "use_atomwise": False,
@@ -84,71 +77,6 @@ LONG_RANGE = {
             "bec_output_index": None,
         },
     },
-}
-
-
-CONSERVATION = {
-    "charges": {
-        "method": "lagrangian",
-    },
-}
-
-
-UNIVERSAL_EMBEDDING = {
-    "invariant": {
-        "level": {
-            "enable": False,
-            "num_embeddings": -1,
-        },
-        "spin_on": {
-            "enable": False,
-            "num_embeddings": 2,
-        },
-        "spin_multiplicity": {
-            "enable": False,
-            "num_embeddings": -1,
-        },
-        "charges": {
-            "enable": False,
-            "act": "silu",
-        },
-        "total_charge": {
-            "enable": False,
-            "act": "silu",
-        },
-        "initial_collinear_magmoms": {
-            "enable": False,
-            "act": "silu",
-        },
-        "temperature": {
-            "enable": False,
-            "act": "silu",
-        },
-        "electron_temperature": {
-            "enable": False,
-            "act": "silu",
-        },
-    },
-    "equivariant": {
-        "initial_noncollinear_magmoms": {
-            "enable": False,
-            "normalizer": 1.0,
-        },
-        "electric_field": {
-            "enable": False,
-            "normalizer": 1.0,
-        },
-        "magnetic_field": {
-            "enable": False,
-            "normalizer": 1.0,
-        },
-    },
-}
-
-SPECIAL = {
-    "hessians":{
-        'num_samples': 2
-    }    
 }
 
 
