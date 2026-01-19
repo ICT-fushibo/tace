@@ -49,7 +49,7 @@ class SelfContraction(torch.nn.Module):
                 irreps_out=irreps_out,
                 bias=bias,
                 cueq_config=None,
-                opeq_config=None,
+                oeq_config=None,
             )
         )
         
@@ -82,7 +82,7 @@ class SelfContraction(torch.nn.Module):
                     shared_weights=True,
                     internal_weights=True,
                     # cueq_config=None,
-                    # opeq_config=None,
+                    # oeq_config=None,
                 )
             )
             # # print()
@@ -101,7 +101,7 @@ class SelfContraction(torch.nn.Module):
                     irreps_out=irreps_out,
                     bias=bias,
                     cueq_config=None,
-                    opeq_config=None,
+                    oeq_config=None,
                 )
             )
 

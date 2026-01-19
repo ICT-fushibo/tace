@@ -51,7 +51,7 @@ class SphTACEDescriptor(torch.nn.Module):
             irreps_in=o3.Irreps([(len(atomic_numbers), (0, 1))]),
             irreps_out=o3.Irreps([(num_channel, (0, 1))]),
             cueq_config=None,
-            opeq_config=None,
+            oeq_config=None,
         )
 
         # === radial basis ===

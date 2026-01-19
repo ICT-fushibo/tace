@@ -20,6 +20,6 @@ class CuEquivarianceConfig:
 
 
 @dataclasses.dataclass
-class OpEquivarianceConfig:
+class OpenEquivarianceConfig:
     pass
 

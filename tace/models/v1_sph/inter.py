@@ -78,7 +78,7 @@ class Interaction(InteractionBase):
         #         irreps_out=self.irreps_in,
         #         biases=self.bias,
         #         cueq_config=None,
-        #         opeq_config=None,
+        #         oeq_config=None,
         #     )
 
         # === linear up ===  
@@ -87,7 +87,7 @@ class Interaction(InteractionBase):
                 irreps_out=self.irreps_in,
                 biases=self.bias,
                 # cueq_config=None,
-                # opeq_config=None,
+                # oeq_config=None,
             )
 
         # === ICTP and ICTC ===
@@ -107,7 +107,7 @@ class Interaction(InteractionBase):
             shared_weights=False,
             internal_weights=False,
             # cueq_config=None,
-            # opeq_config=None,
+            # oeq_config=None,
         )
         self.linear = o3.Linear(
             irreps_mid.regroup(),
@@ -128,7 +128,7 @@ class Interaction(InteractionBase):
                 irreps_out=self.irreps_sc,
                 bias=self.bias,
                 cueq_config=None,
-                opeq_config=None,
+                oeq_config=None,
             )
                     
         # ==== conv weights ====

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 
 import torch
 from e3nn import o3
-from .kernel import CuEquivarianceConfig, OpEquivarianceConfig
+from .kernel import CuEquivarianceConfig, OpenEquivarianceConfig
 
 
 class WrapElementLinear(torch.nn.Module): # TODO, wrapper
@@ -22,7 +22,7 @@ class WrapElementLinear(torch.nn.Module): # TODO, wrapper
         irreps_out: o3.Irreps,
         bias: bool = False,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        opeq_config: Optional[OpEquivarianceConfig] = None,
+        oeq_config: Optional[OpenEquivarianceConfig] = None,
     ):
         super().__init__()
         self.irreps_in = irreps_in

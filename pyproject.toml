@@ -30,6 +30,22 @@ dependencies = [
 
 [project.optional-dependencies]
  
+cueq12 = [
+    "cuequivariance",
+    "cuequivariance-torch",
+    "cuequivariance-ops-torch-cu12",
+]
+
+cueq13 = [
+    "cuequivariance",
+    "cuequivariance-torch",
+    "cuequivariance-ops-torch-cu13",
+]
+
+opeq = [
+    "openequivariance",
+]
+
 openmm = [
     "openmm",
     "openmm-ml",

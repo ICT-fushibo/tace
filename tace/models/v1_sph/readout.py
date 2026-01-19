@@ -14,7 +14,7 @@ from e3nn.nn import Activation
 
 
 from tace.models.v1.act import ACT
-from .kernel import CuEquivarianceConfig, OpEquivarianceConfig
+from .kernel import CuEquivarianceConfig, OpenEquivarianceConfig
 
 
 class ScalarReadOut(torch.nn.Module):
@@ -23,7 +23,7 @@ class ScalarReadOut(torch.nn.Module):
         irreps_in: o3.Irreps,
         irrep_out: o3.Irreps = o3.Irreps("0e"),
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        opeq_config: Optional[OpEquivarianceConfig] = None, 
+        oeq_config: Optional[OpenEquivarianceConfig] = None, 
     ):
         super().__init__()
 
@@ -31,7 +31,7 @@ class ScalarReadOut(torch.nn.Module):
             irreps_in=irreps_in, 
             irreps_out=irrep_out, 
             # cueq_config=cueq_config,
-            # opeq_config=opeq_config,
+            # oeq_config=oeq_config,
         )
 
     def forward(
@@ -57,7 +57,7 @@ class LinearReadout(torch.nn.Module):
         irreps_out: o3.Irreps,
         bias: bool,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        opeq_config: Optional[CuEquivarianceConfig] = None,
+        oeq_config: Optional[CuEquivarianceConfig] = None,
     ):
         super().__init__()
         self.linear = o3.Linear(
@@ -81,7 +81,7 @@ class NonLinearReadout(torch.nn.Module):
         act: str | None,
         num_levels: int = 1,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        opeq_config: Optional[OpEquivarianceConfig] = None, 
+        oeq_config: Optional[OpenEquivarianceConfig] = None, 
     ):
         super().__init__()
         self.irreps_hidden = irreps_hidden
@@ -91,7 +91,7 @@ class NonLinearReadout(torch.nn.Module):
             irreps_out=irreps_hidden, 
             biases=bias,
             # cueq_config=cueq_config,
-            # opeq_config=opeq_config,
+            # oeq_config=oeq_config,
         )
         self.nonlinearity = Activation(
             irreps_in=self.irreps_hidden, acts=[ACT[act]()]
@@ -101,7 +101,7 @@ class NonLinearReadout(torch.nn.Module):
             irreps_out=irreps_out, 
             biases=bias,
             # cueq_config=cueq_config,
-            # opeq_config=opeq_config,
+            # oeq_config=oeq_config,
         )
 
     def forward(
