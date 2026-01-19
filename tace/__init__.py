@@ -8,6 +8,9 @@
 
 # __version__ = get_version()
 
+from torch.serialization import add_safe_globals
+from tace.dataset.statistics import Statistics
+add_safe_globals([Statistics])
 
 __version__ = "0.0.9"
 
