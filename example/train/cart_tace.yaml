@@ -3,7 +3,7 @@ defaults:
   # Specify the logger backlend
   - config/logger@_here_: wandb
   # Specify the model architecture
-  - config/model@model: tacev1 
+  - config/model@model: cart_tacev1 
 
 # Specify the path to resume training, Files must be end with .ckpt
 resume_from_model: null

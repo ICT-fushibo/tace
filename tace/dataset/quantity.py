@@ -966,15 +966,27 @@ class ComputeFlag:
     locals().update(fields)
 
 
-def get_target_irreps(target_property: List[str]):
-    target_irreps = []
-    target_irreps.extend([0]) if "energy" in target_property else None
-    target_irreps.extend([0]) if "final_collinear_magmoms" in target_property else None
-    target_irreps.extend([1]) if "final_noncollinear_magmoms" in target_property else None
-    target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
-    target_irreps.extend([0, 2]) if "direct_stress" in target_property or \
-        "direct_virials" in target_property else None
-    target_irreps.extend([1]) if "direct_dipole" in target_property else None
-    target_irreps.extend([1]) if "direct_forces" in target_property else None
-    target_irreps.extend([0, 2]) if "direct_hessians" in target_property else None
-    return sorted(list(set(target_irreps)))
+from e3nn import o3
+def get_target_irreps(
+        target_property: List[str], 
+        cart: bool = True
+    ) -> List[int] | o3.Irreps:
+
+    if cart:
+        target_irreps = []
+        target_irreps.extend([0]) if "energy" in target_property else None
+        target_irreps.extend([0]) if "final_collinear_magmoms" in target_property else None
+        target_irreps.extend([1]) if "final_noncollinear_magmoms" in target_property else None
+        target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
+        target_irreps.extend([0, 2]) if "direct_stress" in target_property or \
+            "direct_virials" in target_property else None
+        target_irreps.extend([1]) if "direct_dipole" in target_property else None
+        target_irreps.extend([1]) if "direct_forces" in target_property else None
+        target_irreps.extend([0, 2]) if "direct_hessians" in target_property else None
+        return sorted(list(set(target_irreps))) # TODO, do not use set(), like sph
+    else:
+        target_irreps_list = []
+        target_irreps_list.extend(["1x0e"]) if "energy" in target_property else None
+        target_irreps = o3.Irreps("+".join(target_irreps_list)).regroup()
+        return target_irreps
+

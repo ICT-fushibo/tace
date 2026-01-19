@@ -128,9 +128,6 @@ class TACELammpsCalc(MLIAPUnified):
         eatoms = torch.as_tensor(data.eatoms)
         eatoms.copy_(node_energy[:nlocal])
         data.energy = torch.sum(node_energy[:nlocal]).detach()
-        # print(torch.sum(node_energy[:natoms]))
-        # import sys
-        # sys.exit()
         data.update_pair_forces_gpu(pair_forces)
 
     def compute_descriptors(self, data):

@@ -247,7 +247,7 @@ class Interaction(InteractionBase):
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
 
-        scs = {}
+        scs = {} # TODO, bug
         # === self connection / skip connection ===
         if self.sc_from == 'last_product':
             for r in self.ls_sc:

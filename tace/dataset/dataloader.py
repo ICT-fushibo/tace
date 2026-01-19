@@ -69,6 +69,8 @@ def build_atomsList(
 
         num_levels = cfg['model']['config'].get("num_levels", 1)
         atomic_energies_cfg = cfg['model']['config'].get("atomic_energies", None)
+        if isinstance(atomic_energies_cfg, Dict): 
+            atomic_energies_cfg = [atomic_energies_cfg]
         assert atomic_energies_cfg is None or isinstance(atomic_energies_cfg, List)
 
         if atomic_energies_cfg is not None:

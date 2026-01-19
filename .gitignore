@@ -45,7 +45,6 @@ openmm/
 .DS_Store
 .ipynb_checkpoints
 
-
 # White list
 !arch.png
 !requirements.txt

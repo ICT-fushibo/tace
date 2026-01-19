@@ -21,6 +21,7 @@ As long as your system is not very old, the installation process is generally ea
    mkdir build-mliap
    cd build-mliap
    cp ../cmake/presets/kokkos-cuda.cmake .
+   # conda install -c conda-forge gcc_linux-64 gxx_linux-64 cmake
    cmake -C kokkos-cuda.cmake \
    -D CMAKE_BUILD_TYPE=Release \
    -D CMAKE_INSTALL_PREFIX=$(pwd) \
