@@ -95,8 +95,7 @@ dev = [
     "matminer",
     "vtk",
     "pymatgen",
-    "pymatviz==0.15.1",
-    "huggingface_hub",
+    "pymatviz",
 ]
 
 

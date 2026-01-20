@@ -11,6 +11,32 @@ Docs
 
 https://tace.readthedocs.io/en/latest/index.html
 
+
+Tutorial
+--------
+In fact, the docs contain a complete tutorial. However, because TACE supports a 
+wide range of physical quantities, beginners may find it a bit confusing.  
+In practice, to train additional physical quantities, you only need to modify the 
+corresponding loss and the key of the physical quantity.  
+
+We provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
+
+https://github.com/xvzemin/tace/tree/main/example
+
+.. code-block:: bash
+   # A simplest training example
+   git clone https://github.com/xvzemin/tace.git
+   cd tace/example/train
+   tace-train -cn cart_tace.yaml
+
+For tutorial purposes, we will also gradually provide input files for predicting 
+certain physical quantities directly. However, you should note that these may not be directly 
+suitable for production. In actual training, parameters need to be adjusted by yourself. 
+The files we provide are only to help you get started with your training.
+
+https://github.com/xvzemin/tace-fit
+
+
 Overview
 --------
 
