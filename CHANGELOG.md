@@ -1,12 +1,12 @@
 # Changelog
 
-## v0.0.9 (TODO)
+## v0.0.9
 
-Add content related to spine aware
+Rewrote the logic of the linear layers in the convolution module to reduce memory usage.
 
-Refactor part of the code
+Implemented an initial version of TACE with spherical basis.
 
-Prepare the first official version 0.1.0
+Refactored parts of the code.
 
 ## v0.0.8
 
