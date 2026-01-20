@@ -385,7 +385,7 @@ class TACEV1(torch.nn.Module):
                     chi_list.append(chi_readout(descriptors[ii][0])[num_atoms_arange, node_level])
                     eta_list.append(eta_readout(descriptors[ii][0])[num_atoms_arange, node_level])
                 chi_node = torch.sum(torch.stack(chi_list, dim=-1), dim=-1)
-                eta_node = torch.sum(torch.stack(eta_node, dim=-1), dim=-1)
+                eta_node = torch.sum(torch.stack(eta_list, dim=-1), dim=-1)
                 eta_node = torch.hypot(eta_node, torch.tensor(1e-6, device=device, dtype=dtype))
                 eta_node = torch.reciprocal(eta_node)
                 lambda_graph = (

@@ -159,7 +159,7 @@ def from_atoms(
                     )
             pDict.update({name: p.view(*in_data)})
         except Exception as e:
-            raise RuntimeError(f"Failed to read property ``{name}``") from e
+            raise RuntimeError(f"Failed to read property {name}") from e
 
         try:
             w = (

@@ -462,7 +462,9 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_atom,
-        "must_be_with": {},
+        "must_be_with": {
+            1: ["total_charge"]
+        },
         "conflict_with": {},
         "enable_prediction": True,   
         "enable_embedding": True,
@@ -475,7 +477,6 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
-        "type": "graph",
         "abbreviation": "TC",
         "shape": {
             "in_data": (1,),

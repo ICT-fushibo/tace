@@ -58,6 +58,14 @@ def get_neighborhood(
     
     assert backend in NL_BACKEND, f"Neighborlist backend should be in {NL_BACKEND}"
 
+    if isinstance(lattice, np.ndarray):
+        all_zero = np.allclose(lattice, 0)
+        all_one = np.allclose(lattice, 1)
+        identity = np.allclose(lattice, np.eye(lattice.shape[0]))
+
+        if not (all_zero or all_one or identity):
+            pbc = (True, True, True)
+
     # === PBC ===
     if pbc is None:
         pbc = (False, False, False)

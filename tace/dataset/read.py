@@ -16,7 +16,7 @@ from ase.calculators.calculator import all_properties
 
 
 from .split import random_split
-from .quantity import KeySpecification
+from .quantity import KeySpecification, PROPERTY
 
 
 class DatasetsSplit:
@@ -69,9 +69,17 @@ def check_keys(
     if not check:
         return atomsList
     
+    need_property = set(target_property + embedding_property)
+    joint_property = []
+    for name in need_property:
+        must_be_with = PROPERTY[name]['must_be_with']
+        for _, v in must_be_with.items():
+            joint_property += v
+    need_property.update(list(set(joint_property)))
+
     for atoms in atomsList:
         if atoms.calc is not None:
-            for p in (target_property + embedding_property):
+            for p in need_property:
                 found = False
                 if p in keyspec.info_keys:
                     key = keyspec.info_keys[p]
