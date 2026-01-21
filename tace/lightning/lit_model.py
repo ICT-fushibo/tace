@@ -221,6 +221,9 @@ class LightningWrapperModel(L.LightningModule):
                 "optimizer": optimizer,
             }
 
+    # def on_save_checkpoint(self, checkpoint):
+    #     checkpoint["statistics"] = self.statistics.to_dict()
+
     @classmethod
     def load_from_checkpoint(
         cls,

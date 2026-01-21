@@ -102,6 +102,10 @@ class Statistics:
         return f"Statistics({attrs})"
 
 
+from torch.serialization import add_safe_globals
+add_safe_globals([Statistics]) # TODO
+
+
 def _compute_statistics(
     dataloader_train: DataLoader,
     atomic_numbers: List[str],

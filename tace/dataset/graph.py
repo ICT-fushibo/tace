@@ -3,9 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from __future__ import annotations
 from copy import deepcopy
-from typing import Optional, List, Dict
+from typing import Optional, List
 
 
 import ase
@@ -19,7 +18,7 @@ from .neighbour_list import get_neighborhood
 from .quantity import (
     KeySpecification,
     PROPERTY,
-    UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY,
+    get_need_property,
 )
 
 
@@ -44,31 +43,15 @@ def from_atoms(
     keyspec: KeySpecification,
     target_property: List[str],
     embedding_property: List[str] = [],
-    universal_embedding: Optional[List[Dict[str, Dict[int, str]]]] = None,
     training: bool = True,
     neighborlist_backend: str = "matscipy",
+    **kwargs,
 ):
     # === The basic structure of chemical substances ===
-    try:
-        atomic_numbers = atoms.get_atomic_numbers()
-    except Exception as e:
-        raise RuntimeError(f"Failed to get atomic numbers from atoms: {e}")
-
-    try:
-        pbc = tuple(atoms.get_pbc())
-    except Exception as e:
-        raise RuntimeError(f"Failed to get pbc from atoms: {e}")
-
-    try:
-        lattice = np.array(atoms.get_cell())
-    except Exception as e:
-        raise RuntimeError(f"Failed to get cell from atoms: {e}")
-
-    try:
-        positions = atoms.get_positions()
-    except Exception as e:
-        raise RuntimeError(f"Failed to get positions from atoms: {e}")
-
+    atomic_numbers = atoms.get_atomic_numbers()
+    pbc = tuple(atoms.get_pbc())
+    lattice = np.array(atoms.get_cell())
+    positions = atoms.get_positions()
     edge_index, edge_shifts, pbc, lattice = get_neighborhood(
         positions=positions,
         cutoff=cutoff,
@@ -77,10 +60,9 @@ def from_atoms(
         max_neighbors=max_neighbors,
         backend=neighborlist_backend,
     )
-
-    
     atomic_numbers = torch.tensor(atomic_numbers, dtype=torch.int64)
     onehot = element.z2onehot(atomic_numbers).to(dtype=torch.get_default_dtype())
+    num_atoms = len(atomic_numbers)
 
     # === Physical property to predict ===
     properties = {}
@@ -107,24 +89,9 @@ def from_atoms(
         )
     )
 
-    num_atoms = len(atomic_numbers)
-
-    # === predict or embedding ===
-    if training:
-        need_property = set(target_property + embedding_property)
-    else:
-        need_property = set(embedding_property)
-        # need_property = set()
-
-    joint_property = []
-    for name in need_property:
-        must_be_with = PROPERTY[name]['must_be_with']
-        for _, v in must_be_with.items():
-            joint_property += v
-    need_property.update(list(set(joint_property)))
-
     pDict = {}
     wDict = {}
+    need_property = get_need_property(target_property, embedding_property, training)
     for name in need_property:
         in_data = PROPERTY[name]["shape"]["in_data"]
         shape_fn = PROPERTY[name]["shape"].get("shape_fn", None)
@@ -144,7 +111,9 @@ def from_atoms(
                         dtype=torch.int64,
                     )
                 else:
-                    raise
+                    raise TypeError(
+                        f"Bug: Check {p}'s type in tace.dataset.quantity"
+                    )
             else:
                 if type_ == 'float':
                     p = torch.tensor(p, dtype=torch.get_default_dtype())
@@ -173,14 +142,7 @@ def from_atoms(
             )
             wDict.update({name: w})
         except Exception as e:
-            raise RuntimeError(f"Failed to read property ``{name}``") from e
-
-    if universal_embedding is not None:
-        for p in embedding_property:
-            assert (
-                p in UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
-            ), f"universal_embedding key allowed property are {UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY}, "
-            f"if you need more, please contact the author"
+            raise RuntimeError(f"Failed to read property {name}") from e
 
     data_dict = {
         "entropy": to_tensor(atoms.info.get('entropy', 1.0)),

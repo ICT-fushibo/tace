@@ -236,6 +236,8 @@ def mse_polarization_per_atom(
 def mse_charges(pred: Dict[str, Tensor], label: Dict[str, Tensor]) -> Tensor:
     batch = label.batch
     total_weight = (label.entropy * label.charges_weight)[batch]
+    # print(1, pred["charges"][0])
+    # print(2, label["charges"][0])
     return torch.mean(torch.square(pred["charges"] - label["charges"]) * total_weight)
 
 

@@ -137,7 +137,6 @@ class TACEAseCalc(Calculator):
                 target_property=self.target_property,
                 embedding_property=self.embedding_property,
                 keyspec=self.keySpecification,
-                universal_embedding=self.model.universal_embedding,
                 training=False,
                 neighborlist_backend=self.neighborlist_backend,
             ) 

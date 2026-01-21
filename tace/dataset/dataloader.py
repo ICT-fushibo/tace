@@ -135,9 +135,6 @@ def compute_statistics(
             "keyspec": keyspec,
             "target_property": target_property,
             "embedding_property": embedding_property,
-            "universal_embedding": cfg.get("model", {})
-            .get("config", {})
-            .get("universal_embedding", None),
             "neighborlist_backend": cfg.get("dataset", {}).get("neighborlist_backend", "matscipy"),
         }
         dataset_train = create_graphs_for_main_rank(threeAtomsList[0], element, for_dataset, 'train')

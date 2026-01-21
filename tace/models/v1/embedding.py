@@ -14,7 +14,7 @@ from .act import ACT
 from .gate import NormGate
 from .linear import Linear
 from .utils import expand_dims_to
-from ...dataset.quantity import PROPERTY, UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY
+from ...dataset.quantity import PROPERTY
 
 
 def add_rank0_to_left(T: Dict[int, torch.Tensor], rank0: torch.Tensor) -> Dict[int, torch.Tensor]:

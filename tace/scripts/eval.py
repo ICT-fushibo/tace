@@ -21,7 +21,7 @@ from ..lightning import load_tace
 from ..dataset.element import TorchElement
 from ..dataset.graph import from_atoms
 from ..utils.metrics import build_metrics, update_metrics
-from ..utils._global import DTYPE
+from ..utils._global import DTYPE, BOOL
 from ..utils.utils import num_params
 from ..dataset.quantity import KeySpecification, update_keyspec_from_kwargs, PROPERTY
 from ..dataset.read import check_keys
@@ -56,11 +56,7 @@ def main():
     atoms_list_copy = copy.deepcopy(atomsList)
     key_spec = KeySpecification()
     update_keyspec_from_kwargs(key_spec, vars(args))
-    # avoid conflict with ase 
-    check = False
-    if args.test == 1:
-        check = True
-
+    training = True if BOOL(args.test) else False # test which means your should provide label for error
     model =load_tace(args.model, args.device, strict=True, use_ema=args.ema)
     max_neighbors = model.max_neighbors.item() if hasattr(model, "max_neighbors") else None
     cutoff = model.readout_fn.cutoff.item()
@@ -100,7 +96,7 @@ def main():
             universal_embedding=getattr(model, 'universal_embedding', {}),
             neighborlist_backend=args.nl_backend,
         )
-        for atoms in check_keys(atomsList, target_property, key_spec, embedding_property, check)
+        for atoms in check_keys(atomsList, target_property, key_spec, embedding_property, training)
     ]
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
 

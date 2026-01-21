@@ -38,8 +38,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -56,10 +55,8 @@ PROPERTY = {
             "in_data": (1,),
             "shape_fn": None,
         },
-
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -77,10 +74,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom,
-        "must_be_with": {
-            1: ['energy'],
-        },
-        "conflict_with": {},
+        "must_be_with": ["energy"],
         "enable_prediction": True,   
         "enable_embedding": False, 
         "first_derivative": True,
@@ -98,7 +92,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom, # placeholder
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": False, # can be embedded through uee to achice DeNs
         "first_derivative": True,
@@ -116,8 +110,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False, 
         "first_derivative": False,
@@ -135,10 +128,7 @@ PROPERTY = {
             "shape_fn": shape_fn_for_hessians,
         },
         "default_value_fn": default_value_for_hessians,
-        "must_be_with": {
-            1: ['energy', 'forces'],
-        },
-        "conflict_with": {},
+        "must_be_with": ['energy', 'forces'],
         "enable_prediction": True,
         "enable_embedding": False,
         "first_derivative": False,
@@ -156,8 +146,7 @@ PROPERTY = {
             "shape_fn": shape_fn_for_hessians,
         },
         "default_value_fn": default_value_for_hessians,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,
         "enable_embedding": False,
         "first_derivative": False,
@@ -175,8 +164,7 @@ PROPERTY = {
             "shape_fn": voigt_to_matrix,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -195,8 +183,7 @@ PROPERTY = {
             "shape_fn": voigt_to_matrix,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -214,8 +201,7 @@ PROPERTY = {
             "shape_fn": voigt_to_matrix,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -234,8 +220,7 @@ PROPERTY = {
             "shape_fn": voigt_to_matrix,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -253,8 +238,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -272,8 +256,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -291,12 +274,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {
-            1: ['charges'],
-        },
-        "conflict_with": {
-            1: ["polarization"]
-        },
+        "must_be_with":  ['charges'],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -314,10 +292,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {},
-        "conflict_with": {
-            1: ["polarization"]
-        },
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -336,10 +311,6 @@ PROPERTY = {
         },
         "default_value_fn": default_value_for_rank1_graph,
         "must_be_with": [], 
-        "must_be_with": {},
-        "conflict_with": {
-            1: ["direct_dipole", "conservative_dipole"]
-        },
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -357,8 +328,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -376,12 +346,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {
-            1: ["direct_dipole"],
-            2: ["conservative_dipole"],
-            3: ["polarization"]
-        },
-        "conflict_with": {},
+        "must_be_with": ["direct_dipole", "conservative_dipole", "polarization"],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -399,12 +364,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_atom,
-        "must_be_with": {
-            1: ["direct_dipole"],
-            2: ["conservative_dipole"],
-            3: ["polarization"]
-        },
-        "conflict_with": {},
+        "must_be_with": ["direct_dipole", "conservative_dipole", "polarization"],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -422,8 +382,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -441,10 +400,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": {
-            1: ['magnetization']
-        },
-        "conflict_with": {},
+        "must_be_with": ['magnetization'],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -462,10 +418,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_atom,
-        "must_be_with": {
-            1: ["total_charge"]
-        },
-        "conflict_with": {},
+        "must_be_with": ["total_charge"],
         "enable_prediction": True,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -483,8 +436,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -502,8 +454,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -521,8 +472,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -540,8 +490,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -559,8 +508,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -578,8 +526,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -597,10 +544,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_atom,
-        "must_be_with": {
-            1: ["initial_collinear_magmoms"]
-        },
-        "conflict_with": {},
+        "must_be_with": ["initial_collinear_magmoms"],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -618,10 +562,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_atom,
-        "must_be_with": {
-            1: ["initial_noncollinear_magmoms"]
-        },
-        "conflict_with": {},
+        "must_be_with": ["initial_noncollinear_magmoms"],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": True,
@@ -639,8 +580,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -658,8 +598,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": True,   
         "enable_embedding": False,
         "first_derivative": False,
@@ -677,8 +616,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -696,8 +634,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -715,8 +652,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -734,8 +670,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -753,8 +688,7 @@ PROPERTY = {
             "shape_fn": None,
         },
         "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": {},
-        "conflict_with": {},
+        "must_be_with": [],
         "enable_prediction": False,   
         "enable_embedding": True,
         "first_derivative": False,
@@ -764,8 +698,7 @@ PROPERTY = {
 }
 
 SUPPORT_PREDICT_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_prediction']]
-UNIVERSAL_EMBEDDING_ALLOWED_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_embedding']]
-
+SUPPORT_EMBEDDING_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_embedding']]
 KEYS = {f"{k}_key": k for k in PROPERTY}
 
 # should be delete in future versions TODO
@@ -921,10 +854,29 @@ def get_embedding_property(cfg: Dict, separate: bool = False) -> List[str] | Tup
         if v.get('enable', False):
             equivariant_embedding_property.append(k)
 
+    for p in invariant_embedding_property + equivariant_embedding_property:
+        assert (
+            p in SUPPORT_EMBEDDING_PROPERTY
+        ), f"Universal_embedding allowed property are {SUPPORT_EMBEDDING_PROPERTY}, "
+        f"if you need more, please contact the author"
+
     if separate:
         return invariant_embedding_property, equivariant_embedding_property
     else:
         return invariant_embedding_property + equivariant_embedding_property
+
+def get_need_property(
+        target_property: List[str] = [], 
+        embedding_property: List[str] = [],
+        training: bool = False,
+    ) -> List[str]:
+    we_should_read = embedding_property
+    if training:
+        we_should_read += target_property
+    joint_property = []
+    for name in we_should_read:
+        joint_property += PROPERTY[name]['must_be_with']
+    return list(set(joint_property + we_should_read))
 
 
 # For Metrics

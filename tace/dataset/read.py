@@ -16,7 +16,7 @@ from ase.calculators.calculator import all_properties
 
 
 from .split import random_split
-from .quantity import KeySpecification, PROPERTY
+from .quantity import KeySpecification, PROPERTY, get_need_property
 
 
 class DatasetsSplit:
@@ -64,46 +64,34 @@ def check_keys(
     target_property: List[str],
     keyspec: KeySpecification,
     embedding_property: List[str] = [],
-    check: bool = True,
+    training: bool = True,
 ):
-    if not check:
-        return atomsList
-    
-    need_property = set(target_property + embedding_property)
-    joint_property = []
-    for name in need_property:
-        must_be_with = PROPERTY[name]['must_be_with']
-        for _, v in must_be_with.items():
-            joint_property += v
-    need_property.update(list(set(joint_property)))
-
+    need_property = get_need_property(
+        target_property, embedding_property, training
+    )
     for atoms in atomsList:
-        if atoms.calc is not None:
-            for p in need_property:
-                found = False
-                if p in keyspec.info_keys:
-                    key = keyspec.info_keys[p]
-                    debug_key = f"{key}s"
-                    if key in atoms.info.keys():
-                        continue
-                    if key in all_properties:
-                        atoms.info[key] = atoms.calc.results[key]
-                        found = True
-                    if not found:
-                        if debug_key in all_properties:
-                            atoms.info[key] = atoms.calc.results[debug_key]
-                if p in keyspec.arrays_keys:
-                    key = keyspec.arrays_keys[p]
-                    debug_key = f"{key}s"
-                    if key in atoms.arrays.keys():
-                        continue
-                    if key in all_properties:
-                        atoms.arrays[key] = atoms.calc.results[key]
-                        found = True
-                    if not found:
-                        if debug_key in all_properties:
-                            atoms.arrays[key] = atoms.calc.results[debug_key]
+        calc = atoms.calc
+        if calc is None:
+            continue
+        results = getattr(calc, "results", None)
+        if not results:
+            continue
+        for p in need_property:
+            if PROPERTY[p]["ase_name"]:
+                ase_name = PROPERTY[p]["ase_name"]
+            else:
+                ase_name = p
+            if ase_name not in results:
+                continue
+            value = results[ase_name]
+            if p in list(keyspec.info_keys):
+                key = keyspec.info_keys[p]
+                atoms.info[key] = value
+            elif p in list(keyspec.arrays_keys):
+                key = keyspec.arrays_keys[p]
+                atoms.arrays[key] = value
     return atomsList
+
 
 
 def ase_io_read(filename: str):
@@ -171,11 +159,10 @@ HOW_TO_READ = {
 
 def read_single_file(fpath: str, target_property, keyspec, embedding_property, backend="ase"):
     atomsList = HOW_TO_READ[backend](fpath)
-
     try:
         return check_keys(atomsList, target_property, keyspec, embedding_property)
     except Exception as e:
-        logging.warning(f"Failed to read {fpath}: {e}, pass")
+        logging.warning(f"Failed to read when check_keys for atoms")
         return []
     
 
