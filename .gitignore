@@ -43,7 +43,6 @@ openmm/
 # Ignore specific files
 .DS_Store
 .ipynb_checkpoints
-fmag.py
 
 # White list
 !arch.png
