@@ -1,43 +1,52 @@
-loss
+Loss
 ====
 
-We support two major categories of loss functions, as well as some
-other custom losses. For other loss functions, please refer to the source code.
+We support two major categories of loss functions, along with several
+additional custom losses. Users can also easily define and integrate
+their own loss functions when needed.
 
 Example
 -------
 .. code-block:: yaml
 
-    # If the dataset is not very large and there are no particular outliers, use this
-    loss:
-      _target_: tace.utils.loss.NormalLoss
-      loss_property: [energy, forces, stress]
-      loss_function_name: 
-        - mse_energy_per_atom
-        - mse_forces
-        - mse_stress
-      loss_property_weights: [1.0, 8.0, 8.0]
+  # Loss Type 1
+  # - In most cases, if training is stable (no strong oscillation),
+  #   it is recommended to use MSE for all loss terms.
+  # - If noticeable oscillations or outliers appear during training,
+  #   consider switching the corresponding terms to Huber loss.
+  # - When energy weight is fixed to 1.0:
+  #     * forces weight: typically in the range [1, 10]
+  #     * stress weight: typically in the range [0.5, 10]
+  # - For other physical quantities, loss weights must be tuned by yourself
+  loss:
+    _target_: tace.utils.loss.NormalLoss
+    loss_property: [energy, forces, stress] 
+    # loss_property: [energy, forces, stress, polarization, conservative_polarizability, bonn_effective_charges] 
+    loss_function_name:  # prefix can be one of ["mse", "huber", "mae"]
+      - mse_energy_per_atom
+      - mse_forces
+      - mse_stress
+    loss_property_weights: [1, 8, 8] 
+    # loss_property_weights: [1, 1, 1, 1, 1000, 1] 
 
-    # huber loss used for outliers, used to train uMLIPs
-    # loss:
-    #   _target_: tace.utils.loss.OMat24sAlexMPtrjLoss
-    #   loss_property: [energy, forces, stress]
-    #   energy_weight: 1.0
-    #   forces_weight: 8.0
-    #   stress_weight: 8.0
-    #   energy_huber_delta: 0.01
-    #   forces_huber_delta: 0.01
-    #   stress_huber_delta: 0.01
-
-    # The performance is mediocre and cannot achieve full convergence, but it can be used as a toy loss.
-    # loss:
-    #   _target_: tace.utils.loss.UncertaintyLoss
-    #   loss_property: [energy, forces, stress]
-    #   loss_function_name: 
-    #     - mse_energy_per_atom
-    #     - mse_forces
-    #     - mse_stress
-    #   loss_property_weights: [1.0, 1.0, 1.0]
+  # # Loss Type 2
+  # # This loss does not require manually specified weights.
+  # # All loss weights should be set to 1.0, as they will be
+  # # automatically adjusted during training.
+  # #
+  # # Note:
+  # # Although convenient, the final convergence quality is
+  # # generally inferior to that achieved with well-tuned
+  # # manually assigned weights. This loss is therefore mainly
+  # # intended for toy experiments.
+  # loss:
+  #   _target_: tace.utils.loss.UncertaintyLoss
+  #   loss_property: [energy, forces, stress] 
+  #   loss_function_name: 
+  #     - mse_energy_per_atom
+  #     - mse_forces
+  #     - mse_stress
+  #   loss_property_weights: [1, 1, 1] 
 
 Notes
 -----
@@ -46,8 +55,6 @@ Notes
   - For properties that are already *per-atom* quantities,  
     the ``per_atom`` suffix is not required and is not supported.
 
-- **Choice of loss function name**:  
   - In general, mean squared error (MSE) performs better than mean absolute
-    error (MAE) during training. Therefore, MAE is not implemented by default,
-    but you may add it yourself if needed. For training on large datasets,
-    we recommend using the Huber loss.
+    error (MAE) during training. For training on large datasets (uMLIPs),
+    we recommend using the huber loss.

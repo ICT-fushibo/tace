@@ -132,7 +132,7 @@ class LightningWrapperModel(L.LightningModule):
                 on_epoch=True,
                 add_dataloader_idx=True,
             )
-        logging.info("═" * 50 + "\n")
+        # logging.info("═" * 50 + "\n")
 
         if prefix == 'val':
             if self.synth_metric is not None:
@@ -146,6 +146,7 @@ class LightningWrapperModel(L.LightningModule):
                     add_dataloader_idx=True,
                 )
         getattr(self, f"{prefix}_metrics").reset()
+        
     def on_train_epoch_end(self):
         self.on_epoch_end("train")
 

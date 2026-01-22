@@ -39,7 +39,7 @@ trainer:
   #   _target_: tace.utils.strategy.SimpleDDPStrategy                                                  
   gradient_clip_val: 1.0
   enable_progress_bar: false # If you don't want to see the progress bar, you can turn it off
-  log_every_n_steps: 100
+  log_every_n_steps: 1000
 
   # Generally, no modification is required
   enable_model_summary: true
@@ -49,6 +49,7 @@ trainer:
   inference_mode: false
   deterministic: false  
   # benchmark: true  
+  # limit_train_batches: 0.1
 
 callbacks:
   early_stopping:
@@ -108,7 +109,6 @@ dataset:
     forces_key: forces
     stress_key: stress
     virials_key: virials
-    hessians_key: hessians
     charges_key: charges
     total_charge_key: total_charge
     spin_multiplicity_key: spin_multiplicity
@@ -125,15 +125,16 @@ dataset:
     born_effective_charges_key: born_effective_charges
     electric_field_key: electric_field
     magnetic_field_key: magnetic_field
-    initial_collinear_magmoms_key: initial_collinear_magmoms
     initial_noncollinear_magmoms_key: initial_noncollinear_magmoms
-    final_collinear_magmoms_key: final_collinear_magmoms
-    final_noncollinear_magmoms_key: final_noncollinear_magmoms
-    total_collinear_magmoms_key: total_collinear_magmoms
-    total_noncollinear_magmoms_key: total_noncollinear_magmoms
-    collinear_magnetic_forces_key: collinear_magnetic_forces
     noncollinear_magnetic_forces_key: noncollinear_magnetic_forces
     spin_on_key: spin_on
+    hessians_key: hessians # only for developer
+    initial_collinear_magmoms_key: initial_collinear_magmoms # only for developer
+    final_collinear_magmoms_key: final_collinear_magmoms # only for developer
+    final_noncollinear_magmoms_key: final_noncollinear_magmoms # only for developer
+    total_collinear_magmoms_key: total_collinear_magmoms # only for developer
+    total_noncollinear_magmoms_key: total_noncollinear_magmoms # only for developer
+    collinear_magnetic_forces_key: collinear_magnetic_forces # only for developer
 
   train_dataloader:
     _target_: torch_geometric.loader.DataLoader
@@ -151,12 +152,13 @@ dataset:
 
   test_dataloader: ${dataset.valid_dataloader}
 
-optimizer:
-  # _target_: torch.optim.Adam
-  # lr: 4e-3
-  # weight_decay: 1e-8 
-  # amsgrad: true
+# optimizer:
+#   _target_: torch.optim.Adam
+#   lr: 4e-3
+#   weight_decay: 0.0
+#   amsgrad: true
 
+optimizer:
   _target_: torch.optim.AdamW
   lr: 4e-3
   weight_decay: 1e-8  
@@ -188,68 +190,67 @@ scheduler: # validaton-based
 #     interval: step
 #     frequency: 1
 
-# recommended for actual production and use
+
 synth_metric: 
-  # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
-  # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
-  # Specifically, we have a composite metric, val/synth_metric, for which we can specify a mixing ratio. 
-  # This is particularly useful when training on large datasets with outliers.
-  monitor_metric_name: val/synth_metric # used for variable interpolation
-  # MAE
-  val/energy_mae: 1.0
-  val/energy_per_atom_mae: 5.0
-  val/forces_mae: 5.0
-  val/stress_mae: 2.5
-  # RMSE
-  val/energy_per_atom_rmse: 1.0
-  val/forces_rmse: 1.0
-  val/stress_rmse: 1.0
+  monitor_metric_name: val/loss # used for variable interpolation
 
-# Huber loss, recommended for actual production and use
-# To obtain the best possible model performance, we recommend a two-stage training strategy.
-# In the first stage, use the recommended loss weights of 1:8:8.
-# In the second stage, retrain the model using loss weights of 1:1:2,
-# and apply SWA (tace-average commmand) to average the model parameters.
-# Note that EMA is not used in the second stage.
-# If this two-stage procedure is too cumbersome, an alternative is to perform
-# a single training run with reduced weights for forces and stress.
+# # This metric is critical for early stopping (have valid set), as it determines
+# # when the training process should be terminated.
+# synth_metric: 
+#   # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
+#   # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
+#   # Specifically, we have a composite metric, val/synth_metric, for which we can specify a mixing ratio. 
+#   # This is particularly useful when training on large datasets with outliers.
+#   monitor_metric_name: val/synth_metric # used for variable interpolation
+#   # MAE
+#   val/energy_mae: 1.0
+#   val/energy_per_atom_mae: 5.0
+#   val/forces_mae: 5.0
+#   val/stress_mae: 2.5
+#   # RMSE
+#   val/energy_per_atom_rmse: 1.0
+#   val/forces_rmse: 1.0
+#   val/stress_rmse: 1.0
+
+
+# Loss Type 1
+# - In most cases, if training is stable (no strong oscillation),
+#   it is recommended to use MSE for all loss terms.
+# - If noticeable oscillations or outliers appear during training,
+#   consider switching the corresponding terms to Huber loss.
+# - When energy weight is fixed to 1.0:
+#     * forces weight: typically in the range [1, 10]
+#     * stress weight: typically in the range [0.5, 10]
+# - For other physical quantities, loss weights must be tuned by yourself
 loss:
-  _target_: tace.utils.loss.OMat24sAlexMPtrjLoss
-  loss_property: [energy, forces, stress]
-  energy_weight: 1.0
-  forces_weight: 8.0
-  stress_weight: 8.0
-  energy_huber_delta: 0.01
-  forces_huber_delta: 0.01
-  stress_huber_delta: 0.01
+  _target_: tace.utils.loss.NormalLoss
+  loss_property: [energy, forces, stress] 
+  # loss_property: [energy, forces, stress, polarization, conservative_polarizability, bonn_effective_charges] 
+  loss_function_name:  # prefix can be one of ["mse", "huber", "mae"]
+    - mse_energy_per_atom
+    - mse_forces
+    - mse_stress
+  loss_property_weights: [1, 8, 8] 
+  # loss_property_weights: [1, 1, 1, 1, 1000, 1] 
 
+# # Loss Type 2
+# # This loss does not require manually specified weights.
+# # All loss weights should be set to 1.0, as they will be
+# # automatically adjusted during training.
+# #
+# # Note:
+# # Although convenient, the final convergence quality is
+# # generally inferior to that achieved with well-tuned
+# # manually assigned weights. This loss is therefore mainly
+# # intended for toy experiments.
 # loss:
-#   _target_: tace.utils.loss.NormalLoss
-#   loss_property: [energy, forces, stress, polarization, conservative_polarizability, born_effective_charges] 
+#   _target_: tace.utils.loss.UncertaintyLoss
+#   loss_property: [energy, forces, stress] 
 #   loss_function_name: 
 #     - mse_energy_per_atom
 #     - mse_forces
 #     - mse_stress
-#     - mse_polarization_per_atom
-#     - mse_conservative_polarizability_per_atom
-#     - mse_born_effective_charges
-#   loss_property_weights: [1, 1, 1, 1, 1000, 1] 
-
-# # The performance is mediocre and cannot achieve full convergence, but it can be used as a toy loss.
-# loss:
-#   _target_: tace.utils.loss.NormalLoss
-#   loss_property: [energy, forces, stress, polarization, conservative_polarizability, bonn_effective_charges] 
-#   loss_function_name: 
-#     - mse_energy_per_atom
-#     - mse_forces
-#     - mse_stress
-#     - mse_polarization_per_atom
-#     - mse_conservative_polarizability_per_atom
-#     - bonn_effective_charges
-#   loss_property_weights: [1, 1, 1, 1, 1000, 1] 
-
-
-
+#   loss_property_weights: [1, 1, 1] 
 
 
 

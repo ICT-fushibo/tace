@@ -11,7 +11,7 @@ from torch import nn
 from omegaconf import ListConfig
 
 
-from .fn import LOSS_FN
+from .mse_fn import LOSS_FN
 
 
 class UncertaintyLoss(nn.Module):
@@ -25,23 +25,33 @@ class UncertaintyLoss(nn.Module):
         self,
         loss_property: List[str],
         loss_function_name: List[str],
-        loss_property_weights: Optional[List[float]] = None,
+        loss_property_weights: List[float],
+        loss_huber_delta: Optional[float | List[float]] = 0.01,
         **kwargs,
     ):
         super().__init__()
         init_log_sigmas = loss_property_weights
         assert isinstance(
             loss_property, (List, ListConfig)
-        ), f"``cfg.loss.loss_property`` should be a list, got {type(loss_property)}"
+        ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
         assert isinstance(
             loss_function_name, (List, ListConfig)
-        ), f"``cfg.loss.loss_function_name`` should be a list, got {type(loss_property)}"
-        if init_log_sigmas is None:
-            init_log_sigmas = [0.0] * len(loss_property)
+        ), f"cfg.loss.loss_function_name should be a list, got {type(loss_property)}"
         assert isinstance(
             init_log_sigmas, (List, ListConfig)
-        ), f"``cfg.loss.loss_property_weights`` should be a list, got {type(loss_property)}"
-        assert len(loss_property) == len(loss_function_name) == len(init_log_sigmas)
+        ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property)}"
+        if isinstance(loss_huber_delta, float) or loss_huber_delta is None:
+            loss_huber_delta = [loss_huber_delta] * len(loss_property)
+        assert isinstance(
+            loss_huber_delta, (List, ListConfig)
+        ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_property)}"
+        assert isinstance(
+            loss_huber_delta, (List, ListConfig)
+        ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_property)}"
+        assert (
+            len(loss_property) == len(loss_function_name) == 
+            len(init_log_sigmas) == len(loss_huber_delta)
+        )
         for fn in loss_function_name:
             assert (
                 fn in LOSS_FN
@@ -49,6 +59,7 @@ class UncertaintyLoss(nn.Module):
 
         self.loss_property = loss_property
         self.loss_function_name = loss_function_name
+        self.loss_huber_delta = loss_huber_delta
         self.log_sigmas = nn.ParameterDict()
         for p, val in zip(loss_property, init_log_sigmas):
             self.log_sigmas[p] = nn.Parameter(
@@ -57,18 +68,26 @@ class UncertaintyLoss(nn.Module):
 
     def forward(self, pred, label):
         total_loss = 0.0
-        for p, fn_name in zip(self.loss_property, self.loss_function_name):
-            p_loss = LOSS_FN[fn_name](pred, label)
+        for i, (p, fn_name) in enumerate(
+                zip(self.loss_property, self.loss_function_name)
+        ):
+            huber_delta = self.loss_huber_delta[i]
+            p_loss = LOSS_FN[fn_name](pred, label, huber_delta)
             log_sigma = self.log_sigmas[p]
             total_loss += 0.5 * torch.exp(-log_sigma) * p_loss + log_sigma
         return total_loss
 
     def __repr__(self):
         task_strs = [
-            f"{p} (fn={fn}, log_sigma={v.item():.4f})"
-            for p, fn, v in zip(
-                self.loss_property, self.loss_function_name, self.log_sigmas.values()
+            f"  - {p:<10} | "
+            f"log_sigma={v.item():>7.3f} | delta={d:.3f} | fn={fn}"
+            for p, fn, v, d in zip(
+                self.loss_property,
+                self.loss_function_name,
+                self.log_sigmas.values(),
+                self.loss_huber_delta,
             )
         ]
-        tasks_info = ", ".join(task_strs)
-        return f"{self.__class__.__name__}({tasks_info})"
+        tasks_info = "\n".join(task_strs)
+        return f"{self.__class__.__name__}(\n{tasks_info}\n)"
+

@@ -28,11 +28,15 @@ class PrintMetricsCallback(Callback):
         current_epoch = pl_module.current_epoch
         total_epoch = trainer.max_epochs - 1
         metrics = getattr(pl_module, f"{prefix}_metrics").compute()
-        logging.info(f"[Epoch {current_epoch}/{total_epoch}], the error is 1000 times")
+        logging.info("")
+        logging.info("")
+        logging.info(f"[Epoch {current_epoch}/{total_epoch}]")
+        logging.info("(All errors scaled by ×1000)")
         for name, value in metrics.items():
             logging.info(f"{name}: {value.item():.6f}")
-
-
+        logging.info("")
+        logging.info("")
+        
 # === EMA Callback ===
 class EMACallback(Callback):
     def __init__(self, decay: float = 0.99, use_num_updates: bool = True, device=None):
