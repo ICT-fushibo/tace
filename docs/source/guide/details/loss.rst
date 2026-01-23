@@ -27,6 +27,7 @@ Example
       - mse_forces
       - mse_stress
     loss_property_weights: [1, 8, 8] 
+    loss_huber_delta: 0.01 # float or List[float]
     # loss_property_weights: [1, 1, 1, 1, 1000, 1] 
 
   # # Loss Type 2
@@ -47,14 +48,14 @@ Example
   #     - mse_forces
   #     - mse_stress
   #   loss_property_weights: [1, 1, 1] 
-
+  #   loss_huber_delta: 0.01 # float or List[float]
 Notes
 -----
 
 - **Choice of loss function name**:  
+
   - For properties that are already *per-atom* quantities,  
     the ``per_atom`` suffix is not required and is not supported.
-
   - In general, mean squared error (MSE) performs better than mean absolute
     error (MAE) during training. For training on large datasets (uMLIPs),
     we recommend using the huber loss.

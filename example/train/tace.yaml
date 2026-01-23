@@ -231,7 +231,8 @@ loss:
     - mse_forces
     - mse_stress
   loss_property_weights: [1, 8, 8] 
-  # loss_property_weights: [1, 1, 1, 1, 1000, 1] 
+  loss_huber_delta: 0.01 # float or List[float]
+# loss_property_weights: [1, 1, 1, 1, 1000, 1] 
 
 # # Loss Type 2
 # # This loss does not require manually specified weights.
@@ -251,7 +252,7 @@ loss:
 #     - mse_forces
 #     - mse_stress
 #   loss_property_weights: [1, 1, 1] 
-
+#   loss_huber_delta: 0.01
 
 
 

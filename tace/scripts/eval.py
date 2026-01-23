@@ -56,7 +56,7 @@ def main():
     atoms_list_copy = copy.deepcopy(atomsList)
     key_spec = KeySpecification()
     update_keyspec_from_kwargs(key_spec, vars(args))
-    training = True if BOOL(args.test) else False # test which means your should provide label for error
+    training = True if args.test else False # test which means your should provide label for error
     model =load_tace(args.model, args.device, strict=True, use_ema=args.ema)
     max_neighbors = model.max_neighbors.item() if hasattr(model, "max_neighbors") else None
     cutoff = model.readout_fn.cutoff.item()
