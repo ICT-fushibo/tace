@@ -23,12 +23,15 @@ dependencies = [
     "configargparse",
     "pandas",
     "lmdb",
-    "torch-sim-atomistic!=0.5.0",
-    "wandb",
     "huggingface_hub",
+    #  "wandb",
 ]
 
 [project.optional-dependencies]
+
+cueq12 = [
+    "torch-sim-atomistic!=0.5.0",
+]
  
 cueq12 = [
     "cuequivariance",

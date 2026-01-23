@@ -1,7 +1,8 @@
 defaults:
   - _self_ 
   # Specify the logger backlend
-  - config/logger@_here_: wandb
+  # - config/logger@_here_: wandb
+
   # Specify the model architecture
   - config/model@model: cart_tacev1 
 
