@@ -83,6 +83,7 @@ When using this script, it will stop immediately after building the graph. In pr
 if the dataset storage mode is `lmdb` and the specified `shard_dirs` contain pre-built graphs, it will automatically read them and skip the graph-building phase.
 
 .. code-block:: bash  
+   
    tace-graph -cn *.yaml
 
 

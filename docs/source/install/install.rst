@@ -11,7 +11,16 @@ Installation
         
         # python < 3.14
         conda create -n tace python=3.12.11 -y 
+        conda create tace 
 
+    If your system is too old and the GCC version is outdated, installing the following
+    packages first and then installing TACE may help save you from trouble.
+
+    .. code-block:: bash
+
+        # micromamba install -c conda-forge compilers openblas cmake pkg-config hdf5 h5py
+        conda install -c conda-forge compilers openblas cmake pkg-config hdf5 h5py
+        
 
 You can install the package in ways as described below.
 
@@ -32,13 +41,5 @@ Install via pip (not recommended)
     pip install tace 
 
 
-.. note::
 
-    If your system is too old and the GCC version is outdated, installing the following
-    packages first and then installing TACE may help save you from trouble.
-
-    .. code-block:: bash
-
-        # micromamba install -c conda-forge compilers openblas cmake pkg-config hdf5 h5py
-        conda install -c conda-forge compilers openblas cmake pkg-config hdf5 h5py
 

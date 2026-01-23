@@ -12,13 +12,18 @@ then all MLIPs that have an interface with LAMMPS-ML-IAP can be used.
 import logging
 from typing import Dict, Tuple
 
+
 import torch
-from torch import Tensor
 from ase.data import chemical_symbols
-from lammps.mliap.mliap_unified_abc import MLIAPUnified
+try:
+    from lammps.mliap.mliap_unified_abc import MLIAPUnified
+    LAMMPS_ML_IAP_AVAILABLE = True
+except ImportError:
+    LAMMPS_ML_IAP_AVAILABLE = False
+    MLIAPUnified = None
 
 
-from ...lightning import load_tace
+from tace.lightning import load_tace
 
 # TODO check device 
 class EdgeForcesWrapper(torch.nn.Module):
@@ -38,8 +43,8 @@ class EdgeForcesWrapper(torch.nn.Module):
             p.requires_grad = False
 
     def forward(
-        self, data: Dict[str, Tensor]
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+        self, data: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
 
         outs = self.model(data)
         node_energy = outs["node_energy"]

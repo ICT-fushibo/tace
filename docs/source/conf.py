@@ -50,7 +50,6 @@ html_theme_options = {
         },
     ],
     "show_nav_level": 2,
-    "sidebar_hide_name": False,
     "footer_start": [],
     "footer_end": [],
 }

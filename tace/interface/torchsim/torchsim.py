@@ -12,23 +12,21 @@ with TorchSim's simulation framework, handling batched computations for multiple
 systems simultaneously.
 """
 
-from typing import TYPE_CHECKING
 from collections.abc import Callable
 from pathlib import Path
 from typing import Optional
 
 
 import torch
-TORCH_SIM_AVAILABLE = False
+
 try:
     import torch_sim as ts
     from torch_sim.models.interface import ModelInterface
     from torch_sim.neighbors import vesin_nl_ts
     TORCH_SIM_AVAILABLE = True
 except ImportError as e:
+    TORCH_SIM_AVAILABLE = False
     print(f"[warning] torch_sim import failed: {e}")
-if TYPE_CHECKING:
-    from torch_sim.typing import StateDict
 
 
 from tace.lightning import load_tace
@@ -160,7 +158,7 @@ class TACETorchSimCalc(ModelInterface):
 
     # onehot = element.z2onehot(atomic_numbers).to(dtype=torch.get_default_dtype())
 
-    def forward(self, state: ts.SimState | StateDict) -> dict[str, torch.Tensor]:
+    def forward(self, state: ts.SimState | dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         sim_state = (
             state
             if isinstance(state, ts.SimState)
