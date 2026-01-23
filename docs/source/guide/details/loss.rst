@@ -49,6 +49,7 @@ Example
   #     - mse_stress
   #   loss_property_weights: [1, 1, 1] 
   #   loss_huber_delta: 0.01 # float or List[float]
+  
 Notes
 -----
 

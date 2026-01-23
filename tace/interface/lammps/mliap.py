@@ -20,8 +20,6 @@ try:
     LAMMPS_ML_IAP_AVAILABLE = True
 except ImportError:
     LAMMPS_ML_IAP_AVAILABLE = False
-    MLIAPUnified = None
-
 
 from tace.lightning import load_tace
 

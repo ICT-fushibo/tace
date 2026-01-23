@@ -41,11 +41,9 @@ Currently, the officially supported properties include:
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - Noncollinear magnetic forces (conservative)
-- Collinear magnetic forces (conservative) *(not tested by us)*
 - Magnetization (conservative) *(not tested by us)*
 - Magnetic susceptibility (conservative) *(not tested by us)*
-.. - final (non)collinear magmoms (not time reversal)
-.. - total (non)collinear magmoms *(not tested by us)*
+
 
 For embedding property, we support:
 
@@ -53,7 +51,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial (non)collinear magmoms (not time reversal)
+- initial noncollinear magmoms
 - spin multiplicity *(not tested by us)*
 - electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*

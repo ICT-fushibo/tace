@@ -61,8 +61,8 @@ For periodic systems, as long as energy is included in training, atomic virials 
 can, in principle, be derived. Only prediction is supported.
 
 
-5. ``Hessians`` (Not Yet Publicly Available)
-----------------------------------------
+5. ``Hessians`` (Not Support Now)
+---------------------------------
 
 Hessian training is generally intended for non-periodic systems.
 Although it is theoretically applicable to periodic systems, the computational cost is prohibitive.
@@ -73,7 +73,7 @@ during training, only a subset of Hessian rows is dynamically selected for each 
 
 
 6. ``Level``
-----------------------------------
+------------
 
 The level attribute is treated as a dataset label used to distinguish
 different levels of computational accuracy (e.g., different functionals).

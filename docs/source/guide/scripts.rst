@@ -49,9 +49,12 @@ The supported scripts are:
 3. **tace-export**  
    Conversion of model formats  
 
-- **ckpt**: The `.ckpt` file is a checkpoint saved by the Lightning callback. It contains not only the model but also 
-all related metadata, allowing the training process to be resumed.  
-- **pt/pth**: Contains only the model itself without additional data. It is used for inference and pretraining.
+   - ckpt: 
+      The `.ckpt` file is a checkpoint saved by the Lightning callback. 
+      It contains not only the model but also all related metadata, allowing the training process to be resumed.  
+
+   - pt/pth: 
+      Contains only the model itself without additional data. It is used for inference.
 
 .. code-block:: bash
 

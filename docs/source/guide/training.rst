@@ -48,8 +48,8 @@ It can be safely ignored if everything is written in a single YAML file.
   - Not all fields in the ``YAML`` file are allowed to be omitted. We recommend using the official input file as much as possible and making only minimal modifications.
   
 .. code-block:: yaml
-  # Main yaml file
 
+  # Main yaml file
   defaults: 
   dataset:
   misc: 
