@@ -14,14 +14,14 @@ from .mse_fn import register_loss
 
 
 @register_loss
-def mse_energy(
+def mae_energy(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.energy_weight
     return torch.mean(torch.abs((label["energy"] - pred["energy"])) * total_weight)
 
 @register_loss
-def mse_energy_per_atom(
+def mae_energy_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.energy_weight
@@ -33,7 +33,7 @@ def mse_energy_per_atom(
     )
 
 @register_loss
-def mse_forces(
+def mae_forces(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     batch = label.batch
@@ -43,7 +43,7 @@ def mse_forces(
     return torch.mean(torch.abs(pred["forces"] - label["forces"]) * total_weight)
 
 @register_loss
-def mse_stress(
+def mae_stress(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.stress_weight
@@ -53,7 +53,7 @@ def mse_stress(
     )
 
 @register_loss
-def mse_virials(
+def mae_virials(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.virials_weight
@@ -63,7 +63,7 @@ def mse_virials(
     )
 
 @register_loss
-def mse_virials_per_atom(
+def mae_virials_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.virials_weight
@@ -74,7 +74,7 @@ def mse_virials_per_atom(
     )
 
 @register_loss
-def mse_direct_forces(
+def mae_direct_forces(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     batch = label.batch
@@ -85,7 +85,7 @@ def mse_direct_forces(
 
 
 @register_loss
-def mse_direct_stress(
+def mae_direct_stress(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.direct_stress_weight
@@ -95,7 +95,7 @@ def mse_direct_stress(
     )
 
 @register_loss
-def mse_direct_virials_per_atom(
+def mae_direct_virials_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = label.entropy * label.direct_virials_weight
@@ -106,7 +106,7 @@ def mse_direct_virials_per_atom(
     )
 
 @register_loss
-def mse_direct_dipole(
+def mae_direct_dipole(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (label.entropy * label.direct_dipole_weight).unsqueeze(-1)
@@ -114,7 +114,7 @@ def mse_direct_dipole(
 
 
 @register_loss
-def mse_direct_dipole_per_atom(
+def mae_direct_dipole_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (label.entropy * label.direct_dipole_weight).unsqueeze(-1)
@@ -124,7 +124,7 @@ def mse_direct_dipole_per_atom(
     )
 
 @register_loss
-def mse_conservative_dipole(
+def mae_conservative_dipole(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (label.entropy * label.conservative_dipole_weight).unsqueeze(-1)
@@ -133,7 +133,7 @@ def mse_conservative_dipole(
     )
 
 @register_loss
-def mse_conservative_dipole_per_atom(
+def mae_conservative_dipole_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (label.entropy * label.conservative_dipole_weight).unsqueeze(-1)
@@ -143,7 +143,7 @@ def mse_conservative_dipole_per_atom(
     )
 
 @register_loss
-def mse_direct_polarizability(
+def mae_direct_polarizability(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (
@@ -155,7 +155,7 @@ def mse_direct_polarizability(
     )
 
 @register_loss
-def mse_direct_polarizability_per_atom(
+def mae_direct_polarizability_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (
@@ -168,7 +168,7 @@ def mse_direct_polarizability_per_atom(
     )
 
 @register_loss
-def mse_conservative_polarizability(
+def mae_conservative_polarizability(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (
@@ -180,7 +180,7 @@ def mse_conservative_polarizability(
     )
 
 @register_loss
-def mse_conservative_polarizability_per_atom(
+def mae_conservative_polarizability_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     total_weight = (
@@ -193,7 +193,7 @@ def mse_conservative_polarizability_per_atom(
     )
 
 @register_loss
-def mse_born_effective_charges(
+def mae_born_effective_charges(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     batch = label.batch
@@ -209,7 +209,7 @@ def mse_born_effective_charges(
     )
 
 @register_loss
-def mse_polarization_per_atom(
+def mae_polarization_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     ptr = label["ptr"]
@@ -224,7 +224,7 @@ def mse_polarization_per_atom(
     return torch.mean(torch.abs(error / num_atoms))
 
 @register_loss
-def mse_charges(
+def mae_charges(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     batch = label.batch
@@ -232,7 +232,7 @@ def mse_charges(
     return torch.mean(torch.abs(pred["charges"] - label["charges"]) * total_weight)
 
 @register_loss
-def mse_final_collinear_magmoms(
+def mae_final_collinear_magmoms(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "final_collinear_magmoms"
@@ -241,7 +241,7 @@ def mse_final_collinear_magmoms(
     return torch.mean(torch.abs(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_final_noncollinear_magmoms(
+def mae_final_noncollinear_magmoms(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "final_noncollinear_magmoms"
@@ -252,7 +252,7 @@ def mse_final_noncollinear_magmoms(
     return torch.mean(torch.abs(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_collinear_magnetic_forces(
+def mae_collinear_magnetic_forces(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "collinear_magnetic_forces"
@@ -261,7 +261,7 @@ def mse_collinear_magnetic_forces(
     return torch.mean(torch.abs(pred[key] - label[key]) * total_weight)
 
 @register_loss
-def mse_noncollinear_magnetic_forces(
+def mae_noncollinear_magnetic_forces(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "noncollinear_magnetic_forces"
@@ -274,7 +274,7 @@ def mse_noncollinear_magnetic_forces(
     )
 
 @register_loss
-def mse_total_collinear_magmom(
+def mae_total_collinear_magmom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "total_collinear_magmom"
@@ -282,7 +282,7 @@ def mse_total_collinear_magmom(
     return torch.mean(torch.abs((label[key] - pred[key])) * total_weight)
 
 @register_loss
-def mse_total_collinear_magmom_per_atom(
+def mae_total_collinear_magmom_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "total_collinear_magmom"
@@ -296,7 +296,7 @@ def mse_total_collinear_magmom_per_atom(
     )
 
 @register_loss
-def mse_total_noncollinear_magmom(
+def mae_total_noncollinear_magmom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "total_noncollinear_magmom"
@@ -305,7 +305,7 @@ def mse_total_noncollinear_magmom(
 
 
 @register_loss
-def mse_total_noncollinear_magmom_per_atom(
+def mae_total_noncollinear_magmom_per_atom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "total_noncollinear_magmom"
