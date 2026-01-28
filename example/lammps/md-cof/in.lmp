@@ -1,0 +1,32 @@
+# MoS2 test system
+units           metal
+atom_style      atomic
+processors      * * 1
+boundary        p p p
+newton          on
+
+box             tilt large
+read_data       in-mzl.lammps-data
+change_box      all triclinic
+
+mass 1 1.00794  # H
+mass 2 12.0107  # C
+mass 3 14.0067  # N
+
+pair_style      mliap unified TACE-v1-OMat24-M.pt-lammps_mliap.pt 0
+pair_coeff      * * H C N
+
+neighbor        2.0 bin
+thermo_style    custom step pe ke etotal temp press vol fmax fnorm
+thermo          10
+dump            1 all custom 100 traj.dump id type element x y z fx fy fz vx vy vz
+dump_modify     1 element H C N
+
+min_style       cg
+minimize        1e-4 1e-4 100 100
+
+velocity        all create 348 5463576
+fix             1 all nvt temp 348 348 0.1
+timestep        0.001
+
+run             2000000

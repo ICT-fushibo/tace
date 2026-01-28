@@ -26,6 +26,6 @@ and `Hydra <https://hydra.cc/>`_.
    finetune.rst
    property.rst
    ase.rst
-   lmp.rst
+   lammps.rst
    torchSim.rst
    scripts.rst
