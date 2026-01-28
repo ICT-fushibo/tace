@@ -37,7 +37,7 @@ As long as your system is not very old, the installation process is generally ea
 
    # Use your own GPU arch
    # -D Kokkos_ARCH_Hopper70=ON \ # A800
-   # -D Kokkos_ARCH_ADA89=ON \    # 5090
+   # -D Kokkos_ARCH_ADA89=ON \    # 4090
    # -D Kokkos_ARCH_HSX90=ON \    # H100
    cmake -C kokkos-cuda.cmake \
    -D CMAKE_BUILD_TYPE=Release \
