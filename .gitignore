@@ -39,6 +39,7 @@ v2/
 draw/
 openmm/
 3bpa/
+equitorch/
 
 # Ignore specific files
 .DS_Store

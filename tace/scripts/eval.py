@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument("-t", "--test", type=int, default=0, help="print test set metric")
     parser.add_argument("-e", "--ema", type=int, default=1, help="Use EMA parameters during evaluation")
     parser.add_argument("-b", "--batch_size", type=int, default=16, help="Batch size for inference")
+    parser.add_argument("-sd", "--scalar_descriptor", type=int, default=0, help="if a scalar descriptor exists, output to xyz")
     parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float64"], help="Tensor precision")
     parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"], help="Device for inference")
     parser.add_argument("--nl_backend", type=str, default="matscipy", choices=["ase", "vesin", "matscipy"], help="nl_backend")
@@ -159,6 +160,9 @@ def main():
                     atoms_i.info[f"TACE_{p}"] = pred[p][i].detach().cpu().numpy().reshape(-1)
                 else:
                     atoms_i.info[f"TACE_{p}"] = pred[p][i].detach().cpu().numpy().reshape(-1)
+            if args.scalar_descriptor == 1 and 'scalar_descriptor' in pred:
+                    atoms_i.arrays[f"TACE_scalar_descriptor"] = pred['scalar_descriptor'][start:end].detach().cpu().numpy()
+
             pred_atoms_list.append(atoms_i)
             structure_index += 1  # move to next structure
 
