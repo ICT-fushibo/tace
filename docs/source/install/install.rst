@@ -11,7 +11,7 @@ Installation
         
         # python < 3.14
         conda create -n tace python=3.12.11 -y 
-        conda create tace 
+        conda activate tace 
 
     If your system is too old and the GCC version is outdated, installing the following
     packages first and then installing TACE may help save you from trouble.

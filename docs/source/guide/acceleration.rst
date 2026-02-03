@@ -1,6 +1,13 @@
 Acceleration Tutorial
 =====================
 
+Note
+----
+
+This feature is prepared for **Release 0.2.0**.  
+If you can see this note, the acceleration functionality has not been released yet.
+
+
 Backend Types
 -------------
 

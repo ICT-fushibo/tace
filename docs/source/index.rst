@@ -11,7 +11,6 @@ Documentation Structure
 
    install/install
    guide/guide
-   qa/qa
    
 .. toctree::
    :maxdepth: 1
