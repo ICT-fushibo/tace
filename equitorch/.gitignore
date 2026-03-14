@@ -18,7 +18,6 @@
 *.whl
 *.xyz
 *.extxyz
-*.pdf
 
 # Ignore all dir
 .idea/

@@ -1,0 +1,9 @@
+version: 2
+sphinx:
+  configuration: docs/source/conf.py
+build:
+  os: "ubuntu-20.04"
+  tools:
+    python: "miniconda3-3.12-24.1"
+conda:
+  environment: "./docs/environment.yaml"
