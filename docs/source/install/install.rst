@@ -2,9 +2,6 @@ Installation
 ============
 
 .. note::
-   The basic energy/force/stress are essentially bug-free, but some advanced features may still contain bugs.
-   Therefore, it is recommended to always use the latest commit on GitHub.
-
     It is recommended to use ``conda/mamba`` to create a clean environment.
 
     .. code-block:: bash
@@ -31,6 +28,7 @@ Install from Source (recommended)
 
     git clone https://github.com/xvzemin/tace.git
     cd tace
+    git checkout tags/v0.1.0
     pip install .
 
 Install via pip (not recommended)

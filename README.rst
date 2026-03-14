@@ -1,3 +1,7 @@
+.. note::
+
+   If you want to use ``tace``, please use ``tag-v0.1.0`` instead of the latest commit.
+
 Tensor Atomic Cluster Expansion
 ===============================
 .. = - ~ ^ "
