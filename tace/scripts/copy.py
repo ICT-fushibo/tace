@@ -75,11 +75,11 @@ def main():
 
     src_path, dst_path = args.model
 
-    src_model = load_tace(src_path, args.device, strict=True, use_ema=True)
+    src_model = load_tace(src_path, "cpu", strict=True, use_ema=True)
     # if dst_path.endswith("*.yaml"):
     #     dst_model = select_model
     # else:
-    dst_model = load_tace(dst_path, args.device, strict=True, use_ema=True)
+    dst_model = load_tace(dst_path, "cpu", strict=True, use_ema=True)
 
     model_dtype = dst_model.readout_fn.cutoff.dtype
     args_dtype = DTYPE[args.dtype] or model_dtype
@@ -92,8 +92,8 @@ def main():
 
     torch.set_default_dtype(args_dtype)
 
-    src_model.to(dtype=args_dtype, device=args.device)
-    dst_model.to(dtype=args_dtype, device=args.device)
+    src_model.to(dtype=args_dtype, device="cpu")
+    dst_model.to(dtype=args_dtype, device="cpu")
 
     merged_state = merge_state_dict(src_model, dst_model)
 

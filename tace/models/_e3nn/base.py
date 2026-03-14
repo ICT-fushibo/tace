@@ -17,9 +17,9 @@ from ..lammps import e3nnGhostExchangeMixin
 
 def _to_full_so3_irreps(lmax: int | List[int], num_channel: int) -> o3.Irreps:
     if isinstance(lmax, int):
-        return o3.Irreps([(num_channel, (l, (1)**l)) for l in range(lmax + 1)])
+        return o3.Irreps([(num_channel, (l, (-1)**l)) for l in range(lmax + 1)])
     assert isinstance(lmax, List)
-    return o3.Irreps([(num_channel, (l, (1)**l)) for l in lmax])
+    return o3.Irreps([(num_channel, (l, (-1)**l)) for l in lmax])
 
 
 class NodeEmbedding(torch.nn.Module):

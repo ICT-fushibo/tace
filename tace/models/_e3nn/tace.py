@@ -190,7 +190,10 @@ class e3nnTACE(torch.nn.Module):
                     "Supported methods are ['lagrangian', 'uniform_distribution']."
                 )
             
-
+        # === abs_final_collinear_magmoms ===
+        if "abs_final_collinear_magmoms" in self.target_property:
+            self.abs_final_collinear_magmoms_readouts = build_scalar_readout(l=0, **for_scalar_readout)
+            
     def readout_fn(
         self,
         data: Dict[str, torch.Tensor],
@@ -377,6 +380,20 @@ class e3nnTACE(torch.nn.Module):
                 c_delta_node = (c_graph - data["total_charge"]) / (data["ptr"][1:] - data["ptr"][:-1])
                 CHARGES = c_node + c_delta_node[batch]
        
+        # === ABS_F_C_MAG === 
+        ABS_F_C_MAG = None
+        if "abs_final_collinear_magmoms" in self.target_property:
+            mag_list = []
+            for ii, abs_final_collinear_magmoms_readout in enumerate(self.abs_final_collinear_magmoms_readouts):
+                if not self.use_alllayer:
+                    ii = -1
+                mag_list.append(
+                    torch.abs(
+                        abs_final_collinear_magmoms_readout(descriptors[ii])[num_atoms_arange, node_fidelity]
+                    )
+                )
+            ABS_F_C_MAG = torch.sum(torch.stack(mag_list, dim=-1), dim=-1)
+
         if hasattr(self, 'les'):
             les_lq_list = []
             for ii, les_readout in enumerate(self.les_readouts):
@@ -424,6 +441,7 @@ class e3nnTACE(torch.nn.Module):
             "les_latent_charges": LES_LQ,
             "les_born_effective_charges": LES_BEC,
             "scalar_descriptor": scalar_descriptor,
+            "abs_final_collinear_magmoms": ABS_F_C_MAG,
         }
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)

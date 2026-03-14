@@ -56,15 +56,6 @@ class SpectralInteraction(Interaction):
         self.use_oeq = TACE_USE_OEQ == '1'
         self.use_cueq = TACE_USE_CUEQ == '1'
 
-        self.e3nn_tp = o3.TensorProduct(
-            irreps_in1=self.irreps_in,
-            irreps_in2=self.irreps_sh,
-            irreps_out=out_irreps,
-            instructions=instructions,
-            internal_weights=False,
-            shared_weights=False,
-        )
-
         if self.use_oeq:
             self.rejector = e3nnOeqTensorProduct(
                 irreps_in1=self.irreps_in,
@@ -79,7 +70,8 @@ class SpectralInteraction(Interaction):
                 irreps_out=out_irreps,
                 l1l2=self.l1l2,
                 ictp_ictc_like=self.ictp_ictc_like,
-            )
+            ) # TODO
+            raise
         else:
             self.rejector = o3.TensorProduct(
                 irreps_in1=self.irreps_in,
@@ -146,7 +138,7 @@ class SpectralInteraction(Interaction):
             )    
 
         self.edge_info = MLP(
-            [self.radial_in_channel] + self.radial_mlp + [self.tp.weight_numel],
+            [self.radial_in_channel] + self.radial_mlp + [self.rejector.weight_numel],
             bias=self.radial_bias,
             layer_norm=self.radial_layer_norm,
             act=self.radial_act,

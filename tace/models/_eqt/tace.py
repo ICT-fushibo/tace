@@ -380,7 +380,7 @@ class eqtTACE(torch.nn.Module):
                 c_delta_node = (c_graph - data["total_charge"]) / (data["ptr"][1:] - data["ptr"][:-1])
                 CHARGES = c_node + c_delta_node[batch]
 
-         # === ABS_F_C_MAG === 
+        # === ABS_F_C_MAG === 
         ABS_F_C_MAG = None
         if "abs_final_collinear_magmoms" in self.target_property:
             mag_list = []
