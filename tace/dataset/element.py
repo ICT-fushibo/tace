@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, List, Set, Tuple, Union, Optional
+from typing import Dict, List, Set, Tuple, Union, Optional, Sequence
 
 import torch
 from torch import Tensor
@@ -39,37 +39,16 @@ ATOMIC_MAGMOM = ground_state_magnetic_moments.tolist()  # ground state
 
 
 class Element:
-    def __init__(self, zs: Union[List[int], Tuple[int, ...]]):
-        if isinstance(zs, tuple):
-            self.zs = list(zs)
-        elif isinstance(zs, list):
-            self.zs = zs
-        else:
-            raise TypeError(f"{zs} must be a list or tuple of integers.")
+    def __init__(self, zs: Sequence[int]):
+
+        self.zs = sorted(list(zs))
         if not all(isinstance(num, int) for num in self.zs):
             raise ValueError(f"All elements in {zs} must be integers.")
-        self.atomic_numbers = sorted(zs)
-        self.num_elements = len(zs)
-        self.z_to_idx = {z: i for i, z in enumerate(self.atomic_numbers)}
-
-        # # Torch
-        # self.lookup_table = torch.full((max(self.atomic_numbers) + 1,), -1, dtype=torch.int64)
-        # for idx, z in enumerate(self.atomic_numbers):
-        #     self.lookup_table[z] = idx
+        self.num_elements = len(self.zs)
+        self.z_to_idx = {z: i for i, z in enumerate(self.zs)}
 
     def z2idx(self, z: int) -> int:
         return self.z_to_idx[z]
-
-    # def torch_z2idx(self, z: torch.Tensor) -> torch.Tensor:
-    #     return self.lookup_table[z]
-
-    # def torch_z2onehot(self, zs: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     :param zs: shape (N,),
-    #     :return: shape (N, num_classes), one-hot
-    #     """
-    #     idxs = self.lookup_table[zs]  # shape (N,)
-    #     return F.one_hot(idxs, num_classes=self.num_elements)
 
     def idx2symbol(self, idx: int) -> int:
         z = self.idx2z(idx)
@@ -96,10 +75,10 @@ class Element:
         return ATOMIC_MAGMOM[z]
 
     def __len__(self) -> int:
-        return len(self.atomic_numbers)
+        return len(self.zs)
 
     def __repr__(self):
-        return f"Element in the model: {(z for z in self.atomic_numbers)}"
+        return f"Element in the model: {(z for z in self.zs)}"
 
 
 class TorchElement(Element):
@@ -108,9 +87,9 @@ class TorchElement(Element):
         super().__init__(zs)
 
         self.lookup_table = torch.full(
-            (max(self.atomic_numbers) + 1,), -1, dtype=torch.int64
+            (max(self.zs) + 1,), -1, dtype=torch.int64
         )
-        for idx, z in enumerate(self.atomic_numbers):
+        for idx, z in enumerate(self.zs):
             self.lookup_table[z] = idx
 
     def z2idx(self, z: Tensor) -> Tensor:
@@ -126,6 +105,6 @@ class TorchElement(Element):
         return F.one_hot(idxs, num_classes=self.num_elements)
 
 
-def build_element_lookup(atomic_numbers: Set[int]) -> TorchElement:
+def build_element_lookup(atomic_numbers: Sequence[int]) -> TorchElement:
     element = TorchElement(sorted(list(atomic_numbers)))
     return element

@@ -42,7 +42,7 @@ def from_atoms(
     max_neighbors: Optional[int],
     keyspec: KeySpecification,
     target_property: List[str],
-    embedding_property: List[str] = [],
+    embedding_property: List[str],
     training: bool = True,
     neighborlist_backend: str = "matscipy",
     **kwargs,
@@ -143,7 +143,7 @@ def from_atoms(
             wDict.update({name: w})
         except Exception as e:
             raise RuntimeError(f"Failed to read property {name}") from e
-
+        
     data_dict = {
         "entropy": to_tensor(atoms.info.get('entropy', 1.0)),
         "atomic_numbers": atomic_numbers,
@@ -152,7 +152,7 @@ def from_atoms(
         "node_attrs": onehot,
         "edge_index": torch.tensor(edge_index, dtype=torch.int64),
         "edge_shifts": to_tensor(edge_shifts),
-        "level": torch.tensor(atoms.info.get(keyspec.info_keys['level'], 0), dtype=torch.int64),
+        "fidelity_idx": torch.tensor(atoms.info.get(keyspec.info_keys["fidelity_idx"], 0), dtype=torch.int64),
     }
 
     for name in need_property:

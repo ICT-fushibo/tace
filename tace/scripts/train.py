@@ -13,7 +13,6 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 
-from ..dataset.statistics import Statistics
 from ..lightning.trainer import train
 from ..lightning.lit_model import finetune, load_tace
 from ..lightning.select_model import select_model
@@ -66,40 +65,39 @@ def build(cfg: DictConfig):
     userKeys.update(cfg['dataset'].get('keys', {}))
     keyspec = KeySpecification()
     update_keyspec_from_kwargs(keyspec, userKeys)
-    num_levels = cfg['model']['config'].get("num_levels", 1)
-
+    fidelity = cfg['model']['config']['fidelity']
+        
     # train from scratch, calculate statistics
     statistics = None
     threeAtomsList = None
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
-        statistics_yaml = [Path('.') / f'statistics_{i}.yaml' for i in range(num_levels)]
+        statistics_yaml = [Path('.') / f'statistics_{idx}.yaml' for idx in range(len(fidelity))]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
             statistics = []
             for yaml_file in statistics_yaml:
                 with open(yaml_file, "r") as f:
                     statistics_data = yaml.safe_load(f)
-                    statistics.append(Statistics(**statistics_data))
+                    statistics.append(statistics_data)
             for idx, yaml_file in enumerate(statistics_yaml):
-                logging.info(f"Using statistics_yaml from '{str(yaml_file)}' for level {idx}")
+                logging.info(f"Using '{str(yaml_file)}' for fidelity {fidelity[idx]['name']}")
             atomic_numbers = statistics[0]["atomic_numbers"]
         else:
             logging.info(f"Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
-                cfg, target_property, embedding_property, keyspec, num_levels
+                cfg, target_property, embedding_property, keyspec
             )
-            atomic_numbers = element.atomic_numbers
+            atomic_numbers = element.zs
             statistics = compute_statistics(
                 cfg, 
                 target_property, 
                 embedding_property, 
                 keyspec, 
-                num_levels,
                 element,
                 threeAtomsList,
+                fidelity,
                 atomic_energies,
                 dataloader_train=None,
             )
-
     # finetune or reusme, statistics is no need to recalculate
     if cfg.get("finetune_from_model", None):
         model = finetune(cfg)
@@ -139,7 +137,6 @@ def build(cfg: DictConfig):
         atomic_numbers, #
         target_property, 
         embedding_property, 
-        num_levels, 
         keyspec, 
         threeAtomsList,
     )
@@ -149,7 +146,6 @@ def build(cfg: DictConfig):
 @hydra.main(version_base="1.3", config_path=str(Path.cwd()), config_name="tace")
 def main(cfg: DictConfig):
     cfg, statistics, target_property, embedding_property, model, datamodule = build(cfg)
-
     train_arguments = {
         "cfg": cfg,
         "statistics": statistics,

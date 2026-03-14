@@ -39,7 +39,7 @@ class TACETorchSimCalc(ModelInterface):
         self,
         model: str | Path | torch.nn.Module | None = None,
         *,
-        level: Optional[int] = None,
+        fidelity_idx: Optional[int] = None,
         spin_on: Optional[bool] = None,
         target_property: Optional[list[str]] = None,
         device: torch.device | None = None,
@@ -55,8 +55,8 @@ class TACETorchSimCalc(ModelInterface):
         and system indices, or these can be provided during the forward pass.
 
         Args:
-            level : int
-                Specify which fidelity level to use. 
+            fidelity_idx : int
+                Specify which fidelity fidelity_idx to use. 
             spin_on : bool
                 If your model uses spin_on uie embedding, you can control whether 
                 your calculation enables spin polarization.
@@ -91,11 +91,11 @@ class TACETorchSimCalc(ModelInterface):
             use_ema=True, 
             target_property=target_property
         ) 
-        if level is not None:
-            self.level = level
-            model.reset_computing_level(level) 
+        if fidelity_idx is not None:
+            self.fidelity_idx = fidelity_idx
+            model.set_fidelity_idx(fidelity_idx) 
         else:
-            self.level = model.get_computing_level()
+            self.fidelity_idx = model.get_fidelity_idx()
         if spin_on is not None:
             self.spin_on = 1 if spin_on else 0
             model.reset_spin_on(self.spin_on) 

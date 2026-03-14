@@ -93,56 +93,55 @@ def check_keys(
     return atomsList
 
 
-
 def ase_io_read(filename: str):
     from ase.io import read
-    return read(filename, index=":")
+    try:
+        atoms_list = read(filename, index=":")
+        if not atoms_list:
+            logging.warning(f"File {filename} is empty")
+            return []
+        return atoms_list
+    except Exception as e:
+        logging.error(f"Failed to read {filename}: {e}")
+        return []
 
 
 def ase_db_connect(filename: str):
     from ase.db import connect
-    return [row.toatoms() for row in connect(filename).select()]
+    try:
+        with connect(filename) as db:
+            atoms_list = [row.toatoms() for row in connect(filename).select()]
+        if not atoms_list:
+            logging.warning(f"Database {filename} is empty")
+            return []
+    except Exception as e:
+        logging.error(f"Failed to read {filename}: {e}")
+        return []
+    return atoms_list
 
 
-def aqcat25_aselmdb(filename: str):
+def fair_aselmdb(filename: str): # [only test energy, forces, stress]
     from ase.db import connect
-    atomsList = []
-    with connect(filename) as db:
-        for idx in range(1, len(db) + 1):
-            row = db.get(idx)
-            if not row:
-                continue
-            atoms = row.toatoms()
-            atoms.info = row.data 
-            atoms.info["level"] = atoms.info.get("level", 1) # default to second level
-            # move_mask
-            atoms.arrays["move_mask"] = np.array(
-                [0 if tag == 0 else 1 for tag in atoms.get_tags()], dtype=np.int64
-            )
-            # spin_on
-            is_spin_off = atoms.info.get("is_spin_off", None)
-            if is_spin_off is False:
-                atoms.info["spin_on"] = 1
-            elif is_spin_off is True: 
-                atoms.info["spin_on"] = 0
-            else:
-                raise ValueError(f"is_spin_off not found or invalid in {filename}, idx={idx}")
-            atomsList.append(atoms)
-    return atomsList
+    try:
+        with connect(filename) as db:
+            atoms_list = [row.toatoms() for row in connect(filename).select()]
+        if not atoms_list:
+            logging.warning(f"Database {filename} is empty")
+            return []
+    except Exception as e:
+        logging.error(f"Failed to read {filename}: {e}")
+        return []
+    return atoms_list
 
 
-def fair_aselmdb(filename: str):
-    raise NotImplementedError("fair_lmdb is not yet implemented")
-
-
-def torchsim_h5(filename: str):
+def torchsim_h5(filename: str): # TODO
     raise NotImplementedError("torchsim_h5 is not yet implemented")
 
 
 RGLOB = {
     "ase": ["*.xyz", "*.extxyz", "*.traj"],
     "ase_db": ["*.db"],
-    "aqcat25_aselmdb": ["*.aselmdb"],
+    # "aqcat25_aselmdb": ["*.aselmdb"],
     "fair_aselmdb": ["*.aselmdb"],
     "torchsim_h5": ["*.h5"],
 }
@@ -151,7 +150,6 @@ RGLOB = {
 HOW_TO_READ = {
     "ase": ase_io_read,
     "ase_db": ase_db_connect,
-    "aqcat25_aselmdb": aqcat25_aselmdb,
     "fair_aselmdb": fair_aselmdb,
     "torchsim_h5": torchsim_h5,
 }

@@ -15,15 +15,13 @@ from lightning.pytorch.utilities.rank_zero import rank_zero_only
 from .element import build_element_lookup, TorchElement
 from .read import tace_read_all_files
 from .graph import from_atoms
-from .statistics import compute_atomic_energy, _compute_statistics, Statistics
+from .statistics import compute_atomic_energy, _compute_statistics
 from .quantity import KeySpecification
 
 
 @rank_zero_only
 def create_graphs_for_main_rank(atomsList, element, for_dataset, stage):
     dataset = []
-    # for atoms in tqdm(atomsList, desc=f"Building graphs for {stage}"):
-    #     dataset.append(from_atoms(element, atoms, **for_dataset))
     for atoms in atomsList:
         dataset.append(from_atoms(element, atoms, **for_dataset))
     return dataset
@@ -31,14 +29,12 @@ def create_graphs_for_main_rank(atomsList, element, for_dataset, stage):
 
 @rank_zero_only
 def build_atomsList(
-    cfg: dict,
+    cfg: Dict,
     target_property: List[str],
     embedding_property: List[str],
     keyspec: KeySpecification,
-    num_levels: int,
 ):
     threeAtomsList = tace_read_all_files(cfg, target_property, embedding_property, keyspec)
-
     # ==== read atomic_numbers and atomic_energy from dataset and cfg ===
     try:
         atomsList = (
@@ -55,7 +51,7 @@ def build_atomsList(
         raise RuntimeError(f"Failed to extract atomic numbers from dataset: {e}")
 
     atomic_numbers = cfg['model']['config'].get("atomic_numbers", None)
-    if  atomic_numbers is not None:
+    if atomic_numbers is not None:
         atomic_numbers_from_cfg = set(atomic_numbers)
         assert atomic_numbers_from_dataset.issubset(atomic_numbers_from_cfg), (
             f"cfg.model.config.atomic_numbers must include all atomic numbers present in the dataset, "
@@ -63,55 +59,61 @@ def build_atomsList(
         )
         atomic_numbers_from_dataset = atomic_numbers_from_cfg
 
-    # === multi-level atomic_energy ===
-    atomic_energies= []
+    fidelity = cfg['model']['config']['fidelity']
+    num_fidelities = len(fidelity)
+    # === multi-fidelity atomic_energy ===
     if "energy" in target_property:
 
-        num_levels = cfg['model']['config'].get("num_levels", 1)
-        atomic_energies_cfg = cfg['model']['config'].get("atomic_energies", None)
-        if isinstance(atomic_energies_cfg, Dict): 
-            atomic_energies_cfg = [atomic_energies_cfg]
-        assert atomic_energies_cfg is None or isinstance(atomic_energies_cfg, List)
-
-        if atomic_energies_cfg is not None:
-            assert num_levels == len(atomic_energies_cfg)
-            for v in atomic_energies_cfg:
-                assert isinstance(v, Dict), "If you want to use multi-fidelity or multi-head training, "
-                "you must provide each level's atomic energy or set null"
-            atomic_numbers_from_energy = set(z for IAE_dict in atomic_energies_cfg for z in IAE_dict.keys())
-            atomic_numbers_from_dataset = atomic_numbers_from_dataset | atomic_numbers_from_energy
-
+        atomic_energies_cfg: List[Dict[int, float] | None] = []
+        for idx in range(num_fidelities):
+            this_atomic_energy = fidelity[idx].get('atomic_energy', None)
+            assert (
+                this_atomic_energy is None or isinstance(this_atomic_energy, Dict),
+                "If you want to use multi-fidelity or multi-head training, "
+                "you must provide each fidelity's atomic_energy or set to null"
+            )
+            atomic_energies_cfg.append(this_atomic_energy)
+        atomic_numbers_from_energy = set()
+        for this_atomic_energy in atomic_energies_cfg:
+            if this_atomic_energy is None:
+                pass
+            else:
+                atomic_numbers_from_energy.update(this_atomic_energy.keys())
+        atomic_numbers_from_dataset = atomic_numbers_from_dataset | atomic_numbers_from_energy
         element = build_element_lookup(atomic_numbers_from_dataset)
 
-        if atomic_energies_cfg is None:
-            logging.info("Computing Isolated Atomic Energies (IAE) automatically for each level")
-            atomic_energies = compute_atomic_energy(
-                threeAtomsList[0], 
-                element, 
-                keyspec,
-                num_levels
-            ) 
-        else:
-            for idx, energy_cfg in enumerate(atomic_energies_cfg):
-                atomic_energy = {int(k): float(v) for k, v in energy_cfg.items()}
-                atomic_energy_keys = set(atomic_energy.keys())
-                assert atomic_energy_keys.issubset(atomic_numbers_from_dataset), (
-                    f"Level {idx}: Keys in atomic_energy must be subset of dataset atomic numbers. "
-                    f"Unexpected: {atomic_energy_keys - atomic_numbers_from_dataset}"
+        atomic_energies = []
+        for idx, this_energy_cfg in enumerate(atomic_energies_cfg):
+            if this_energy_cfg is None:
+                logging.info(
+                    f"Computing isolated atomic energy automatically "
+                    f"for fidelity {fidelity[idx]['name']}"
                 )
-                for z in atomic_numbers_from_dataset:
+                atomic_energies.append(
+                        compute_atomic_energy(
+                        threeAtomsList[0], 
+                        element, 
+                        keyspec,
+                        idx,
+                    )
+                )
+            else:
+                atomic_energy = {int(k): float(v) for k, v in this_energy_cfg.items()}
+                for z in element.zs:
                     if z not in atomic_energy:
                         atomic_energy[z] = 0.0
                         logging.warning(
-                            f"Level {idx}: No isolated atomic energy provided for Z={z}, using 0.0 as default."
+                            f"Fidelity {fidelity[idx]['name']}: No isolated atomic energy "
+                            f"provided for Z={z}, using 0.0 as default."
                         )
                 atomic_energies.append(atomic_energy)
 
-        logging.info("Isolated Atomic Energies per computational level:")
+        logging.info("Isolated atomic energy per computational fidelity:")
         for idx, energy in enumerate(atomic_energies):
-            logging.info(f"  Level {idx}: {energy}")
+            logging.info(f"  {fidelity[idx]['name']}: {energy}")
     else:
         element = build_element_lookup(atomic_numbers_from_dataset)
+        atomic_energies = None
     return element, threeAtomsList, atomic_energies
 
 
@@ -121,35 +123,37 @@ def compute_statistics(
     target_property: List[str],
     embedding_property: List[str],
     keyspec: KeySpecification,
-    num_levels: int,
     element: TorchElement,
     threeAtomsList,
+    fidelity,
     atomic_energies: List[Dict[int, float]],
     dataloader_train = None,
 ):
   
     if dataloader_train is None:
         for_dataset = {
-            "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
+            "cutoff": float(cfg['model']['config']["cutoff"]),
             "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
             "keyspec": keyspec,
-            "target_property": target_property,
-            "embedding_property": embedding_property,
-            "neighborlist_backend": cfg.get("dataset", {}).get("neighborlist_backend", "matscipy"),
+            "target_property": list(target_property),
+            "embedding_property": list(embedding_property),
+            "neighborlist_backend": cfg["dataset"].get("neighborlist_backend", "matscipy"),
         }
         dataset_train = create_graphs_for_main_rank(threeAtomsList[0], element, for_dataset, 'train')
         dataloader_train = instantiate(
-            cfg["dataset"]["train_dataloader"],
+            {k: v for k, v in cfg["dataset"]["train_dataloader"].items() if k != 'extra'},
             dataset=dataset_train
         )
 
+
+
     statistics = _compute_statistics(
         dataloader_train,
-        sorted(element.atomic_numbers),
+        element.zs,
         atomic_energies,
         target_property=target_property,
         device=cfg.get("misc", {}).get("device", "cpu"),
-        num_levels=num_levels,
+        num_fidelities=len(fidelity),
     )
 
     del dataloader_train

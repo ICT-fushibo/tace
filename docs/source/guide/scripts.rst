@@ -92,7 +92,7 @@ if the dataset storage mode is `lmdb` and the specified `shard_dirs` contain pre
 
 7. **tace-convert**
 
-This script is mainly used to perform architecture-level or parameter-level transformations
+This script is mainly used to perform architecture-fidelity_idx or parameter-fidelity_idx transformations
 on an existing model.
 
 Typical use cases include (but are not limited to):

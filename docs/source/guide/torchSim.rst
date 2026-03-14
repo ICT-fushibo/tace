@@ -17,10 +17,10 @@ For detailed usage and scripts (e.g., ``batchOPT``, ``batchMD``, and other scrip
     dtype = 'float32'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = "../TACE-v1-OMat24-L.pt" # Your Model
-    level = 0  # first fidelity
+    fidelity_idx = 0  # first fidelity
     model = TACETorchSimCalc(
         model,
-        level=level,
+        fidelity_idx=fidelity_idx,
         device=device,
         dtype=dtype, 
         compute_forces=True,

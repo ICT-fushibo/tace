@@ -38,7 +38,7 @@ def set_logger(_level: int | str = "info", _rank_zero_only: bool = True) -> None
             handler.setFormatter(formatter)
     else:
         logging.basicConfig(
-            level=log_level,
+            fidelity_idx=log_level,
             format="[%(levelname)s] %(message)s",
         )
     root_logger.setLevel(log_level)

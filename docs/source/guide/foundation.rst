@@ -43,15 +43,15 @@ as an ASE calculator:
     dtype = "float32"
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Fidelity level (0 corresponds to the first fidelity)
-    level = 0
+    # Fidelity fidelity_idx (0 corresponds to the first fidelity)
+    fidelity_idx = 0
 
     atoms = read("../unrelaxed.xyz", index=0)
     calc = TACEAseCalc(
         model=model,
         dtype=dtype,
         device=device,
-        level=level,
+        fidelity_idx=fidelity_idx,
     )
     atoms.calc = calc
 

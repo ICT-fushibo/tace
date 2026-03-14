@@ -162,7 +162,7 @@ During training, **TACE** automatically generates several directories and files 
 
 - **statistics_0.yaml, statistics_1.yaml ...**  
   Stores statistical information about the training or validation set, such as RMS information of forces.
-  If you are using multi-head or multi-fidelity training, multiple statistics files will be generated for each computation level.
+  If you are using multi-head or multi-fidelity training, multiple statistics files will be generated for each computation fidelity_idx.
 
   These statistics are computed before each training starting. However, if the file already exists in the current directory, 
   the computation will be skipped and the existing file will be read instead. 

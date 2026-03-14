@@ -78,11 +78,15 @@ class OMat24sAlexMPtrjLoss(torch.nn.Module):
             reduction="mean",
             delta=self.stress_huber_delta,
         )
-        return (
+        total_loss = (
             self.energy_weight * loss_energy
             + self.forces_weight * loss_forces
             + self.stress_weight * loss_stress
         )
+        # if pred["moe_aux_loss"] is not None:
+        #     total_loss += pred["moe_aux_loss"]
+
+        return total_loss
 
     def __repr__(self):
         return (

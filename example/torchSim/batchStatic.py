@@ -21,10 +21,10 @@ model = tace_foundations["TACE-v1-OAM-M"]
 
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-level = 0  # first fidelity
+fidelity_idx = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
-    level=level,
+    fidelity_idx=fidelity_idx,
     spin_on=False,
     device=device,
     dtype=dtype, 

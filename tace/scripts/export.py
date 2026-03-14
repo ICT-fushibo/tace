@@ -27,7 +27,7 @@ def parse_args():
         help="Model path",
     )
     parser.add_argument(
-        "-l", "--level",
+        "-l", "--fidelity_idx",
         type=int,
         default=None,
         help="Which fidelity to use",
@@ -64,8 +64,8 @@ def main():
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
     torch.set_default_dtype(args_dtype)
-    if args.level is not None:
-        model.level = args.level
+    if args.fidelity_idx is not None:
+        model.fidelity_idx = args.fidelity_idx
     model.to(dtype=args_dtype, device=args.device)
 
     if args.backend == "state_dict":

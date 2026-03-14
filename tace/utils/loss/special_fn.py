@@ -14,9 +14,19 @@ from .mse_fn import register_loss
 
 
 @register_loss
-def mean_normed_forces(pred, label) -> Tensor:
+def l2mae_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
     return torch.mean(
         torch.linalg.vector_norm(pred["forces"] - label["forces"], ord=2, dim=-1)
+    )
+
+@register_loss
+def l2mae_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    return torch.mean(
+        torch.linalg.vector_norm(pred["stress"] - label["stress"], ord=2, dim=(1, 2))
     )
 
 @register_loss
@@ -47,8 +57,8 @@ def conditional_huber_forces(
     )
     return torch.mean(se)
 
-@register_loss
-def l2ne_hessians(
+@register_loss # TODO, check
+def l2mae_hessians(
         pred: Dict[str, Tensor], 
         label: Dict[str, Tensor],
     ) -> torch.Tensor:

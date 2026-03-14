@@ -75,7 +75,7 @@ during training, only a subset of Hessian rows is dynamically selected for each 
 6. ``Level``
 ------------
 
-The level attribute is treated as a dataset label used to distinguish
+The fidelity_idx attribute is treated as a dataset label used to distinguish
 different levels of computational accuracy (e.g., different functionals).
 
 It can be utilized in:

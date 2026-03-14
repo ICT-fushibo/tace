@@ -36,7 +36,7 @@ Acceleration Methods for Specific Models
    This model uses **equitroch** as its backend. The Triton kernel provides significant acceleration, 
    especially for the coupled product basis.
 
-   However, Equitroch currently does not support edge-level operator fusion. In such cases, you can 
+   However, Equitroch currently does not support edge-fidelity_idx operator fusion. In such cases, you can 
    replace Equitroch's TensorProduct with openequivariance by setting the environment variable:
 
    .. code-block:: bash

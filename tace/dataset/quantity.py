@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from .utils import (
     voigt_to_matrix,
     shape_fn_for_hessians,
+    shape_fn_for_abs_fc_mag,
     default_value_for_hessians,
     default_value_for_rank0_atom,
     default_value_for_rank1_atom,
@@ -27,12 +28,12 @@ from .utils import (
 
 
 PROPERTY = {
-    "level": {
+    "fidelity_idx": {
         "ase_name": None,
         'type': 'int',
         "scope": "per-system",
         "rank": 0,
-        "abbreviation": "LEVEL",
+        "abbreviation": "F_IDX",
         "shape": {
             "in_data": (1,),
             "shape_fn": None,
@@ -515,6 +516,24 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
+    "abs_final_collinear_magmoms": {
+        "ase_name": "magmoms",
+        'type': 'float',
+        "scope": "per-atom",
+        "rank": 0,
+        "abbreviation": "ABS_F_C_MAG",
+        "shape": {
+            "in_data": (-1,),
+            "shape_fn": shape_fn_for_abs_fc_mag,
+        },
+        "default_value_fn": default_value_for_rank0_atom,
+        "must_be_with": [],
+        "enable_prediction": True,   
+        "enable_embedding": False,
+        "first_derivative": False,
+        "second_derivative": False,
+        "requires_grad_with": [],
+    },
     "final_noncollinear_magmoms": {
         "ase_name": "magmoms",
         'type': 'float',
@@ -741,6 +760,7 @@ class DefaultKeys(Enum):
     INITIAL_COLLINEAR_MAGMOMS = "initial_collinear_magmoms"
     INITIAL_NONCOLLINEAR_MAGMOMS = "initial_noncollinear_magmoms"
     FINAL_COLLINEAR_MAGMOMS = "final_collinear_magmoms"
+    ABS_FINAL_COLLINEAR_MAGMOMS = "abs_final_collinear_magmoms"
     FINAL_NONCOLLINEAR_MAGMOMS = "final_noncollinear_magmoms"
     COLLINEAR_MAGNETIC_FORCES = "collinear_magnetic_forces"
     NONCOLLINEAR_MAGNETIC_FORCES = "noncollinear_magnetic_forces"
@@ -749,7 +769,7 @@ class DefaultKeys(Enum):
     SPIN_ON = "spin_on"
 
     # only for embedding
-    LEVEL = 'level'
+    FIDELITY_IDX = "fidelity_idx"
     TEMPERATURE = "temperature"
     ELECTRON_TEMPERATURE = "electron_temperature"
     SPIN_MULTIPLICITY = "spin_multiplicity"
@@ -841,29 +861,17 @@ def get_target_property(cfg: Dict) -> List[str]:
     return loss_property
 
 
-def get_embedding_property(cfg: Dict, separate: bool = False) -> List[str] | Tuple[List[str]]:
-    invariant = cfg["model"]["config"].get("universal_embedding", {}).get("invariant", {})
-    invariant_embedding_property = []
-    for k, v in invariant.items():
-        if v.get('enable', False):
-            invariant_embedding_property.append(k)
+def get_embedding_property(cfg: Dict) -> List[str]:
+    embedding_property = []
+    for p, v in cfg["model"]["config"].get("universal_embedding", {}).items():
+        if v['enable']:
+            assert (
+                p in SUPPORT_EMBEDDING_PROPERTY
+            ), f"Universal_embedding allowed property are {SUPPORT_EMBEDDING_PROPERTY}"
+            embedding_property.append(p)
+    return embedding_property
 
-    equivariant = cfg["model"]["config"].get("universal_embedding", {}).get("equivariant", {})
-    equivariant_embedding_property = []
-    for k, v in equivariant.items():
-        if v.get('enable', False):
-            equivariant_embedding_property.append(k)
 
-    for p in invariant_embedding_property + equivariant_embedding_property:
-        assert (
-            p in SUPPORT_EMBEDDING_PROPERTY
-        ), f"Universal_embedding allowed property are {SUPPORT_EMBEDDING_PROPERTY}, "
-        f"if you need more, please contact the author"
-
-    if separate:
-        return invariant_embedding_property, equivariant_embedding_property
-    else:
-        return invariant_embedding_property + equivariant_embedding_property
 
 def get_need_property(
         target_property: List[str] = [], 
@@ -872,7 +880,7 @@ def get_need_property(
     ) -> List[str]:
     we_should_read = embedding_property
     if training:
-        we_should_read += target_property
+        we_should_read = we_should_read + target_property
     joint_property = []
     for name in we_should_read:
         joint_property += PROPERTY[name]['must_be_with']
@@ -883,32 +891,32 @@ def get_need_property(
 MAE_PROPERTY = [
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        and p != "final_collinear_magmoms"
         and p != "hessians"
+        and p != "abs_final_collinear_magmoms"
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        and p != "final_collinear_magmoms"
         and p != "hessians"
+        and p != "abs_final_collinear_magmoms"
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization"
-    and p != "final_collinear_magmoms"
     and p != "stress"   
     and p != "direct_stress"  
-        and p != "hessians"
+    and p != "hessians"
+    and p != "abs_final_collinear_magmoms"
 ]
 RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
     if v["scope"] == "per-system" 
     and p != "polarization" 
-    and p != "final_collinear_magmoms"
     and p != "stress"    
     and p != "direct_stress"   
     and p != "hessians" 
+    and p != "abs_final_collinear_magmoms"
 ]
 
 
@@ -917,29 +925,4 @@ fields = {f"compute_{k}": False for k, v in PROPERTY.items()}
 class ComputeFlag:
     __annotations__ = {k: bool for k in fields} 
     locals().update(fields)
-
-
-from e3nn import o3
-def get_target_irreps(
-        target_property: List[str], 
-        cart: bool = True
-    ) -> List[int] | o3.Irreps:
-
-    if cart:
-        target_irreps = []
-        target_irreps.extend([0]) if "energy" in target_property else None
-        target_irreps.extend([0]) if "final_collinear_magmoms" in target_property else None
-        target_irreps.extend([1]) if "final_noncollinear_magmoms" in target_property else None
-        target_irreps.extend([0, 2]) if "direct_polarizability" in target_property else None
-        target_irreps.extend([0, 2]) if "direct_stress" in target_property or \
-            "direct_virials" in target_property else None
-        target_irreps.extend([1]) if "direct_dipole" in target_property else None
-        target_irreps.extend([1]) if "direct_forces" in target_property else None
-        target_irreps.extend([0, 2]) if "direct_hessians" in target_property else None
-        return sorted(list(set(target_irreps))) # TODO, do not use set(), like sph
-    else:
-        target_irreps_list = []
-        target_irreps_list.extend(["1x0e"]) if "energy" in target_property else None
-        target_irreps = o3.Irreps("+".join(target_irreps_list)).regroup()
-        return target_irreps
 

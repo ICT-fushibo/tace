@@ -14,7 +14,7 @@ model = tace_foundations["TACE-v1-OAM-M"]
 
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-level = 0  # first fidelity
+fidelity_idx = 0  # first fidelity
 atoms = read('../data/BaTiO3.xyz', index=0)
 
 
@@ -25,7 +25,7 @@ calc = TACEAseCalc(
     model=model,
     dtype=dtype,
     device=device,
-    level=level,
+    fidelity_idx=fidelity_idx,
     target_property=target_property,
 )
 atoms.calc = calc

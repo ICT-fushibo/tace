@@ -167,7 +167,7 @@ def is_rank_0():
 
 def save_full_cfg(cfg: Dict):
     if is_rank_0():
-        path = Path(".") / "_tace.yaml"
+        path = Path(".") / "_full_config.yaml"
         with open(f"{path}", "w") as f:
             yaml.dump(cfg, f, sort_keys=False)
 

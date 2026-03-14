@@ -20,7 +20,7 @@ calc = TACEAseCalc(
     model=model,
     dtype=dtype,
     device=device,
-    level=0,
+    fidelity_idx=0,
 )
 
 # ts_file = f = Path(str("o5_aa.ts_opt.traj")) # run ts_opt.py first

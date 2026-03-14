@@ -43,8 +43,8 @@ class TACEAseCalc(Calculator):
         If None, the device is automatically inferred.
     dtype : str, optional, default=None
         Model dtype for computations, e.g., float32 or float64.
-    level : int
-        Specify which fidelity level to use. 
+    fidelity_idx : int
+        Specify which fidelity fidelity_idx to use. 
     spin_on : bool
         If your model uses spin_on uie embedding, you can control whether 
         your calculation enables spin polarization.
@@ -63,7 +63,7 @@ class TACEAseCalc(Calculator):
         *,
         dtype: Optional[str] = None,
         device: Optional[str] = None,
-        level: Optional[int] = None,
+        fidelity_idx: Optional[int] = None,
         spin_on: Optional[bool] = None,
         target_property: Optional[list[str]] = None,
         neighborlist_backend: str = "matscipy",
@@ -110,11 +110,11 @@ class TACEAseCalc(Calculator):
         self.keySpecification = KeySpecification()
         update_keyspec_from_kwargs(self.keySpecification, KEYS)
  
-        if level is not None:
-            self.level = level
-            model.reset_computing_level(level) 
+        if fidelity_idx is not None:
+            self.fidelity_idx = fidelity_idx
+            model.set_fidelity_idx(fidelity_idx) 
         else:
-            self.level = model.get_computing_level()
+            self.fidelity_idx = model.get_fidelity_idx()
 
         if spin_on is not None:
             self.spin_on = 1 if spin_on else 0
@@ -126,7 +126,7 @@ class TACEAseCalc(Calculator):
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)
-        atoms.info['level'] = self.level # fidelity level
+        atoms.info["fidelity_idx"] = self.fidelity_idx # fidelity fidelity_idx
         # === dataloader ===
         data = [
             from_atoms(

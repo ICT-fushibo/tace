@@ -20,7 +20,7 @@ calc = TACEAseCalc(
     model=model,
     dtype=dtype,
     device=device,
-    level=0,
+    fidelity_idx=0,
     spin_on=False,
 )
 
@@ -54,7 +54,7 @@ for img in images:
         model=model,
         dtype=dtype,
         device=device,
-        level=0,
+        fidelity_idx=0,
     )
 
 opt = FIRE(

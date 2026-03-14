@@ -60,7 +60,17 @@ def main():
     print(f"A total of {len(args.models)} models will be averaged")
     model_avg = average_models(args.models, args.ema)
     output_path = "average_model.pt"
-    torch.save(model_avg, output_path)
+    # torch.save(model_avg, output_path)
+    torch.save(
+        {
+            "state_dict": model_avg.state_dict(),
+            "cfg": model_avg.readout_fn.model_config,
+            "target_property": model_avg.readout_fn.target_property,
+            "embedding_property": model_avg.readout_fn.embedding_property,
+            "statistics": model_avg.readout_fn.statistics,
+        }, 
+        output_path
+    )
     print(f"Averaged model saved to {output_path}")
 
 

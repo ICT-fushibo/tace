@@ -4,18 +4,17 @@
 ################################################################################
 
 import importlib
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List
 
 
 import torch
 
 
-from ..dataset.statistics import Statistics
 from ..utils.utils import deep_convert
 
 
 def select_wrapper(model_config: Dict) -> Any:
-    wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.WrapModelV1")
+    wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
     module_name, class_name = wrapper_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     wrap_cls = getattr(module, class_name)
@@ -24,7 +23,7 @@ def select_wrapper(model_config: Dict) -> Any:
 
 def select_model(
     cfg: Dict,
-    statistics: Optional[Statistics],
+    statistics: Dict,
     target_property: List[str],
     embedding_property: List[str],
     **kwargs,
@@ -39,20 +38,26 @@ def select_model(
     WRAPPER_CLS = select_wrapper(model_config)
 
     # === model cls ===
-    model_path = model_config.get('_target_', 'tace.models.TACEV1')
+    if 'kwargs' in model_config:
+        model_path = model_config['kwargs'].get('_target_', 'tace.models.e3nnTACE')
+    else:
+        model_path = model_config.get('_target_', 'tace.models.e3nnTACE')
+        
     module_name, class_name = model_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     MODEL_CLS = getattr(module, class_name)
     model_config = deep_convert(model_config)
+    if 'statistics' not in model_config:
+        model_config['statistics'] = statistics
+    if 'target_property' not in model_config:
+        model_config['target_property'] = target_property
+    if 'embedding_property' not in model_config:
+        model_config['embedding_property'] = embedding_property
     # === instantiate ===
     try:
         MODEL = WRAPPER_CLS(
             MODEL_CLS(
                 **model_config,
-                target_property=target_property,
-                embedding_property=embedding_property,
-                statistics=statistics,
-                model_config=model_config,
             )
         )
     except Exception as e:

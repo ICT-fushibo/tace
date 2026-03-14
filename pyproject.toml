@@ -4,13 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TACE"
-version = "0.1.0"
+version = "0.2.0"
 description = "TACE - Irreducible Cartesian Tensor based equivariant atomistic model."
 authors = [{ name = "Zemin Xu", email = "xv_chana@163.com" }]
 
 requires-python = ">=3.10"
 dependencies = [
-    "torch<2.10",
+    #"torch>=2.4,<2.10",
+    "torch",
+    "torch_geometric>=2.4",
+    "triton>=3.2",
     "lightning",
     "omegaconf",
     "hydra-core>=1.3",
@@ -18,7 +21,6 @@ dependencies = [
     "ase",
     "numpy",
     "e3nn",
-    "torch_geometric",
     "scipy",
     "configargparse",
     "pandas",
@@ -28,6 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+
+oeq = [
+    "openequivariance",
+]
 
 torchsim = [
     "torch-sim-atomistic!=0.5.0",
@@ -43,10 +49,6 @@ cueq13 = [
     "cuequivariance",
     "cuequivariance-torch",
     "cuequivariance-ops-torch-cu13",
-]
-
-oeq = [
-    "openequivariance",
 ]
 
 openmm = [
@@ -72,36 +74,6 @@ nl = [
     "vesin",
 ]
 
-dev = [
-    "sphinx",
-    "myst-parser",
-    "sphinx-copybutton",
-    "pydata-sphinx-theme", 
-    "black",
-    "isort",
-    "pre-commit",
-
-    "MDAnalysis",
-    "tidynamics",
-    "mdtraj",
-    "scikit-learn",
-    "umap-learn",
-    "cotengra",
-    "optuna",
-    "cmaes", 
-    "nevergrad",
-    "configargparse",
-    "ase_db_backends",
-    "tomli",
-    "matcalc",
-    "pandas",
-    "matminer",
-    "vtk",
-    "pymatgen",
-    "pymatviz",
-]
-
-
 [project.urls]
 Homepage = "https://github.com/xvzemin/tace"
 
@@ -118,9 +90,18 @@ tace-finetune = "tace.scripts.finetune:main"
 tace-convert = "tace.scripts.convert:main"
 tace-download = "tace.scripts.download:main"
 tace-average = "tace.scripts.average:main"
+tace-copy = "tace.scripts.copy:main"
+utace-add_fidelity_idx = "tace.scripts.utils.add_fidelity_idx:main"
 
 [tool.setuptools.packages.find]
-include = ["tace", "tace.*", "cartnn", "cartnn.*"]
+include = [
+    "tace", 
+    "tace.*", 
+    "cartnn",
+    "cartnn.*",
+    "equitorch", 
+    "equitorch.*",
+]
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]

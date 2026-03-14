@@ -9,38 +9,14 @@ from typing import Dict, List
 
 import numpy as np
 import torch
-from ase import Atoms
 from torch_geometric.loader import DataLoader
+import ase
 
 from .element import Element
 from .quantity import KeySpecification
 from ..utils.utils import log_statistics_to_yaml
 from ..utils.torch_scatter import scatter, scatter_add
 
-
-class OneHotToAtomicEnergy(torch.nn.Module):
-    def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
-        super().__init__()
-        assert atomic_energies is not None
-        atomic_energy_list = []
-        for atomic_energy in atomic_energies:
-            atomic_energy_list.append(
-                [float(v) for _, v in atomic_energy.items()]
-            )
-        self.register_buffer(
-            "atomic_energy",
-            torch.tensor(
-                atomic_energy_list,
-                dtype=torch.get_default_dtype(),
-            ),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor: 
-        return torch.matmul(x, self.atomic_energy.T)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(atomic_eneries={[f'{x:.4f}' for x in self.atomic_energy.reshape(-1).tolist()]})"
-    
 class Statistics:
     """
     A container class for storing statistical information of physical quantities.
@@ -105,33 +81,32 @@ class Statistics:
 from torch.serialization import add_safe_globals
 add_safe_globals([Statistics]) # TODO
 
+class OneHotToAtomicEnergy(torch.nn.Module):
+    def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
+        super().__init__()
+        assert atomic_energies is not None
+        atomic_energy_list = []
+        for atomic_energy in atomic_energies:
+            atomic_energy_list.append(
+                [float(v) for _, v in atomic_energy.items()]
+            )
+        self.register_buffer(
+            "atomic_energy",
+            torch.tensor(
+                atomic_energy_list,
+                dtype=torch.get_default_dtype(),
+            ),
+        )
 
-def _compute_statistics(
-    dataloader_train: DataLoader,
-    atomic_numbers: List[str],
-    atomic_energies: List[Dict[int, float]],
-    target_property: List[str],
-    device: str = "cpu",
-    num_levels: int = 1,
-) -> List[Statistics]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor: 
+        return torch.matmul(x, self.atomic_energy.T)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(atomic_eneries={[f'{x:.4f}' for x in self.atomic_energy.reshape(-1).tolist()]})"
     
 
-    return [
-            Statistics(**stat)
-            for stat in analyze_dataset_statistics(
-                dataloader_train,
-                # dataloader_valid,
-                atomic_numbers,
-                atomic_energies,
-                target_property,
-                device,
-                num_levels,
-            )
-        ]
-
-
-def compute_atomic_energy_per_level(
-    points: Atoms, element: Element, keyspec: KeySpecification,
+def _compute_atomic_energy(
+    points: ase.Atoms, element: Element, keyspec: KeySpecification,
 ) -> Dict[int, float]:
     len_train = len(points)
     A = np.zeros((len_train, len(element)))
@@ -139,73 +114,63 @@ def compute_atomic_energy_per_level(
     energyList = [
         points[i].info.get(keyspec.info_keys["energy"], None) for i in range(len_train)
     ]
-    atomicNumbersList = [points[i].get_atomic_numbers() for i in range(len_train)]
+    atomic_numbers_list = [points[i].get_atomic_numbers() for i in range(len_train)]
 
     for i in range(len_train):
         B[i] = energyList[i]
-        for j, z in enumerate(element.atomic_numbers):
-            A[i, j] = np.count_nonzero(atomicNumbersList[i] == z)
+        for j, z in enumerate(element.zs):
+            A[i, j] = np.count_nonzero(atomic_numbers_list[i] == z)
     try:
         x = np.linalg.lstsq(A, B, rcond=None)[0]
         atomic_energy = {}
-        for i, z in enumerate(element.atomic_numbers):
+        for i, z in enumerate(element.zs):
             atomic_energy[z] = float(x[i])
     except np.linalg.LinAlgError:
         logging.info(
             "Failed to compute Isolated Atomic Energies automatically , using Isolated Atomic Energies = 0.0 for all atoms"
         )
         atomic_energy = {}
-        for i, z in enumerate(element.atomic_numbers):
+        for i, z in enumerate(element.zs):
             atomic_energy[z] = 0.0
     return atomic_energy
 
 
 def compute_atomic_energy(
-    points: Atoms, element: Element, keyspec: KeySpecification, num_levels: int,
+    atomsList: ase.Atoms,
+    element: Element,
+    keyspec: KeySpecification,
+    fidelity_idx: int,
 ) -> Dict[int, float]:
-    
-    atomic_energies = []
-    len_train = len(points)
 
-    if num_levels > 1:
-        for level_idx in range(num_levels):
-            points_per_level = []
-            for i in range(len_train):
-                level = points[i].info.get(keyspec.info_keys['level'], 0)
+    this_atomsList = [
+        atoms for atoms in atomsList
+        if atoms.info.get(keyspec.info_keys['fidelity_idx'], fidelity_idx)
+        == fidelity_idx
+    ]
 
-                if level == level_idx:
-                    points_per_level.append(points[i])
-            assert len(points_per_level) > 0
-            atomic_energies.append(
-                compute_atomic_energy_per_level(
-                    points_per_level, element, keyspec,
-                )
-            )
-    else:
-        atomic_energies.append(
-            compute_atomic_energy_per_level(
-                points, element, keyspec,
-            )
-        )
-            
-    return atomic_energies
+    if this_atomsList:
+        return _compute_atomic_energy(this_atomsList, element, keyspec)
+
+    logging.warning(
+        f"No Atoms found for Fidelity {fidelity_idx}, use 0.0 as default"
+    )
+    return {z: 0.0 for z in element.zs}
 
 
-def analyze_dataset_statistics(
-    dataloader_train,
-    # dataloader_valid,
-    atomic_numbers: List[int],
+def _compute_statistics(
+    dataloader_train: DataLoader,
+    atomic_numbers: List[str],
     atomic_energies: List[Dict[int, float]],
-    targe_property: List[str],
+    target_property: List[str],
     device: str = "cpu",
-    num_levels: int = 1,
+    num_fidelities: int = 1,
 ) -> List[Dict]:
-
-    energyList_per_level = [[] for _ in range(num_levels)]
-    energyPerAtomList_per_level = [[] for _ in range(num_levels)]
-    deltaEnergyPerAtomList_per_level = [[] for _ in range(num_levels)]
-    forcesList_per_level = [[] for _ in range(num_levels)]
-    elementIdxList_per_level = [[] for _ in range(num_levels)]
+    
+    energyList_per_level = [[] for _ in range(num_fidelities)]
+    energyPerAtomList_per_level = [[] for _ in range(num_fidelities)]
+    deltaEnergyPerAtomList_per_level = [[] for _ in range(num_fidelities)]
+    forcesList_per_level = [[] for _ in range(num_fidelities)]
+    elementIdxList_per_level = [[] for _ in range(num_fidelities)]
 
     neighborCountsList = []
     num_elements = len(atomic_numbers)
@@ -213,7 +178,7 @@ def analyze_dataset_statistics(
     count_per_element = torch.zeros(num_elements, dtype=torch.int64, device=device)
 
     compute_atomic_energy_fn = None
-    if "energy" in targe_property:
+    if "energy" in target_property:
         compute_atomic_energy_fn = OneHotToAtomicEnergy(atomic_energies).to(device)
 
     with torch.no_grad():
@@ -239,25 +204,25 @@ def analyze_dataset_statistics(
             neighbor_sum_per_element += neighbor_sum
             count_per_element += element_count.long()
 
-            if "level" not in data or num_levels == 1:
-                level = torch.zeros(num_graphs, dtype=torch.int64, device=device)
+            if "fidelity_idx" not in data or num_fidelities == 1:
+                fidelity_idx = torch.zeros(num_graphs, dtype=torch.int64, device=device)
             else:
-                level = data["level"]
+                fidelity_idx = data['fidelity_idx']
 
-            if num_levels == 1:
-                assert torch.allclose(level, torch.zeros(num_graphs, dtype=torch.int64, device=device))
+            if num_fidelities == 1:
+                assert torch.allclose(fidelity_idx, torch.zeros(num_graphs, dtype=torch.int64, device=device))
 
-            node_level = level[data['batch']]
+            node_fidelity = fidelity_idx[data['batch']]
             num_atoms_arange = torch.arange(
                 data["node_attrs"].size(0), 
                 device=data["node_attrs"].device,
                 dtype=torch.int64,
             )
             # === energy ===
-            if "energy" in targe_property:
+            if "energy" in target_property:
                 e0_node_energy = compute_atomic_energy_fn(
                     data["node_attrs"]
-                )[num_atoms_arange, node_level]
+                )[num_atoms_arange, node_fidelity]
 
                 E0 = scatter(
                     e0_node_energy,
@@ -270,20 +235,20 @@ def analyze_dataset_statistics(
                 energy_per_atom = energy / num_nodes
                 delta_per_atom = (energy - E0) / num_nodes
 
-                for lvl in range(num_levels):
-                    mask = (level == lvl)
+                for lvl in range(num_fidelities):
+                    mask = (fidelity_idx == lvl)
                     if mask.any():
                         energyList_per_level[lvl].append(energy[mask])
                         energyPerAtomList_per_level[lvl].append(energy_per_atom[mask])
                         deltaEnergyPerAtomList_per_level[lvl].append(delta_per_atom[mask])
 
             # === forces ===
-            if "forces" in targe_property or "direct_forces" in targe_property:
+            if "forces" in target_property or "direct_forces" in target_property:
                 forces = data.get('forces', None)
-                if forces is None and "direct_forces" in targe_property:
+                if forces is None and "direct_forces" in target_property:
                     forces = data.get('direct_forces', None)
-                for lvl in range(num_levels):
-                    mask = (node_level == lvl)
+                for lvl in range(num_fidelities):
+                    mask = (node_fidelity == lvl)
                     if mask.any():
                         forcesList_per_level[lvl].append(forces[mask])
                         elementIdxList_per_level[lvl].append(element_idx[mask])
@@ -309,14 +274,14 @@ def analyze_dataset_statistics(
         elemIdx_lists,
     ):
         stats = {
-            "level": int(idx),
+            "fidelity_idx": int(idx),
             "atomic_numbers": atomic_numbers,
             "avg_num_neighbors": avg_num_neighbors,
             "avg_neighbors_by_element": avg_neighbors_by_element,
         }
 
         # === Energy statistics === #
-        if "energy" in targe_property:
+        if "energy" in target_property:
             energy = torch.cat(energy_lists)
             energyPerAtom = torch.cat(energyPerAtom_lists)
             deltaEnergyPerAtom = torch.cat(delta_lists)
@@ -352,7 +317,7 @@ def analyze_dataset_statistics(
             )
 
         # === Force statistics === #
-        if "forces" in targe_property or 'direct_forces' in targe_property:
+        if "forces" in target_property or 'direct_forces' in target_property:
             forces = torch.cat(forces_lists, dim=0)  # [N, 3]
             elementIdx = torch.cat(elemIdx_lists, dim=0)  # [N]
             N = forces.size(0)
@@ -458,7 +423,7 @@ def analyze_dataset_statistics(
         return stats
 
     per_level_stats = []
-    for lvl in range(num_levels):
+    for lvl in range(num_fidelities):
         stats = build_stats_from_lists(
             lvl,
             energyList_per_level[lvl],

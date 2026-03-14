@@ -16,7 +16,7 @@ For detailed usage and scripts (e.g., ``opt``, and other scripts), see
     device = 'cuda'            # Compute device, e.g., 'cpu' or 'cuda'
     dtype = 'float32'          # model dtype 'float32' or 'float64'
     MODEL_PATH = '.pt'         # Path to the model checkpoint, file ends with .pt, .pth or .ckpt
-    level = 0  # first fidelity
+    fidelity_idx = 0  # first fidelity
     atoms = read('*.xyz', 0)   #  Any ase readable files
 
     dispersion = False
@@ -25,7 +25,7 @@ For detailed usage and scripts (e.g., ``opt``, and other scripts), see
         MODEL_PATH,
         device=device,
         dtype=dtype,
-        level = level,
+        fidelity_idx = fidelity_idx,
     )
     if dispersion: # pip install torch-dftd
         calc = add_dispersion(

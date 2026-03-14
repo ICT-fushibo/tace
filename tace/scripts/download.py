@@ -44,7 +44,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(
-        level=logging.INFO,
+        fidelity_idx=logging.INFO,
         format="[%(levelname)s] %(message)s",
     )
 

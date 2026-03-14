@@ -42,7 +42,7 @@ Example
     valid_from_index: false # split train and val from train.index and valid.index in current directory
     no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
     keys: # all default key name is the property name
-      level_key: level
+      level_key: fidelity_idx
       energy_key: energy
       forces_key: forces
       stress_key: stress

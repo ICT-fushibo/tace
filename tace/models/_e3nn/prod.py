@@ -1,0 +1,319 @@
+###############################################################################
+# Authors: Zemin Xu
+# License: MIT, see LICENSE.md
+################################################################################
+
+import math
+from typing import Dict
+
+
+import torch
+import opt_einsum_fx
+from e3nn import o3
+
+
+from ..layout import LayoutTransform
+from .base import Product
+from .linear import Linear, ElementLinear, TACE_WEIGHT_INIT
+from .paths import generate_e3nn_paths
+
+
+class SpectralACE(Product):
+    
+    def _setup(self):
+
+        self.aces = torch.nn.ModuleList()
+        self.coefs = torch.nn.ModuleList()
+        self.coefs.append(
+            ElementLinear(
+                self.irreps_in,
+                self.irreps_hidden,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+            )    
+        )
+
+        product_in1 = self.irreps_in
+        if self.correlation == 2:
+            product_out = self.irreps_out
+        else:
+            product_out = self.irreps_in 
+
+        self.shapes = []
+
+        for nu in range(2, self.correlation+1):
+            instructions, irreps_out = generate_e3nn_paths(
+                irreps_out=product_out,
+                irreps_in1=product_in1,
+                irreps_in2=self.irreps_in,
+                l1l2=self.l1l2,
+                ictp_ictc_like=self.ictp_ictc_like,
+                e3nn_mode='uuu'
+            )
+
+            this_ace = o3.TensorProduct(
+                irreps_in1=product_in1,
+                irreps_in2=self.irreps_in,
+                irreps_out=irreps_out,
+                instructions=instructions,
+                internal_weights=False,
+                shared_weights=False,
+            )
+            self.aces.append(this_ace)
+            self.coefs.append(
+                ElementLinear(
+                    this_ace.irreps_out.simplify(),
+                    self.irreps_hidden,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )    
+            )
+
+            product_in1 = this_ace.irreps_out
+
+            if nu == self.correlation-1:
+                product_out = self.irreps_out
+            else:
+                product_out = self.irreps_in
+
+        self.linear = Linear(
+            self.irreps_hidden,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor, 
+            sc: torch.Tensor
+        ):
+
+        corr_feats = {
+            1: node_feats,
+        }
+        outs = self.coefs[0](corr_feats[1], node_attrs)
+
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+        outs = self.linear(outs)
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+
+
+class SpatialACE(Product):
+
+    def _setup(self):
+
+        self.reshape1 = LayoutTransform(self.irreps_in)
+        self.reshape2 = LayoutTransform(self.irreps_out)
+
+        ls_out = [ir.l for _, ir in self.irreps_out]
+        out_slices = []
+        sum_l = 0
+        start = 0
+        for l in ls_out:
+            sum_l += 2*l +1
+            length = 2*l + 1
+            out_slices.append(slice(start, start+length))
+            start += length
+
+        expand_index = torch.zeros(sum_l).long()
+        for idx, s, in enumerate(out_slices):
+            expand_index[s] = idx
+        self.register_buffer("expand_index", expand_index, persistent=False)
+
+        to_s2 = o3.ToS2Grid(
+            self.truncation, 
+            (self.num_latitude, self.num_longitude), 
+            normalization="component",
+        )
+        from_s2 = o3.FromS2Grid(
+            (self.num_latitude, self.num_longitude), 
+            self.truncation, 
+            normalization="component",
+        )
+
+        from_grid = torch.einsum(
+            "am, mbi -> bai", from_s2.sha, from_s2.shb
+        ).detach()
+        from_grid_list = torch.split(from_grid, [2*l + 1 for l in range(self.truncation+1)], dim=-1)
+
+
+        self.register_buffer(
+            "to_grid", 
+            torch.einsum(
+                "mbi, am -> bai", to_s2.shb, to_s2.sha
+            ).detach(),
+            persistent=False,
+        )
+        self.register_buffer(
+            "from_grid", 
+            torch.cat([from_grid_list[l] for l in ls_out], dim=-1).contiguous(), # l = idx
+            persistent=False,
+        )
+
+        self.weight = torch.nn.Parameter(
+            torch.empty(
+                len(ls_out),
+                self.num_elements, 
+                self.num_channel,
+                self.correlation*self.num_channel, 
+            )
+        )
+        trace = torch.fx.symbolic_trace(
+            lambda z, w, g, x: torch.einsum('Bz, mzCc, bam, Bbac -> BmC', z, w, g, x)
+        )
+        # graph = (
+        #     opt_einsum_fx.optimize_einsums_full(
+        #         model=trace,
+        #         example_inputs=(
+        #             torch.randn([256, 89]),
+        #             torch.randn([16, 89, 64, 128]),
+        #             torch.randn([8, 9, 16]),
+        #             torch.randn([256, 8, 9, 128]),
+        #         ),
+        #     )
+        # )
+        graph = (
+            opt_einsum_fx.optimize_einsums_full(
+                model=trace,
+                example_inputs=(
+                    torch.randn([32, 10]),
+                    torch.randn([16, 10, 8, 16]),
+                    torch.randn([8, 9, 16]),
+                    torch.randn([32, 8, 9, 16]),
+                ),
+            )
+        )
+        self.coefs = graph
+        self.linear = Linear(
+            self.irreps_out,
+            self.irreps_out,
+            bias=self.use_bias
+        )
+
+        self.alpha = 1.0 / math.sqrt(self.correlation*self.num_channel)
+        if self.use_bias and 0 in ls_out:
+            self.bias = torch.nn.Parameter(
+                torch.empty(self.num_elements, self.num_channel)
+            )
+        else:
+            self.register_parameter("bias", None)
+
+        if self.trainable_scale:
+            self.scale = torch.nn.Parameter(torch.ones(self.correlation-1))
+        else:
+            self.register_buffer("scale", torch.ones(self.correlation-1), persistent=False)
+        self.num_padding = (self.truncation+1)**2 - (self.lmax+1)**2
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        if TACE_WEIGHT_INIT == 'uniform':
+            a = 3.0 ** 0.5
+            torch.nn.init.uniform_(self.weight, -a, a)
+        else:
+            torch.nn.init.normal_(self.weight)
+
+        if self.bias is not None:
+            torch.nn.init.zeros_(self.bias)
+            
+    def _to_grid(self, x: torch.Tensor) -> torch.Tensor:           
+        return torch.einsum("bai, Bic -> Bbac", self.to_grid, x)
+
+    def _from_grid(self, x: torch.Tensor) -> torch.Tensor:       
+        return torch.einsum("bai, Bbac -> Bic", self.from_grid, x)
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,  
+        node_attrs: torch.Tensor,
+        sc: torch.Tensor = None
+    ):
+        # node_feats = self.reshape1(node_feats).transpose(-1, -2).contiguous()
+        node_feats = self.reshape1(node_feats)
+        pad_shape = list(node_feats.shape)
+        pad_shape[1] = self.num_padding
+        padding = torch.zeros(
+            pad_shape,
+            dtype=node_feats.dtype,
+            device=node_feats.device
+        )
+        node_feats = torch.cat([node_feats, padding], dim=1)
+        base_grid = self._to_grid(node_feats)
+        corr_feats_list = [base_grid]
+        grid_prev = base_grid
+
+        for nu in range(2, self.correlation + 1):
+            grid_prev = grid_prev * base_grid
+            corr_feats_list.append(grid_prev * self.scale[nu-2])
+        corr_feats = torch.cat(corr_feats_list, dim=-1)
+
+        weight = self.weight * self.alpha
+        weight = torch.index_select(
+            weight, dim=0, index=self.expand_index
+        ) 
+        outs = self.coefs(node_attrs, weight, self.from_grid, corr_feats)
+
+        if self.bias is not None:
+            bias = torch.einsum('Bz, zi -> Bi', node_attrs, self.bias)
+            outs[:, 0:1, :] = outs.narrow(1, 0, 1) + bias.unsqueeze(1)
+        
+        outs = self.linear(self.reshape2.inverse(outs))
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs   
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(nlon={self.num_longitude}, nlat={self.num_latitude}, truncation={self.truncation})"
+    
+    
+class IdentityACE(Product):
+
+    def _setup(self):
+
+        assert self.correlation == 1
+
+        self.coefs = ElementLinear(
+            self.irreps_in,
+            self.irreps_out,
+            bias=self.use_bias,
+            num_elements=self.num_elements,
+        )
+
+        self.linear = Linear(
+            self.irreps_out,
+            self.irreps_out,
+            bias=self.use_bias,
+        )
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,  
+        node_attrs: torch.Tensor,
+        sc: torch.Tensor = None
+    ):
+        outs = self.linear(self.coefs(node_feats, node_attrs))
+         
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+    
+PRODUCT: Dict[str, torch.nn.Module] = {
+    "coupled": SpectralACE,
+    "spectral": SpectralACE,
+    "grid": SpatialACE,
+    "spatial": SpatialACE,
+    "I": IdentityACE,
+    "identity": IdentityACE,
+}
+

@@ -28,9 +28,8 @@ from ..dataset.read import check_keys
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Predict properties for structures using a trained model."
-        "You could also print test metrics or predict property not in your training data "
-        "(such as training with energy only and wishing to predict forces)"
+        description="Predict properties using a trained model. "
+        "You could also print test metrics."
     )
     parser.add_argument("-i", "--input", type=str, required=True, help="Path to ASE-readable input file")
     parser.add_argument("-o", "--output", type=str, default="predict.xyz",help="Path to ASE-writeable output file")

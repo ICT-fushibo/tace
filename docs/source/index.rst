@@ -40,24 +40,22 @@ Currently, the officially supported properties include:
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - Noncollinear magnetic forces (conservative)
+- Magnetization (conservative) *(not tested by us)*
+- Magnetic susceptibility (conservative) *(not tested by us)*
 .. - final (non)collinear magmoms (not time reversal)
 .. - total (non)collinear magmoms *(not tested by us)*
 
 For embedding property, we support:
 
-- level (different computational levels)
+- fidelity_idx (different computational levels)
 - charges
 - total charge
 - electric field
-- initial noncollinear magmoms
+- initial (non)collinear magmoms (not time reversal)
 - spin multiplicity *(not tested by us)*
+- electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*
 
-Methodology
------------
-
-TACE leverages **Irreducible Cartesian Tensor Decomposition (ICTD)** and the **Atomic Cluster Expansion (ACE)** 
-to efficiently and accurately learn semi-local chemical environments.  
 
 Plugins
 -------
@@ -65,6 +63,16 @@ Plugins
 TACE currently supports the following plugin:
 
 - **LES** (Latent Ewald Summation)
+
+
+Interfaces
+----------
+
+- ✅ Supports integration with **TorchSim**.
+
+- ✅ Supports integration with **LAMMPS-ML-IAP**.
+
+- ✅ Supports integration with **ASE Calculator**.
 
 
 Citing

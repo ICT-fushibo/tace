@@ -59,6 +59,9 @@ def shape_fn_for_hessians(t: Tensor, num_atoms: int, **kwargs):
     return t.view(-1)
 
 
+def shape_fn_for_abs_fc_mag(t: Tensor, num_atoms: int, **kwargs):
+    return torch.abs(t)
+
 
 def voigt_to_matrix(t: Tensor, **kwargs):
     """

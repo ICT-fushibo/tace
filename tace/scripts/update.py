@@ -55,13 +55,13 @@ def main():
         if path.is_file():
             m = pattern.fullmatch(path.name)
             if m:
-                level = int(m.group(1))
-                statistics_dict[level] = yaml.safe_load(path.read_text())
+                fidelity_idx = int(m.group(1))
+                statistics_dict[fidelity_idx] = yaml.safe_load(path.read_text())
     statistics_dict: dict = dict(sorted(statistics_dict.items()))
     with torch.no_grad():
         if 'atomic_energy' in args.update:
             atomic_energies = model.readout_fn.atomic_energy_layer.atomic_energy.detach().clone()
-            for level, stats in statistics_dict.items():
+            for fidelity_idx, stats in statistics_dict.items():
                 if "atomic_energy" not in stats:
                     continue
                 new_row = torch.tensor(
@@ -69,12 +69,12 @@ def main():
                     dtype=atomic_energies.dtype,
                     device=atomic_energies.device,
                 )
-                atomic_energies[level, :] = new_row
+                atomic_energies[fidelity_idx, :] = new_row
             model.readout_fn.atomic_energy_layer.atomic_energy.copy_(atomic_energies)
 
         if 'scale' in args.update:
             scales = model.readout_fn.scale_shift.scale.detach().clone()
-            for level, stats in statistics_dict.items():
+            for fidelity_idx, stats in statistics_dict.items():
                 if "scale" not in stats:
                     continue
                 new_row = torch.tensor(
@@ -82,12 +82,12 @@ def main():
                     dtype=scales.dtype,
                     device=scales.device,
                 )
-                scales[level, :] = new_row
+                scales[fidelity_idx, :] = new_row
             model.readout_fn.scale_shift.scale.copy_(scales)
         
         if 'shift' in args.update:
             shifts = model.readout_fn.scale_shift.shift.detach().clone()
-            for level, stats in statistics_dict.items():
+            for fidelity_idx, stats in statistics_dict.items():
                 if "shift" not in stats:
                     continue
                 new_row = torch.tensor(
@@ -95,9 +95,18 @@ def main():
                     dtype=shifts.dtype,
                     device=shifts.device,
                 )
-                shifts[level, :] = new_row
+                shifts[fidelity_idx, :] = new_row
             model.readout_fn.scale_shift.shift.copy_(shifts)
     print(model)
-    torch.save(model, "new_statistics.pt")
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "cfg": model.readout_fn.model_config,
+            "target_property": model.readout_fn.target_property,
+            "embedding_property": model.readout_fn.embedding_property,
+            "statistics": model.readout_fn.statistics,
+        }, 
+        "new_statistics.pt"
+    )
 
 

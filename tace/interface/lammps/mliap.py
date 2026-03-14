@@ -36,7 +36,6 @@ class EdgeForcesWrapper(torch.nn.Module):
         self.model = model
         self.register_buffer("cutoff", model.readout_fn.cutoff)
         self.register_buffer("atomic_numbers", model.readout_fn.atomic_numbers)
-        self.register_buffer("num_layers", model.readout_fn.num_layers)
         for p in self.model.parameters():
             p.requires_grad = False
 

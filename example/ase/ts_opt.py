@@ -22,7 +22,7 @@ calc = TACEAseCalc(
     model=model,
     dtype=dtype,
     device=device,
-    level=0,
+    fidelity_idx=0,
 )
 
 fmax = 0.01

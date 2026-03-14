@@ -75,6 +75,8 @@ class UncertaintyLoss(nn.Module):
             p_loss = LOSS_FN[fn_name](pred, label, huber_delta)
             log_sigma = self.log_sigmas[p]
             total_loss += 0.5 * torch.exp(-log_sigma) * p_loss + log_sigma
+        # if pred["moe_aux_loss"] is not None:
+        #     total_loss += pred["moe_aux_loss"]
         return total_loss
 
     def __repr__(self):

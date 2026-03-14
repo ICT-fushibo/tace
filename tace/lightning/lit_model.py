@@ -3,26 +3,46 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import yaml
 import logging
 from pathlib import Path
 from collections import Counter
 from typing import Optional, Dict, Any
+import importlib
+
 
 import torch
+import torch.distributed as dist
 import lightning as L
-from hydra.utils import instantiate
 from torchmetrics import MetricCollection
+from omegaconf import OmegaConf
 
 
+from .skip import LossSkipController
 from .select_model import select_model
-from .lora import from_lora_to_merged_model, to_lora_model
 from ..dataset.quantity import get_target_property, get_embedding_property
 from ..utils.metrics import build_metrics, update_metrics
 from .. utils._global import DTYPE, DEVICE
 
 
-# === LightningModule wrap ===
+def get_class_from_cfg(cfg):
+    if cfg is None:
+        raise ValueError("Config is None")
+
+    if not isinstance(cfg, Dict):
+        cfg = OmegaConf.to_container(cfg, resolve=True)
+
+    if "_target_" not in cfg:
+        raise ValueError("Config must contain '_target_'")
+
+    target = cfg["_target_"]
+
+    module_path, class_name = target.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    cls = getattr(module, class_name)
+
+    return cls, cfg
+
+
 class LightningWrapperModel(L.LightningModule):
     def __init__(
             self, 
@@ -30,17 +50,17 @@ class LightningWrapperModel(L.LightningModule):
             model: torch.nn.Module,
             target_property: list[str], 
             embedding_property: list[str], 
-            statistics,  # TODO
+            statistics, 
         ):
         super().__init__()
         self.save_hyperparameters(ignore=["model"])
         self.cfg = cfg
-        self.statistics = statistics  # TODO
-        model = from_lora_to_merged_model(model)
-        self.model = to_lora_model(cfg.get('finetune', {}), model)
+        self.statistics = statistics 
+        self.model = model
 
         # === Loss === 
-        self.loss_fn = instantiate(cfg["loss"])  # TODO
+        loss_cls, loss_cfg = get_class_from_cfg(cfg["loss"])
+        self.loss_fn = loss_cls(**{k: v for k, v in loss_cfg.items() if k != '_target_'})
         self.loss_property = target_property
 
         # === Metric ===
@@ -70,6 +90,17 @@ class LightningWrapperModel(L.LightningModule):
         self.force_dtype = DTYPE[cfg.get("dataset", {}).get("force_dtype", None)]
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
 
+        self.skip_controller = None
+        if cfg['misc'].get('LossSkipController', {}).get('enable', False):
+            self.skip_controller = LossSkipController(
+                manual_threshold=cfg['misc']['LossSkipController']['manual_threshold'],
+                start_step=cfg['misc']['LossSkipController']['start_step'],
+                ema_window=cfg['misc']['LossSkipController']['ema_window'],
+                multiplier=cfg['misc']['LossSkipController']['multiplier'],
+                skip_nan=cfg['misc']['LossSkipController'].get('skip_nan', True),
+                skip_large=cfg['misc']['LossSkipController'].get('skip_large', True),
+            )
+
     def setup(self, stage: Optional[str] = None):
         self.sync_dist = self.trainer.num_devices > 1
         if self.ema is not None:
@@ -84,32 +115,87 @@ class LightningWrapperModel(L.LightningModule):
         loss = self.loss_fn(output, batch)
         return output, loss
 
+    # def on_before_optimizer_step(self, optimizer):
+    #     for p in self.parameters():
+    #         if p.grad is not None:
+    #             if not torch.isfinite(p.grad).all():
+    #                 logging.warning("Non-finite grad detected, zeroing.")
+    #                 p.grad.zero_()
+
     def _shared_step(self, batch, batch_idx, prefix):
+
         if self.force_dtype is not None:
             batch = batch.apply(
                 lambda x: x.to(self.force_dtype) if x.is_floating_point() else x
-            )            
+            )
+
         output, loss = self._process_batch(batch)
+
+        if prefix == "train" and self.skip_controller is not None:
+            skip, reason_code, threshold = self.skip_controller.check(
+                loss, self.global_step
+            )
+            # if self.global_step % 5000 == 0:
+            #     self.skip_controller.log_status(self.global_step)
+            if skip:
+                if (not dist.is_initialized()) or dist.get_rank() == 0:
+                    if reason_code == 1:
+                        reason_str = "non-finite"
+                    elif reason_code == 2:
+                        reason_str = "large"
+                    else:
+                        reason_str = "unknown"
+                    logging.warning(
+                        f"[Skip:{reason_str}] "
+                        f"epoch={self.current_epoch}, "
+                        f"step={self.global_step}, "
+                        f"batch={batch_idx}, "
+                        f"loss={loss.detach().item():.4f}, "
+                        f"threshold={threshold}"
+                    )
+
+                zero = torch.zeros((), device=self.device, dtype=loss.dtype)
+
+                for p in self.parameters():
+                    if p.grad is not None:
+                        p.grad.detach_()
+                        p.grad.zero_()
+
+                for p in self.parameters():
+                    if p.requires_grad:
+                        zero = zero + p.sum() * 0.0
+                loss = zero
+                output = {
+                    k: torch.zeros_like(v) if torch.is_tensor(v) else v
+                    for k, v in output.items()
+                }
 
         self.log(
             f"{prefix}/loss",
-            loss,
-            prog_bar=True,
-            logger=True,
-            on_epoch=True,
+            loss.detach(),
+            prog_bar=(prefix == "train"),
             batch_size=len(batch),
-            on_step=True,
+            on_step=(prefix == "train"),
+            on_epoch=True,
+            logger=True,
             sync_dist=self.sync_dist,
             reduce_fx="mean",
         )
+
+        if prefix == "train":
+            lr = self.optimizers().param_groups[0]["lr"]
+            self.log("train/lr", lr, on_step=True, prog_bar=True)
 
         metrics = getattr(self, f"{prefix}_metrics")
         update_metrics(metrics, prefix, output, batch, self.loss_property)
 
         return loss
 
+
     def training_step(self, batch, batch_idx):
-        return self._shared_step(batch, batch_idx, "train")
+        loss = self._shared_step(batch, batch_idx, "train")
+        return loss
+
 
     def validation_step(self, batch, batch_idx):
         with torch.enable_grad():
@@ -132,7 +218,6 @@ class LightningWrapperModel(L.LightningModule):
                 on_epoch=True,
                 add_dataloader_idx=True,
             )
-        # logging.info("═" * 50 + "\n")
 
         if prefix == 'val':
             if self.synth_metric is not None:
@@ -151,8 +236,10 @@ class LightningWrapperModel(L.LightningModule):
         self.on_epoch_end("train")
 
     def on_train_epoch_start(self):
-        lr = self.trainer.optimizers[0].param_groups[0]["lr"]
-        logging.info(f"LR: {lr:.6e}")
+        dataloader = self.trainer.train_dataloader
+        sampler = dataloader.sampler
+        if hasattr(sampler, "step_epoch"):
+            sampler.step_epoch(self.current_epoch)
 
     def on_validation_epoch_end(self):
         self.on_epoch_end("val")
@@ -184,46 +271,126 @@ class LightningWrapperModel(L.LightningModule):
         else:
             self.sync_dist = False
 
+    # def on_load_checkpoint(self, checkpoint):
+    #     for opt_state in checkpoint["optimizer_states"]:
+    #         for group in opt_state["param_groups"]:
+    #             print(group["weight_decay"])
+    #             if group["weight_decay"] != 0.0:
+    #                 group["weight_decay"] = 1e-8
+
+
     def configure_optimizers(self):
-        optimizer = instantiate(
-            {**{k: v for k, v in self.cfg["optimizer"].items() if k != "extra"}},
-            params=self.parameters(),
+
+        optimizer_cfg = self.cfg["optimizer"]
+
+        optimizer_target = optimizer_cfg.pop("_target_")
+        weight_decay = float(optimizer_cfg.pop("weight_decay", 0.0))
+
+        optimizer_cfg.pop("extra", None)
+        optimizer_cfg.pop("params", None)
+
+        decay_params = []
+        no_decay_params = []
+        no_decay_names = []
+
+        for module_name, module in self.named_modules():
+            for param_name, param in module.named_parameters(recurse=False):
+                if not param.requires_grad:
+                    continue
+
+                full_name = f"{module_name}.{param_name}" if module_name else param_name
+
+                if (
+                    param_name.endswith("bias")
+                    or "_readout" in full_name
+                    or "_readouts" in full_name
+                    or ".node_embedding." in full_name
+                    or ".source_embedding." in full_name
+                    or ".target_embedding." in full_name
+                    or ".uie." in full_name
+                    or ".uee." in full_name
+                    or isinstance(module, torch.nn.LayerNorm)
+                    or isinstance(module, torch.nn.RMSNorm)
+                    or isinstance(module, torch.nn.Embedding)
+                ):
+                    no_decay_params.append(param)
+                    no_decay_names.append(full_name)
+                else:
+                    decay_params.append(param)
+
+
+        if weight_decay > 0 and len(no_decay_names) > 0:
+            logging.debug("Parameters excluded from weight decay:")
+            for name in no_decay_names:
+                logging.debug(f"  {name}")
+        else:
+            logging.debug("All parameters use same weight decay")
+
+
+        decay_ids = set(map(id, decay_params))
+        no_decay_ids = set(map(id, no_decay_params))
+        overlap = decay_ids.intersection(no_decay_ids)
+        if len(overlap) > 0:
+            raise RuntimeError("Some parameters appear in both decay and no_decay groups")
+
+        param_groups = [
+            {"params": decay_params, "weight_decay": weight_decay},
+            {"params": no_decay_params, "weight_decay": 0.0},
+        ]
+
+        module_path, class_name = optimizer_target.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        OptimizerClass = getattr(module, class_name)
+
+        optimizer = OptimizerClass(
+            params=param_groups,
+            **optimizer_cfg,
         )
-        if "scheduler" in self.cfg:
-            lr_scheduler_cfg = self.cfg.get("scheduler", {}).get("extra", {})
-            monitor = lr_scheduler_cfg.get("monitor", "val/loss")
-            interval = lr_scheduler_cfg.get("interval", "epoch")
-            frequency = lr_scheduler_cfg.get("frequency", 1)
-            scheduler = instantiate(
-                {**{k: v for k, v in self.cfg["scheduler"].items() if k != "extra"}},
-                optimizer=optimizer,
-            )
-            if self.no_valid_set:
-                return {
-                    "optimizer": optimizer,
-                    "lr_scheduler": {
-                        "scheduler": scheduler,
-                        "interval": interval,
-                        "frequency": frequency,
-                    },
-                }
-            else:
-                return {
-                    "optimizer": optimizer,
-                    "lr_scheduler": {
-                        "scheduler": scheduler,
-                        "monitor": monitor,
-                        "interval": interval,
-                        "frequency": frequency,
-                    },
-                }
+
+        if "scheduler" not in self.cfg:
+            return {"optimizer": optimizer}
+
+
+        scheduler_cfg = self.cfg["scheduler"]
+
+        scheduler_target = scheduler_cfg.pop("_target_")
+
+        scheduler_extra = scheduler_cfg.pop("extra", {})
+        scheduler_cfg.pop("optimizer", None)
+
+        monitor = scheduler_extra.get("monitor", "val/loss")
+        interval = scheduler_extra.get("interval", "epoch")
+        frequency = scheduler_extra.get("frequency", 1)
+
+        module_path, class_name = scheduler_target.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        SchedulerClass = getattr(module, class_name)
+
+        scheduler = SchedulerClass(
+            optimizer=optimizer,
+            **scheduler_cfg,
+        )
+
+        if getattr(self, "no_valid_set", False):
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": interval,
+                    "frequency": frequency,
+                },
+            }
         else:
             return {
                 "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "monitor": monitor,
+                    "interval": interval,
+                    "frequency": frequency,
+                },
             }
-
-    # def on_save_checkpoint(self, checkpoint):
-    #     checkpoint["statistics"] = self.statistics.to_dict()
+        
 
     @classmethod
     def load_from_checkpoint(
@@ -247,7 +414,6 @@ class LightningWrapperModel(L.LightningModule):
         embedding_property = get_embedding_property(cfg)
         statistics = checkpoint['hyper_parameters']['statistics']
         model = select_model(cfg, statistics, target_property, embedding_property)
-        model = to_lora_model(cfg.get('finetune', {}), model)
         model.to(dtype=dominant_dtype)
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
@@ -349,6 +515,7 @@ def finetune(cfg: Dict) -> torch.nn.Module:
         model.double()
 
     logging.info(f"Load model for Fine-tunning")
+    model.train()
     
     return model
 

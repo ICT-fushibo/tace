@@ -35,9 +35,9 @@ Example
     cutoff: 5.0 # (float), recommend 6.0
     max_neighbors: null # (null, int) if you want to use tace in lammps, do not use max_neighbors
     atomic_numbers: null # (null, list), null = read from dataset.
-    atomic_energies: # (list[dict[int, float]], null) null = auto caculate, for each computational level
+    atomic_energies: # (list[dict[int, float]], null) null = auto caculate, for each computational fidelity_idx
         - {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047}
-    num_levels: 1
+    num_fidelities: 1
     use_multi_head: false # (bool)
     use_multi_fidelity: false # (bool)
     Lmax: 2 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
@@ -129,7 +129,7 @@ Example
 
     universal_embedding:
         invariant:
-        level:
+        fidelity_idx:
             enable: false
             num_embeddings: 5 # (int) the number of different DFT computational levels
         

@@ -10,7 +10,7 @@ from typing import List, Iterator, Optional
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import BatchSampler, Dataset
+from torch.utils.data import BatchSampler, Dataset, Sampler
 from torch_geometric.data import Data
 
 

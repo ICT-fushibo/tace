@@ -13,13 +13,12 @@ import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 from hydra.utils import instantiate
 from torch_geometric.loader import DataLoader
-from pytorch_lightning.callbacks import StochasticWeightAveraging
+from lightning.pytorch.callbacks import StochasticWeightAveraging # , TQDMProgressBar, RichProgressBar
+# from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 
 
 from .lit_model import LightningWrapperModel
-from ..utils.callbacks import PrintMetricsCallback
 from ..utils.utils import log_parameters
-
 
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
@@ -73,7 +72,9 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
             logging.error(error_msg, exc_info=True)
 
     # === Built-in callbacks ===
-    initialized_callbacks += [PrintMetricsCallback()]
+    # initialized_callbacks += [
+    #     PrintMetricsCallback(), 
+    # ]
 
     # === Disallow SWA callback ===
     swa_cbs = [
