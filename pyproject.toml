@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "TACE"
-version = "0.0.9"
+version = "0.1.0"
 description = "TACE - Irreducible Cartesian Tensor based equivariant atomistic model."
 authors = [{ name = "Zemin Xu", email = "xv_chana@163.com" }]
 

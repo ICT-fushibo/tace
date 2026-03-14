@@ -1,5 +1,13 @@
 # Changelog
 
+
+## v0.1.0
+
+Starting from this version, TACE will no longer be compatible with subsequent versions. 
+In order to adopt mainstream operator fusion libraries, we simultaneously introduce models 
+based on both Cartesian and spherical representations, along with new foundation models.
+
+
 ## v0.0.9
 
 Rewrote the logic of the linear layers in the convolution module to reduce memory usage.

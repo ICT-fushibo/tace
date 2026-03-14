@@ -1,7 +1,7 @@
 project = "TACE"
 copyright = "2025, xuzemin"
 author = "xuzemin"
-release = "v0.0.9"
+release = "v0.1.0"
 
 extensions = [
     "sphinx.ext.autodoc",
