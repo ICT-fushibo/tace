@@ -10,7 +10,7 @@ from typing import Optional
 import torch
 
 
-from .base import EdgeEmbedding
+from .base import EdgeEmbedding, EdgeUpdate
 from .linear import Linear
 
 
@@ -208,6 +208,62 @@ class GroupEdgeEmbedding(EdgeEmbedding):
         edge_feats = self.act1(self.radial_proj(edge_feats))
         return torch.cat([edge_feats, source_embedding[edge_index[0]], target_embedding[edge_index[1]]], dim=-1)
     
+
+class IdentityEdgeUpdate(EdgeUpdate):
+    
+    def _setup(self) -> None:
+
+        self.out_dim = self.num_radial_basis
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+    ) -> torch.Tensor:
+        
+        return edge_feats
+    
+
+class ElementEdgeUpdate(EdgeUpdate):
+    
+    def _setup(self) -> None:
+
+        self.out_dim = self.edge_embedding_channel + self.num_channel * 2
+
+        self.source_embedding = Linear(
+            f'{self.num_elements}x0e',
+            f'{self.num_channel}x0e',
+            bias=self.use_bias,
+        )
+        self.target_embedding = Linear(
+            f'{self.num_elements}x0e',
+            f'{self.num_channel}x0e',
+            bias=self.use_bias,
+        )
+        torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
+        torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+    ) -> torch.Tensor:
+        edge_feats_list = [edge_feats]
+        edge_feats_list.append(
+            self.source_embedding(node_attrs[edge_index[0]])
+        )
+
+        edge_feats_list.append(
+            self.target_embedding(node_attrs[edge_index[1]])
+        )
+        return torch.cat(edge_feats_list, dim=-1)
+    
+
+
 EDGE_EMBEDDING = {
     "identity": IdentityEdgeEmbedding,
     "linear": LinearEdgeEmbedding,
@@ -215,3 +271,13 @@ EDGE_EMBEDDING = {
     "group": GroupEdgeEmbedding,
     "element": NonlinearElementEdgeEmbedding,
 }
+
+EDGE_UPDATE = {
+    "identity": IdentityEdgeUpdate,
+    "element": ElementEdgeUpdate,
+}
+
+
+
+
+

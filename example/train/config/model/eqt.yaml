@@ -24,6 +24,9 @@ config:
   edge_embedding: 
     type: identity  # [identity, linear, nonlinear, element, group], identity is safer
 
+  edge_update:
+    type: element  # [identity, element], identity is safer
+
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
   num_layers: 2 # 2 for correlation >=3, can be higher when correlation=2
@@ -43,7 +46,7 @@ config:
     bias: false # (bool)
 
   atomic_basis:
-    type: spectral # [spectral]
+    type: normal # [spectral]
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     conv_weights: [r_ij] # subset of [r_ij, z_ij], at least [r_ij]

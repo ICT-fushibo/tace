@@ -71,7 +71,6 @@ class TensorReadOut(ReadOut):
 
         p = 'e'
 
-
         if self.layer == self.num_layers-1: 
             self.linear1 = Linear(
                 irreps_in=self.irreps_in,

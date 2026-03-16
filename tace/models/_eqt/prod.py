@@ -86,14 +86,13 @@ class SpectralACE(Product):
             else:
                 product_out = self.irreps_in
 
-        if self.nonlinear is None:
-            self.linear = Linear(
-                self.irreps_out,
-                self.irreps_out,
-                self.num_hidden_channel,
-                self.num_channel,
-                bias=self.use_bias
-            )    
+        self.linear = Linear(
+            self.irreps_out,
+            self.irreps_out,
+            self.num_hidden_channel,
+            self.num_channel,
+            bias=self.use_bias
+        )    
 
 
     def forward(

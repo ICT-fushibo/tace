@@ -8,7 +8,6 @@ from typing import Dict, List, Optional, Any
 
 import torch
 from torch_scatter import scatter_sum
-import equitorch as eqt
 
 
 from .readout import build_scalar_readout, build_tensor_readout
@@ -32,6 +31,7 @@ class e3nnTACE(torch.nn.Module):
         fidelity: Dict,
         node_embedding: Dict,
         edge_embedding: Dict,
+        edge_update: Dict,
         radial_basis: Dict,
         atomic_basis: Dict,
         product_basis: Dict,
@@ -84,6 +84,7 @@ class e3nnTACE(torch.nn.Module):
             num_channel=cfg['num_channel'],
             node_embedding=cfg["node_embedding"],
             edge_embedding=cfg["edge_embedding"],
+            edge_update=cfg['edge_update'],
             radial_basis=cfg['radial_basis'],
             atomic_basis=cfg['atomic_basis'],
             product_basis=cfg['product_basis'],

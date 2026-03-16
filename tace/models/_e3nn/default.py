@@ -26,6 +26,9 @@ DEFAULT_MODEL_CONFIG = {
     "edge_embedding": {
         "type": "identity",
     },
+    "edge_update": {
+        "type": "identity",
+    },
     "radial_basis": {
         "bias": False,
         "radial_basis": "j0",
@@ -44,7 +47,6 @@ DEFAULT_MODEL_CONFIG = {
     "atomic_basis": {
         "type": "normal",
         "l1l2": None,
-        "conv_weights": ["r_ij"],
         "norm": "avg_num_neighbors",
         "nonlinear": None,
         "has_linear_after_nonlinear": True,

@@ -184,7 +184,12 @@ class LightningWrapperModel(L.LightningModule):
 
         if prefix == "train":
             lr = self.optimizers().param_groups[0]["lr"]
-            self.log("train/lr", lr, on_step=True, prog_bar=True)
+            self.log(
+                "train/lr", 
+                lr, 
+                on_step=True, 
+                prog_bar=True,
+            )
 
         metrics = getattr(self, f"{prefix}_metrics")
         update_metrics(metrics, prefix, output, batch, self.loss_property)

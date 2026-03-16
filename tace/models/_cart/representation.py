@@ -2,19 +2,18 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-from typing import Dict, List, Any
+from typing import Dict, List
 
 
 import torch
 
 
-from ..mlp import MLP
 from ..radial import RadialBasis
 from .ch import CartesianHarmonics
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from ..lammps import Graph
 from .node import NODE_EMBEDDING
-from .edge import EDGE_EMBEDDING
+from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
 from .prod import PRODUCT
 
@@ -31,6 +30,7 @@ class Representation(torch.nn.Module):
         target_weight: List[int],
         node_embedding: Dict,
         edge_embedding: Dict,
+        edge_update: Dict,
         radial_basis: Dict,
         angular_basis: Dict,
         atomic_basis: Dict,
@@ -81,16 +81,6 @@ class Representation(torch.nn.Module):
             bias=False,
         )
 
-        # if edge_embedding['update_edge_feats']:
-        #     self.update_edge_feats = torch.nn.ModuleList(
-        #         MLP(
-        #             [num_channel * 2, num_channel, num_channel, self.edge_embedding.out_dim],
-        #             bias=False,
-        #             layer_norm=False,
-        #             act='silu',
-        #         ) for _ in range(1, num_layers)
-        #     )
-
         # === universal embedding ===
         if len(self.invariant_property) > 0:
             self.uie_embedding = UniversalInvariantEmbedding(
@@ -115,6 +105,21 @@ class Representation(torch.nn.Module):
                     )
                 )
 
+        # === Edge Update ===
+        self.edge_updates = torch.nn.ModuleList(
+            [
+                EDGE_UPDATE[edge_update['type']](
+                    layer=layer,
+                    num_layers=num_layers,
+                    num_elements=self.num_elements,
+                    num_radial_basis=radial_basis['num_radial_basis'],
+                    edge_embedding_channel=self.edge_embedding.out_dim,
+                    num_channel=num_channel,
+                )
+                for layer in range(num_layers)
+            ]
+        )
+
         # === Interaction ===
         self.interactions = torch.nn.ModuleList(
             [
@@ -126,7 +131,7 @@ class Representation(torch.nn.Module):
                     Lmax=Lmax,
                     lmax=lmax,
                     num_channel=num_channel,
-                    edge_feats_channel=self.edge_embedding.out_dim,
+                    edge_feats_channel=self.edge_updates[layer].out_dim,
                     target_weight=target_weight,
                     num_radial_basis=radial_basis['num_radial_basis'],
                     radial_mlp=radial_basis['hidden'],
@@ -134,7 +139,6 @@ class Representation(torch.nn.Module):
                     l1l2=atomic_basis['l1l2'],
                     norm=atomic_basis['norm'],
                     resnet=atomic_basis['resnet'],
-                    conv_weights=atomic_basis['conv_weights'],
                     ictp_ictc_like=atomic_basis['ictp_ictc_like'],
                     nonlinear=atomic_basis['nonlinear'],
                     has_linear_after_nonlinear=atomic_basis['has_linear_after_nonlinear'],
@@ -213,20 +217,24 @@ class Representation(torch.nn.Module):
 
         # === representation Learning ===
         descriptors = []
-        for idx, (inter, prod) in enumerate(zip(self.interactions, self.products)):
+        for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):
+            node_attrs_total = data['node_attrs']
+            node_attrs_slice = data['node_attrs']
+            this_edge_feats = edge_update(
+                node_feats,
+                node_attrs_total, 
+                edge_feats, 
+                data['edge_index'],
+            )
             node_attrs_total = data['node_attrs']
             node_attrs_slice = data['node_attrs']
             if lmp and idx > 0:
                 node_attrs_slice = node_attrs_slice[:nlocal] 
-            # if idx > 0 and hasattr(self, "update_edge_feats"):
-            #     source, target = data['edge_index']
-            #     this_node_feats = node_feats[0]
-            #     edge_feats = edge_feats + self.update_edge_feats[idx-1](torch.cat([this_node_feats[source], this_node_feats[target]], dim=-1))
             node_feats, sc = inter(
                 node_feats,
                 node_attrs_total, 
                 node_attrs_slice, 
-                edge_feats, 
+                this_edge_feats, 
                 edge_attrs, 
                 data['edge_index'],
                 cutoff,

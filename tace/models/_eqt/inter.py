@@ -166,7 +166,7 @@ class SpectralInteraction(Interaction):
         # )
 
         self.edge_info = MLP(
-            [self.radial_in_channel] + self.radial_mlp + [self.rejector.weight_numel],
+            [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
             bias=self.radial_bias,
             layer_norm=self.radial_layer_norm,
             act=self.radial_act,
@@ -175,32 +175,13 @@ class SpectralInteraction(Interaction):
         if self.norm == 'density': 
             # this block from MACE
             self.edge_density = MLP(
-                [self.radial_in_channel, 64, 1],
+                [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
                 layer_norm=self.radial_layer_norm,
                 act=self.radial_act,
             )
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
-
-        if 'z_ij' in self.conv_weights:
-            self.source_embedding = Linear(
-                '0e',
-                '0e',
-                self.num_elements,
-                self.num_channel,
-                bias=False,
-            )
-            self.target_embedding = Linear(
-                '0e',
-                '0e',
-                self.num_elements,
-                self.num_channel,
-                bias=False,
-            )
-            torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
-            torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
-
 
     def forward(
         self,
@@ -234,20 +215,9 @@ class SpectralInteraction(Interaction):
 
         node_feats = self.linear_up(node_feats)
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
-        
-        edge_embedding = [edge_feats]
-        if hasattr(self, 'source_embedding'):
-            edge_embedding.append(
-                self.source_embedding(node_attrs_total.unsqueeze(1)[edge_index[0]]).squeeze(1)
-            )
-        if hasattr(self, 'target_embedding'):
-            edge_embedding.append(
-                self.target_embedding(node_attrs_total.unsqueeze(1)[edge_index[1]]).squeeze(1)
-            )
-        full_edge_feats = torch.cat(edge_embedding, dim=-1)
 
 
-        conv_weights = self.edge_info(full_edge_feats)
+        conv_weights = self.edge_info(edge_feats)
 
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
@@ -262,7 +232,7 @@ class SpectralInteraction(Interaction):
 
         # norm
         if hasattr(self, "edge_density"):
-            edge_density = self.edge_density(full_edge_feats)
+            edge_density = self.edge_density(edge_feats)
             edge_density = torch.tanh(edge_density ** 2)
             if cutoff is not None:
                 conv_weights = conv_weights * cutoff

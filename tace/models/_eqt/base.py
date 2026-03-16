@@ -97,6 +97,36 @@ class EdgeEmbedding(torch.nn.Module):
         raise NotImplementedError
     
 
+class EdgeUpdate(torch.nn.Module):
+    def __init__(
+        self,
+        layer: int,
+        num_layers: int,
+        num_elements: int,
+        num_radial_basis: int,
+        num_channel: int,
+        edge_embedding_channel: int,
+        bias: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.layer = layer
+        self.num_layers = num_layers
+        self.first_layer = (layer == 0)
+        self.last_layer = (layer == num_layers - 1)
+        self.num_elements = num_elements
+        self.num_radial_basis = num_radial_basis
+        self.num_channel = num_channel
+        self.edge_embedding_channel=edge_embedding_channel
+        self.use_bias = bias
+
+        self._setup()
+    
+    @abc.abstractmethod
+    def _setup(self) -> None:
+        raise NotImplementedError
+    
+
 class Interaction(torch.nn.Module, eqtGhostExchangeMixin):
     def __init__(
         self,
@@ -115,7 +145,6 @@ class Interaction(torch.nn.Module, eqtGhostExchangeMixin):
         radial_mlp: List[int],
         radial_bias: bool,
         resnet: str,
-        conv_weights: List[str],
         l1l2: Optional[str] = None,
         norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
@@ -148,15 +177,11 @@ class Interaction(torch.nn.Module, eqtGhostExchangeMixin):
         self.use_bias = bias
         self.resnet = resnet
         self.norm = norm
-        self.conv_weights = conv_weights
         self.nonlinear = nonlinear
         self.radial_act = 'silu'
         self.radial_layer_norm = False
-        self.radial_in_channel = edge_feats_channel
         self.has_linear_after_nonlinear = has_linear_after_nonlinear
-        if 'z_ij' in self.conv_weights:
-            self.radial_in_channel += num_channel * 2
-        if self.radial_in_channel != self.num_radial_basis:    
+        if self.edge_feats_channel != self.num_radial_basis:    
             self.radial_layer_norm = True
         self.edge_embedding = edge_embedding
         # self.top_k = top_k
@@ -190,6 +215,7 @@ class Interaction(torch.nn.Module, eqtGhostExchangeMixin):
     def _setup(self) -> None:
         raise NotImplementedError
 
+
 class Product(torch.nn.Module):
     def __init__(
         self,
@@ -209,7 +235,6 @@ class Product(torch.nn.Module):
         num_longitude: int,
         truncation: int,
         trainable_scale: bool,
-        nonlinear: Optional[str],
     ) -> None:
         super().__init__()
 
@@ -241,7 +266,6 @@ class Product(torch.nn.Module):
             self.num_longitude = num_longitude  
         assert isinstance(self.num_latitude, int)    
         assert isinstance(self.num_longitude, int) 
-        self.nonlinear = nonlinear
 
         if self.correlation == 1:
             if self.layer == num_layers - 1:

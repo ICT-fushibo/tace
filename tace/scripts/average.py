@@ -59,8 +59,7 @@ def main():
     args = parser.parse_args()
     print(f"A total of {len(args.models)} models will be averaged")
     model_avg = average_models(args.models, args.ema)
-    output_path = "average_model.pt"
-    # torch.save(model_avg, output_path)
+    output_path = "average_model-state.pt"
     torch.save(
         {
             "state_dict": model_avg.state_dict(),

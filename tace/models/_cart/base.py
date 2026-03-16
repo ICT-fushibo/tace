@@ -62,7 +62,35 @@ class EdgeEmbedding(torch.nn.Module):
     def _setup(self) -> None:
         raise NotImplementedError
     
+class EdgeUpdate(torch.nn.Module):
+    def __init__(
+        self,
+        layer: int,
+        num_layers: int,
+        num_elements: int,
+        num_radial_basis: int,
+        num_channel: int,
+        edge_embedding_channel: int,
+        bias: bool = False,
+    ) -> None:
+        super().__init__()
 
+        self.layer = layer
+        self.num_layers = num_layers
+        self.first_layer = (layer == 0)
+        self.last_layer = (layer == num_layers - 1)
+        self.num_elements = num_elements
+        self.num_radial_basis = num_radial_basis
+        self.num_channel = num_channel
+        self.edge_embedding_channel=edge_embedding_channel
+        self.use_bias = bias
+
+        self._setup()
+    
+    @abc.abstractmethod
+    def _setup(self) -> None:
+        raise NotImplementedError
+    
 class Interaction(torch.nn.Module):
     def __init__(
         self,

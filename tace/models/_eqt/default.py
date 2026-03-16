@@ -26,6 +26,9 @@ DEFAULT_MODEL_CONFIG = {
     "edge_embedding": {
         "type": "identity",
     },
+    "edge_update": {
+        "type": "identity",
+    },
     "radial_basis": {
         "bias": False,
         "radial_basis": "j0",
@@ -44,17 +47,11 @@ DEFAULT_MODEL_CONFIG = {
     "atomic_basis": {
         "type": "normal",
         "l1l2": None,
-        "conv_weights": ["r_ij"],
         "norm": "avg_num_neighbors",
         "nonlinear": None,
         "has_linear_after_nonlinear": True,
         "resnet": 'BB',
         "ictp_ictc_like": True,
-        # "num_experts": None,
-        # "top_k": None,
-        # "aux_loss_weight": 1e-4,
-        # "z_loss_weight": 1e-5,
-        # "num_heads": 8,
     },
     "product_basis": {
         "type": "coupled",
@@ -66,7 +63,7 @@ DEFAULT_MODEL_CONFIG = {
         "truncation": None,
         "trainable_scale": True,
         "num_channel": None,
-        "nonlinear": None,
+        "shared_l_weights": False,
     },
     "readout_emlp": {
         "bias": False,
