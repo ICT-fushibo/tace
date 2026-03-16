@@ -272,7 +272,7 @@ class ReadOut(torch.nn.Module):
         self.irreps_out = _to_full_so3_irreps([l], num_fidelities)
 
         self.irreps_hidden = o3.Irreps([(self.hidden * self.num_fidelities, (l, (-1)**l))])
-        self.irreps_gates =  o3.Irreps([(self.hidden * self.num_fidelities, (l, 1))])
+        self.irreps_gates =  o3.Irreps([(self.hidden * self.num_fidelities, (0, 1))])
 
         self._setup()
     

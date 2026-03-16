@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Tuple, Dict, Tuple, Optional, NamedTuple
+from typing import List, Tuple, Dict, Tuple, Callable
 
 
 import torch
@@ -285,3 +285,16 @@ def sample_force_jacobian(
     )
 
     return jacs_per_graph, samples_per_graph
+
+
+def replace_module_recursively(
+    model: torch.nn.Module,
+    target_cls: type,
+    factory: Callable[[torch.nn.Module], torch.nn.Module],
+) -> torch.nn.Module:
+    for name, child in list(model.named_children()):
+        if isinstance(child, target_cls):
+            model._modules[name] = factory(child)
+        else:
+            replace_module_recursively(child, target_cls, factory)
+    return model

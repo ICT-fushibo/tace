@@ -63,7 +63,7 @@ def select_model(
     except Exception as e:
         raise RuntimeError(
             f"Failed to instantiate the model using the provided configuration.\n"
-            f"Model config: {model_config}"
+            # f"Model config: {model_config}"
         ) from e
 
     return MODEL

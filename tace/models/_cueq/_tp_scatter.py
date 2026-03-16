@@ -58,7 +58,7 @@ class e3nnCueqTensorProduct(torch.nn.Module):
             irreps_out, source=cue.ir_mul, target=cue.mul_ir
         )
 
-    def forward(self, x, y, edge_index, w):
+    def forward(self, x, y, w, edge_index):
         return self.reshape2(
             self.cueq_tp(
                 [w, self.reshape1(x), y],

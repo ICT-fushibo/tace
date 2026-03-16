@@ -11,21 +11,13 @@ import torch
 from torch_scatter import scatter_sum
 from e3nn import o3
 
-from ..env import TACE_USE_OEQ, TACE_USE_CUEQ
 from ..mlp import ACTIVATION
 from .base import Interaction
 from ..mlp import MLP
 from .linear import Linear, ElementLinear
-from .paths import generate_e3nn_paths
+from .fused import ScatterTensorProduct
 from .nonlinear import GateNonlinear, NormNonlinear, GridNonlinear
-try:
-    from .._oeq import e3nnOeqTensorProduct
-except Exception:
-    pass
-try:
-    from .._cueq import e3nnCueqTensorProduct
-except Exception:
-    pass
+
 
 class SpectralInteraction(Interaction):
     def _setup(self) -> None:
@@ -44,44 +36,14 @@ class SpectralInteraction(Interaction):
             bias=self.use_bias,
         )    
 
-        # === Tensor Porduct ===
-        instructions, out_irreps = generate_e3nn_paths(
-            irreps_out=self.irreps_out,
-            irreps_in1=self.irreps_in,
-            irreps_in2=self.irreps_sh,
+        self.rejector = ScatterTensorProduct(
+            self.irreps_in,
+            self.irreps_sh,
+            self.irreps_out,
             l1l2=self.l1l2,
             ictp_ictc_like=self.ictp_ictc_like,
-            e3nn_mode='uvu',
         )
-        self.use_oeq = TACE_USE_OEQ == '1'
-        self.use_cueq = TACE_USE_CUEQ == '1'
 
-        if self.use_oeq:
-            self.rejector = e3nnOeqTensorProduct(
-                irreps_in1=self.irreps_in,
-                irreps_in2=self.irreps_sh,
-                irreps_out=out_irreps,
-                instructions=instructions,
-            )
-        elif self.use_cueq:
-            self.rejector = e3nnCueqTensorProduct(
-                irreps_in1=self.irreps_in,
-                irreps_in2=self.irreps_sh,
-                irreps_out=out_irreps,
-                l1l2=self.l1l2,
-                ictp_ictc_like=self.ictp_ictc_like,
-            ) # TODO
-            raise
-        else:
-            self.rejector = o3.TensorProduct(
-                irreps_in1=self.irreps_in,
-                irreps_in2=self.irreps_sh,
-                irreps_out=out_irreps,
-                instructions=instructions,
-                internal_weights=False,
-                shared_weights=False,
-            )
-            
         linear_down_irreps_out = self.irreps_out
         self.nonlinear_type = None
         if self.nonlinear is not None:
@@ -113,7 +75,6 @@ class SpectralInteraction(Interaction):
                     self.irreps_out,  
                     bias=self.use_bias,
                 )
-
 
         if self.layer > 0 and self.resnet in ['BAB']:
             self.resnetBA = ElementLinear(
@@ -186,15 +147,12 @@ class SpectralInteraction(Interaction):
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
 
-        if self.use_oeq:
-            m_i = self.rejector(node_feats, edge_attrs, edge_index, conv_weights)
-        elif self.use_cueq:
-            m_i = self.rejector(node_feats, edge_attrs, edge_index, conv_weights)
-        else:
-            m_ij = self.rejector(node_feats[edge_index[0]], edge_attrs, conv_weights)
-            m_i = scatter_sum(m_ij, edge_index[1], dim=0, dim_size=node_attrs_slice.size(0))
-        m_i = self.truncate_ghosts(m_i, nlocal)
-        m_i = self.linear_down(m_i)
+        m_i = self.linear_down(
+            self.truncate_ghosts(
+                self.rejector(node_feats, edge_attrs, conv_weights, edge_index), 
+                nlocal
+            )
+        )
 
         if hasattr(self, "edge_density"):
             edge_density = torch.tanh(self.edge_density(edge_feats) ** 2)
