@@ -73,7 +73,7 @@ class eqtOeqTensorProduct(torch.nn.Module):
         node_feats = self.reshape1.inverse(node_feats)
         message = self.oeq_tp(
             node_feats, edge_attrs, conv_weights, edge_index[1], edge_index[0]
-        )
+        ) # target, source
         return self.reshape2(message)
     
 
@@ -117,4 +117,4 @@ class e3nnOeqTensorProduct(torch.nn.Module):
         ) -> torch.Tensor:
         return self.oeq_tp(
             node_feats, edge_attrs, conv_weights, edge_index[1], edge_index[0]
-        )
+        ) # target, source

@@ -97,6 +97,3 @@ def generate_cueq_paths(
         [cue.IrrepsAndLayout(irreps3, cue.ir_mul)],
         cue.SegmentedPolynomial.eval_last_operand(d),
     )
-
-
-

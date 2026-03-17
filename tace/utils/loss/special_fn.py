@@ -30,6 +30,22 @@ def l2mae_stress(
     )
 
 @register_loss
+def l2mae_direct_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    return torch.mean(
+        torch.linalg.vector_norm(pred["direct_forces"] - label["direct_forces"], ord=2, dim=-1)
+    )
+
+@register_loss
+def l2mae_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    return torch.mean(
+        torch.linalg.vector_norm(pred["direct_stress"] - label["direct_stress"], ord=2, dim=(1, 2))
+    )
+
+@register_loss
 def conditional_huber_forces(
     pred_forces: Tensor, label_forces: Tensor, huber_delta: float
 ) -> Tensor:

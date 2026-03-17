@@ -74,7 +74,8 @@ class ScatterTensorProduct(torch.nn.Module):
             self.fused_tp = e3nnCueqTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,
-                irreps_out=self.irreps_out,
+                # irreps_out=self.irreps_out,
+                irreps_out=irreps_out,
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,

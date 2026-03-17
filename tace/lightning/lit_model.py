@@ -423,7 +423,7 @@ class LightningWrapperModel(L.LightningModule):
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
         }
-        model.load_state_dict(state_dict, strict=strict)
+        model.load_state_dict(state_dict, strict=False)
 
         # === SWA ===
         if 'swa' in cfg['callbacks']:
@@ -435,7 +435,7 @@ class LightningWrapperModel(L.LightningModule):
             ema_params = checkpoint['ema_state_dict']['shadow_params']
             for idx, (name, _ ) in enumerate(model.named_parameters()):
                 state_dict[name] = ema_params[idx]
-            model.load_state_dict(state_dict, strict=strict)
+            model.load_state_dict(state_dict, strict=False)
 
         return model.to(map_location)
 
@@ -467,7 +467,7 @@ def _load_tace(
                 model = select_model(
                     **{k: v for k, v in obj.items() if k != "state_dict"}
                 )
-                model.load_state_dict(obj["state_dict"])
+                model.load_state_dict(obj["state_dict"], strict=strict)
             elif isinstance(obj, torch.nn.Module):
                 model = obj
         else:
