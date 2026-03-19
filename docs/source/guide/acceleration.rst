@@ -1,50 +1,48 @@
 Acceleration Tutorial
 =====================
 
-Note
-----
-
-This feature is prepared for **Release 0.2.0**.  
-If you can see this note, the acceleration functionality has not been released yet.
-
-
 Backend Types
 -------------
 
 The following table summarizes the available backends for TACE:
 
-+--------------------+-----------+
-| Backend            | Support ? |
-+====================+===========+
-| cartnn             | ✔         |
-+--------------------+-----------+
-| equitroch          | ✔         |
-+--------------------+-----------+
-| e3nn               | ✖         |
-+--------------------+-----------+
-| openequivariance   | ✔         |
-+--------------------+-----------+
-| cueqequivariance   | ✖         |
-+--------------------+-----------+
++--------------------+-------------+
+| Backend            | Support ?   |
++====================+=============+
+| cartnn             | ✔           |
++--------------------+-------------+
+| e3nn               | ✔           |
++--------------------+-------------+
+| equitroch          | ✔           |
++--------------------+-------------+
+| openequivariance   | ✔           |
++--------------------+-------------+
+| cuequivariance     | ✔ (in test) |
++--------------------+-------------+
 
 
 Acceleration Methods for Specific Models
 ----------------------------------------
 
-1. `tace.models.eqtTACE`
+We control acceleration for training and inference through environment variables.
 
-   This model uses **equitroch** as its backend. The Triton kernel provides significant acceleration, 
-   especially for the coupled product basis.
-
-   However, Equitroch currently does not support edge-fidelity_idx operator fusion. In such cases, you can 
-   replace Equitroch's TensorProduct with openequivariance by setting the environment variable:
+Only one acceleration engine can be enabled at a time. 
+Set the corresponding environment variable to 1 to enable it, and 0 to disable it.
 
    .. code-block:: bash
-      # Supports both training and inference stage
-      export TACE_USE_OEQ=1
+      
+      export TACE_USE_OEQ=1   # openequivariance
+      export TACE_USE_CUEQ=1  # cuequivariance
 
-   Note that using oeq can significantly reduce memory usage, although it may slightly reduce speed.
 
-2. `tace.models.cartTACE`
+1. ``tace.models.e3nnTACE``
+   
+   Supports both ``oeq``` and ``cueq``.
 
-   This model currently does not support acceleration.
+2. `tace.models.eqtTACE`
+
+   Supports both ``oeq``` and ``cueq``.
+   
+3. `tace.models.cartTACE`
+
+   This model does not support acceleration.
