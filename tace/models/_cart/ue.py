@@ -8,10 +8,9 @@ from typing import Dict
 
 
 import torch
-from cartnn import ICTD
+from cartnn.o3 import ICTD, expand_dims_to
 
 from ...dataset.quantity import PROPERTY
-from ..utils import expand_dims_to
 from ..mlp import ACTIVATION, MLP
 
 

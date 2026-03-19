@@ -11,9 +11,9 @@ import torch
 from torch_scatter import scatter_sum
 from e3nn import o3
 
-from ..mlp import ACTIVATION
+
 from .base import Interaction
-from ..mlp import MLP
+from ..mlp import ACTIVATION, MLP
 from .linear import Linear, ElementLinear
 from .fused import ScatterTensorProduct
 from .nonlinear import GateNonlinear, NormNonlinear, GridNonlinear

@@ -9,7 +9,7 @@ from typing import Dict, Type
 import torch
 
 
-from cartnn import ICTD
+from cartnn.o3 import ICTD
 
 
 class DirectPolarizability(torch.nn.Module):

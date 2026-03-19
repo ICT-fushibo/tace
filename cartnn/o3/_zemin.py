@@ -5,9 +5,6 @@
 '''
 _cartesian_nj is the Cartesian version of _wigner_nj, 
 based on _wigner_nj author Ilyes Batatia and e3nn by Mario Geiger.
-see https://arxiv.org/abs/2512.16882 for Cartesian-3j, Cartesian-nj
-"""
-from typing import Tuple, List
 '''
 from pathlib import Path
 import collections
@@ -15,10 +12,9 @@ from typing import List, Union
 
 
 import torch
+
 from e3nn.o3 import wigner_3j
-from e3nn.util import explicit_default_types
-
-
+from cartnn.util import explicit_default_types
 from ._ictd import ICTD
 from ._irreps import Irrep, Irreps
 

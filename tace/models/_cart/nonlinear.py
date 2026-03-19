@@ -7,10 +7,9 @@ from typing import Dict, List
 
 
 import torch
+from cartnn.o3 import expand_dims_to
 
 
-from ..utils import expand_dims_to
-from ..activation import ACTIVATION
 from .linear import Linear
 
 

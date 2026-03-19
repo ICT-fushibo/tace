@@ -3,7 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import abc
 from typing import Optional
 
 

@@ -8,16 +8,15 @@ from typing import Dict, Tuple
 
 import torch
 from torch import Tensor
+from cartnn.o3 import expand_dims_to
+from torch_scatter import scatter_sum
 
 
-from cartnn import expand_dims_to
-from ..mlp import MLP
+from ..mlp import ACTIVATION, MLP
 from .linear import Linear, ElementLinear
 from .ctr import Contraction
 from .utils import add_dict_to_left
 from .nonlinear import GateNonlinear
-from ...utils.torch_scatter import scatter_sum
-from ..activation import ACTIVATION
 from .base import Interaction
 from .paths import count_irreps, generate_combinations
 

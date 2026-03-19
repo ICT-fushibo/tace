@@ -10,14 +10,14 @@ import torch
 from e3nn import o3
 
 
-from ..mlp import MLP
 from ..radial import RadialBasis
-from .angular import SphericalHarmonics
+from ..angular import SphericalHarmonics
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
+
 
 class Representation(torch.nn.Module):
     def __init__(

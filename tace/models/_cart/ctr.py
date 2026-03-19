@@ -11,9 +11,9 @@ from typing import Dict, List, Tuple, Optional
 import torch
 from torch import nn
 from torch_scatter import scatter_sum
-from cartnn import ICTD
 
-from ..utils import expand_dims_to
+
+from cartnn.o3 import ICTD, expand_dims_to
 from .einsum import InterEinsumTC
 
 

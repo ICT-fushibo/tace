@@ -9,9 +9,8 @@ import torch
 
 
 from ..radial import RadialBasis
-from .ch import CartesianHarmonics
+from ..angular import CartesianHarmonics
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
-from ..lammps import Graph
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION

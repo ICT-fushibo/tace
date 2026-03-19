@@ -8,7 +8,7 @@ from typing import Optional, List, Union, Tuple, Any, Dict
 
 
 import torch
-from cartnn import ICTD
+from cartnn.o3 import ICTD
 from ..lammps import GhostExchange, Graph
 from .utils import dict2flatten, flatten2dict, add_dict_to_left
 

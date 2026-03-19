@@ -4,16 +4,16 @@
 ################################################################################
 
 
-from typing import List, Union, Any, Optional
+from typing import List, Union, Any, Optional, Dict
 from itertools import combinations
 
 
 import torch
 from torch import Tensor
-from e3nn.util.jit import compile_mode
 
 
-from ._utils import expand_dims_to
+from cartnn.util.jit import compile_mode
+from .utils import expand_dims_to
 from ._irreps import Irreps
 from ._ictd import ICTD
 
@@ -87,6 +87,82 @@ def symmetric_traceless_outer_product(v: Tensor, n: int, norm: bool = True) -> T
     T = symmetric_outer_product(v, n, norm)
     return subtract_traces(T, n)
 
+
+class LegacyCartesianHarmonics1(torch.nn.Module):
+    def __init__(self, lmax: int, norm: bool = True, traceless: bool = True) -> None:
+        super().__init__()
+        self.lmax = lmax
+        self.norm = norm
+        self.traceless = traceless
+        PS, DS, CS, SS = ICTD(lmax)
+        self.register_buffer(f"Q", DS[0].to(torch.get_default_dtype()))
+        del PS, DS, CS, SS
+
+    def forward(self, v: Tensor) -> Tensor:
+        T = symmetric_outer_product(v, self.lmax, self.norm)
+        if self.traceless:
+            B = T.size(0)
+            if B == 0:
+                return T 
+            else:
+                REST = T.size()[1:]
+                T = T.reshape(B, -1)
+                T = T @ self.Q
+                T = T.reshape((B,) + REST)
+                return T
+        else:
+            return T
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm})"
+    
+
+class LegacyCartesianHarmonics2(torch.nn.Module):
+    def __init__(self, lmax: int, norm: bool = True, traceless: bool = True) -> None:
+        super().__init__()
+        self.lmax = lmax
+        self.norm = norm
+        self.traceless = traceless
+        for l in range(self.lmax+1):
+            PS, DS, CS, SS = ICTD(l)
+            self.register_buffer(f"D{l}", DS[0].to(torch.get_default_dtype()))
+            del PS, DS, CS, SS
+
+    def forward(self, v: Tensor) -> Dict[int, Tensor]:
+        T = torch.ones_like(v[..., 0])
+        edge_attrs: Dict[int, Tensor] = {}
+        edge_attrs[0] = T.unsqueeze(1)
+
+        for l in range(1, self.lmax+1):
+            T = T[..., None] * expand_dims_to(v, T.ndim + 1, dim=v.ndim - 1)
+            edge_attrs[l] = T
+                
+        if self.traceless:
+            for l in range(1, self.lmax+1):
+                T = edge_attrs[l]
+                B = T.size(0)
+                if B != 0:
+                    REST = T.size()[1:]
+                    T = T.reshape(B, -1)
+                    T = T @ self.D(l)
+                    T = T.reshape((B,) + REST)
+                edge_attrs[l] = T
+
+        if self.norm:
+            for l in range(1, self.lmax+1):
+                edge_attrs[l] = edge_attrs[l] * _norm(l)
+                
+        for l in range(1, self.lmax+1):
+            edge_attrs[l] = edge_attrs[l].unsqueeze(1)
+
+        return edge_attrs
+
+    def D(self, l: int):
+        return dict(self.named_buffers())[f"D{l}"]
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, traceless={self.traceless})"
+    
 
 # analytical
 @compile_mode("script")

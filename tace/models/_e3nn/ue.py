@@ -8,7 +8,7 @@ from typing import Dict
 
 import torch
 from e3nn import o3
-from cartnn import ICTD
+from cartnn.o3 import ICTD
 
 from ...dataset.quantity import PROPERTY
 from ..utils import expand_dims_to

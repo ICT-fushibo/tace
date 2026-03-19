@@ -8,17 +8,15 @@ from typing import Dict, List, Optional, Any
 
 import torch
 from torch_scatter import scatter_sum
-import equitorch as eqt
 
 
+from ..radial import ZBLBasis
+from ..blocks import OneHotToAtomicEnergy, ScaleShift
+from ..utils import get_target_weight, compute_fixed_charge_dipole
 from .readout import build_scalar_readout, build_tensor_readout
 from .representation import Representation
 from .default import check_model_config
-from ..radial import ZBLBasis
-from ..blocks import OneHotToAtomicEnergy, ScaleShift
-from ..utils import get_target_weight
 from .basis_change import PropertyBasisChange
-from ..utils import compute_fixed_charge_dipole
 from .linear import Linear
 
 

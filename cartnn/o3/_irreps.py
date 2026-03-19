@@ -1,18 +1,10 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
-"""Modify from e3nn"""
-
 import itertools
 import collections
 from typing import List, Union, Callable
 
-
 import torch
-from e3nn.math import perm
 
-
+from cartnn.math import perm
 from ._ictd import ICTD
 
 

@@ -3,13 +3,11 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, Tuple, Optional, NamedTuple
+from typing import Dict
 
 
 import torch
-
-
-from ...utils.torch_scatter import scatter_sum
+from torch_scatter import scatter_sum
 
 
 def add_dict_to_left(

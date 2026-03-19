@@ -25,7 +25,7 @@ config:
     type: identity  # [identity, linear, nonlinear, element, group], identity is safer
 
   edge_update:
-    type: element  # [identity, element], identity is safer
+    type: identity  # [identity, element], identity is safer
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.

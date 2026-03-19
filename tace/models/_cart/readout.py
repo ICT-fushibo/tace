@@ -10,7 +10,7 @@ import torch
 
 
 from ..utils import expand_dims_to
-from ..activation import ACTIVATION
+from ..mlp import ACTIVATION
 from .base import ReadOut
 from .linear import Linear
 from .nonlinear import GateNonlinear

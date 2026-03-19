@@ -8,10 +8,12 @@ from typing import List, Optional
 
 import torch
 
+
+from ..mlp import ACTIVATION
 from .base import ReadOut
 from .linear import Linear
 from .nonlinear import GateNonlinear
-from ..activation import ACTIVATION
+
 
 
 def mh_mask(

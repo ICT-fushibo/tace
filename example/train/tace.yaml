@@ -3,7 +3,7 @@ defaults:
   # Specify the logger backlend
   - config/logger@_here_: wandb
   # Specify the model architecture
-  - config/model@model: e3nn
+  - config/model@model: eqt
 
 # Specify the path to resume training, Files must be end with .ckpt
 resume_from_model: null
@@ -152,7 +152,7 @@ dataset:
 
   valid_dataloader:
     _target_: torch_geometric.loader.DataLoader
-    batch_size: 25
+    batch_size: 5
     shuffle: false
     drop_last: false
     num_workers: 0 # If the batch size is large, you need to set up multiple workers

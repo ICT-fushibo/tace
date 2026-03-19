@@ -13,11 +13,9 @@ from equitorch.nn import TensorProduct
 from e3nn import o3
 
 
-from ..activation import ACTIVATION
 from .base import Product
 from .linear import Linear, ElementLinear, TACE_WEIGHT_INIT
 from .paths import generate_eqt_e3nn_paths
-from .nonlinear import GLUNonlinear
 
 
 class SpectralACE(Product):

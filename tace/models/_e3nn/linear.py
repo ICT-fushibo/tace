@@ -5,13 +5,14 @@
 
 
 import os
-TACE_WEIGHT_INIT = os.environ.get('TACE_WEIGHT_INIT', 'randn')
 from typing import Optional
 
 
 import torch
 from e3nn import o3
 
+
+from ..env import TACE_WEIGHT_INIT
 
 class Linear(torch.nn.Module):
     def __init__(

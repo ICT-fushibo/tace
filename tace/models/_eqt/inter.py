@@ -7,18 +7,16 @@ from typing import Optional, Dict
 
 
 import torch
-import torch.nn.functional as F
 from torch_scatter import scatter_sum
 import equitorch as eqt
 
 
 from ..env import TACE_USE_OEQ
-from ..activation import ACTIVATION
-from ..mlp import MLP
+from ..mlp import ACTIVATION, MLP
 from .base import Interaction
 from .linear import Linear, ElementLinear
 from .paths import generate_eqt_e3nn_paths
-from .nonlinear import GateNonlinear, NormNonlinear, GridNonlinear, GLUNonlinear
+from .nonlinear import GateNonlinear, NormNonlinear, GridNonlinear
 try:
     from .._oeq import eqtOeqTensorProduct
 except Exception:
@@ -222,11 +220,7 @@ class SpectralInteraction(Interaction):
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
 
-        if self.use_oeq:
-            m_i = self.rejector(node_feats, edge_attrs, edge_index, conv_weights)
-        else:
-            m_ij = self.rejector(node_feats[edge_index[0]], edge_attrs, conv_weights)
-            m_i = scatter_sum(m_ij, edge_index[1], dim=0, dim_size=node_attrs_slice.size(0))
+        m_i = self.rejector(node_feats, edge_attrs, conv_weights, edge_index)
 
         m_i = self.linear_down(m_i)
 

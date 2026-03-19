@@ -10,7 +10,7 @@ from typing import Dict, List
 import torch
 import opt_einsum_fx
 from e3nn import o3
-from cartnn import ICTD, Irreps, SymmetricContraction
+from cartnn.o3 import ICTD, Irreps, SymmetricContraction
 
 
 from .utils import add_dict_to_left

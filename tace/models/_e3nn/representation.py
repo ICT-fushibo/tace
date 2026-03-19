@@ -11,7 +11,7 @@ from e3nn import o3
 
 
 from ..radial import RadialBasis
-from .angular import SphericalHarmonics
+from ..angular import SphericalHarmonics
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
