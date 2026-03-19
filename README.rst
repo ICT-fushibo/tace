@@ -61,9 +61,10 @@ Currently, the officially supported properties include:
 - Born effective charges (conservative, under electric field or LES )  (LES predict only)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
+- absolute final collinear magmoms
 - Noncollinear magnetic forces (conservative)
-- Magnetization (conservative) *(not tested by us)*
-- Magnetic susceptibility (conservative) *(not tested by us)*
+.. - Magnetization (conservative) *(not tested by us)*
+.. - Magnetic susceptibility (conservative) *(not tested by us)*
 .. - final (non)collinear magmoms (not time reversal)
 .. - total (non)collinear magmoms *(not tested by us)*
 
@@ -73,7 +74,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial (non)collinear magmoms (not time reversal)
+- initial (non)collinear magmoms
 - spin multiplicity *(not tested by us)*
 - electron_temperature *(not tested by us)*
 - magnetic field *(not tested by us)*
@@ -105,10 +106,10 @@ If you use TACE, please cite our papers:
 
 .. code-block:: bibtex
 
-   @misc{TACE,
-         title={TACE: A unified Irreducible Cartesian Tensor Framework for Atomistic Machine Learning}, 
-         author={Zemin Xu and Wenbo Xie and Daiqian Xie and P. Hu},
-         year={2025},
+   @misc{xu2026spectralspatialtensoratomiccluster,
+         title={Spectral/Spatial Tensor Atomic Cluster Expansion with Universal Embeddings in Cartesian Space}, 
+         author={Zemin Xu and Wenbo Xie and P. Hu},
+         year={2026},
          eprint={2509.14961},
          archivePrefix={arXiv},
          primaryClass={stat.ML},
@@ -119,7 +120,7 @@ If you use Cartesian-3j or Cartesian-nj, please cite our papers:
 
 .. code-block:: bibtex
 
-   @misc{Cartesian-nj,
+   @misc{xu2025cartesiannjextendinge3nnirreducible,
          title={Cartesian-nj: Extending e3nn to Irreducible Cartesian Tensor Product and Contracion}, 
          author={Zemin Xu and Chenyu Wu and Wenbo Xie and Daiqian Xie and P. Hu},
          year={2025},
@@ -131,8 +132,6 @@ If you use Cartesian-3j or Cartesian-nj, please cite our papers:
 
 Contact
 -------
-
-If you have any problems, suggestions or cooperations, please contact us through xv_chana@163.com
 
 For bugs or feature requests, please use https://github.com/xvzemin/tace/issues.
 
