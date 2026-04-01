@@ -7,13 +7,12 @@ from typing import List, Optional
 
 
 import torch
-
+from e3nn.nn import Activation
 
 from ..mlp import ACTIVATION
 from .base import ReadOut
 from .linear import Linear
-from .nonlinear import GateNonlinear
-
+from .nonlinear import GatedLinearUnit
 
 
 def mh_mask(
@@ -33,45 +32,54 @@ def mh_mask(
     x = x.reshape(B, fid_mul, ir)
     return  (x * mask).view(B, -1)
 
+
 class ScalarReadOut(ReadOut):
     def _setup(self):
 
         if self.layer == self.num_layers-1: 
-            self.linear1 = Linear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_hidden,
-                    bias=self.bias,
-                )
-            self.act = ACTIVATION[self.scalar_act]() 
-            self.linear2 = Linear(
-                    self.irreps_hidden,
-                    irreps_out=self.irreps_out,
-                    bias=self.bias,
+            self.linear2 = torch.nn.ModuleList()
+            self.acts = torch.nn.ModuleList(
+                Activation(
+                    irreps_in=hidden, acts=[ACTIVATION[self.scalar_act]()]
+                ) for hidden in self.irreps_hidden
+            )
+            for irreps_in, irreps_out in zip(
+                ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[:-1],
+                ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:]
+            ):
+                self.linear2.append(
+                    Linear(
+                        irreps_in,
+                        irreps_out,
+                        bias=self.bias,
+                    )
                 )
             self.last_layer = True
         else:
-            self.linear1 = Linear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_out,
-                    bias=self.bias,
-                )
+            self.linear1 = torch.nn.ModuleList(
+                [
+                    Linear(
+                        irreps_in=self.irreps_in,
+                        irreps_out=self.irreps_out,
+                        bias=self.bias,
+                    )
+                ]
+            )
             self.last_layer = False
         
-
     def forward(
         self, x: torch.Tensor, node_fidelity: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         if not self.last_layer:
-            return self.linear1(x)
-        x = self.act(self.linear1(x))
-        if self.num_fidelities > 1:
-            x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
-        return self.linear2(x)
+            return self.linear1[0](x)
+        for idx, linear in enumerate(self.linear2[:-1]):
+            x = self.acts[idx](linear(x))
+            if self.num_fidelities > 1:
+                x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
+        return self.linear2[-1](x)
 
 class TensorReadOut(ReadOut):
     def _setup(self):
-
-        p = 'e'
 
         if self.layer == self.num_layers-1: 
             self.linear1 = Linear(
@@ -79,7 +87,7 @@ class TensorReadOut(ReadOut):
                 irreps_out=self.irreps_hidden + self.irreps_gates,
                 bias=self.bias,
             )
-            self.act = GateNonlinear(
+            self.act = GatedLinearUnit(
                 irreps_gates=self.irreps_gates,
                 act_gates=[ACTIVATION[self.tensor_act]()] * len(self.irreps_gates),
                 irreps_gated=self.irreps_hidden,

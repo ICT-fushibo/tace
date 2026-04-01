@@ -8,8 +8,7 @@ from typing import List, Optional
 
 
 import torch
-
-
+    
 ACTIVATION = {
     None: torch.nn.Identity,
     "none": torch.nn.Identity,
@@ -35,7 +34,7 @@ ACTIVATION = {
 }
 
 
-class Linear(torch.nn.Module):
+class LinearLayer(torch.nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -64,14 +63,17 @@ class Linear(torch.nn.Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self.bias is not None})"
     
+
 class MLP(torch.nn.Module):
     def __init__(
         self,
         channels: List[int],
         bias: bool = False,
-        layer_norm: bool = False,
-        act: Optional[str] | torch.nn.Module= "silu",
+        act: str | None | torch.nn.Module= "silu",
         forward_weight_init: bool = True,
+        layer_norm: bool = False,
+        rms_norm: bool = False,
+        norm_first: bool = False,
     ):
         super().__init__()
 
@@ -95,7 +97,7 @@ class MLP(torch.nn.Module):
                 )
 
             mlp.append(
-                Linear(
+                LinearLayer(
                     in_dim=h_in,
                     out_dim=h_out,
                     alpha=gain / sqrt(norm_dim),
@@ -103,9 +105,12 @@ class MLP(torch.nn.Module):
                 )
             )
 
-            if layer_norm:
-                if layer < len(self.dims) -2:
-                    mlp.append(torch.nn.LayerNorm(h_out))
+            if layer < len(self.dims) -2:
+                if layer_norm:
+                        mlp.append(torch.nn.LayerNorm(h_out))
+                elif rms_norm:
+                        mlp.append(torch.nn.RMSNorm(h_out))  
+
             del gain, norm_dim
 
             if (layer != self.num_layers - 1) and (act is not None):
@@ -121,3 +126,125 @@ class MLP(torch.nn.Module):
         return self.mlp(x)
 
 
+class GLULayer(torch.nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = False,
+        act: str | torch.nn.Module = "sigmoid",
+        alpha: float = 1.0,
+        norm1: torch.nn.Module | None = None,
+        norm2: torch.nn.Module | None = None,
+    ):
+        super().__init__()
+
+        linear_v = []
+        linear_v.append(
+            LinearLayer(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                alpha=alpha,
+                bias=bias,
+            )
+        )
+        if norm1 is not None:
+            linear_v.append(norm1)
+        self.linear_v = torch.nn.Sequential(*linear_v)
+
+        linear_g = []
+        linear_g.append(
+            LinearLayer(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                alpha=alpha,
+                bias=bias,
+            )
+        )
+        if norm2 is not None:
+            linear_g.append(norm2)
+        self.linear_g = torch.nn.Sequential(*linear_g)
+
+        if isinstance(act, torch.nn.Module):
+            self.act = act
+        else:
+            self.act = ACTIVATION[act]()
+
+    def forward(self, x):
+        v = self.linear_v(x)
+        g = self.act(self.linear_g(x))
+        return v * g
+
+
+class GLU(torch.nn.Module):
+    def __init__(
+        self,
+        channels: List[int],
+        bias: bool = False,
+        act: Optional[str] | torch.nn.Module = "sigmoid",
+        forward_weight_init: bool = True,
+        layer_norm: bool = False,
+        rms_norm: bool = False,
+    ):
+        super().__init__()
+
+        if len(channels) < 2:
+            raise ValueError("GLUMLP must have at least 2 layers")
+
+        self.num_layers = len(channels) - 1
+        self.dims = channels
+
+        layers = []
+
+        for layer, (h_in, h_out) in enumerate(zip(self.dims, self.dims[1:])):
+
+            if forward_weight_init:
+                norm_dim = h_in
+                gain = 1.0 if layer == 0 else sqrt(2)
+            else:
+                norm_dim = h_out
+                gain = 1.0 if layer == self.num_layers - 1 else sqrt(2)
+
+
+            if layer < len(self.dims) -2:
+                if layer_norm:
+                    norm1 = torch.nn.LayerNorm(h_out)
+                    norm2 = torch.nn.LayerNorm(h_out)
+                elif rms_norm:
+                    norm1 = torch.nn.RMSNorm(h_out)
+                    norm2 = torch.nn.RMSNorm(h_out)
+            else:
+                norm1 = None
+                norm2 = None
+
+            if layer == len(self.dims) -2:
+                layers.append(
+                    LinearLayer(
+                        in_dim=h_in,
+                        out_dim=h_out,
+                        alpha=gain / sqrt(norm_dim),
+                        bias=bias,
+                    )
+                )
+            else:
+                layers.append(
+                    GLULayer(
+                        in_dim=h_in,
+                        out_dim=h_out,
+                        alpha=gain / sqrt(norm_dim),
+                        bias=bias,
+                        act=ACTIVATION[act](),
+                        norm1=norm1,
+                        norm2=norm2,
+                    )
+                )
+
+        self.glu = torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.glu(x)
+    
+FFN = {
+    'mlp': MLP,
+    'glu': GLU,
+}

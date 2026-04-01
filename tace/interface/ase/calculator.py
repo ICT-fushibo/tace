@@ -157,8 +157,9 @@ class TACEAseCalc(Calculator):
         for p in self.target_property:
             p_rank = PROPERTY[p]['rank']
             p_scope = PROPERTY[p]['scope']
-            ase_name = PROPERTY[p]['ase_name']
-            save_name = ase_name if ase_name else p
+            # ase_name = PROPERTY[p]['ase_name']
+            # save_name = ase_name if ase_name else p
+            save_name = p
             if p_scope == 'per-system':
                 if p_rank == 0:
                     if p == 'energy':

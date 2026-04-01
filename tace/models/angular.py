@@ -12,7 +12,8 @@ from e3nn.o3._irreps import Irreps
 from e3nn import get_optimization_defaults
 from e3nn.util.jit import compile_mode
 from e3nn.o3._spherical_harmonics import _spherical_harmonics
-from cartnn.o3 import ICTD, expand_dims_to
+from .ictd import ICTD
+from .utils import expand_dims_to
 
 
 def factorial(n: int) -> int:

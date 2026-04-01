@@ -5,7 +5,7 @@
 
 
 import abc 
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 import torch
@@ -96,6 +96,36 @@ class EdgeUpdate(torch.nn.Module):
         raise NotImplementedError
 
 
+class Residual(torch.nn.Module):
+    def __init__(
+        self,
+        layer: int,
+        num_layers: int,
+        Lmax: int,
+        target_weight: int,
+        num_channel: int,
+        num_elements: int,
+        bias: bool = False,
+    ) -> None:
+        super().__init__()
+
+        self.layer = layer
+        self.num_layers = num_layers
+        self.first_layer = (layer == 0)
+        self.last_layer = (layer == num_layers - 1)
+        self.Lmax = Lmax
+        self.target_weight = target_weight
+        self.num_channel = num_channel
+        self.num_elements = num_elements
+        self.use_bias = bias
+
+        self._setup()
+    
+    @abc.abstractmethod
+    def _setup(self) -> None:
+        raise NotImplementedError
+    
+
 class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
     def __init__(
         self,
@@ -112,13 +142,21 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_radial_basis: int,
         radial_mlp: List[int],
         radial_bias: bool,
-        resnet: str,
         l1l2: Optional[str] = None,
-        norm: str = 'avg_num_neighbors',
+        scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
         bias: bool = True,
-        nonlinear: Optional[str] = None,
-        has_linear_after_nonlinear: bool = True,
+        nonlinear: str | None = None,
+        produce_env_feats: bool = False,
+        edge_info_type: str = 'mlp',
+        resnet_type: str = 'AB',
+        use_first_resnet: bool = False,
+        pre_norm_type: str | None = None,
+        use_first_pre_norm: bool = False,
+        num_experts: int | None = None,
+        top_k: int | None = None,
+        num_shared_experts: int | None = None,
+        moe_channel: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -138,14 +176,28 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.radial_bias = radial_bias
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
-        self.resnet = resnet
-        self.norm = norm
-        self.nonlinear = nonlinear
-        self.radial_act = 'silu'
+        self.scatter_norm = scatter_norm
         self.radial_layer_norm = False
-        self.has_linear_after_nonlinear = has_linear_after_nonlinear
         if self.edge_feats_channel != self.num_radial_basis:    
             self.radial_layer_norm = True
+        self.nonlinear_type = None
+        self.nonlinear_act = None
+        if nonlinear is not None:
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
+        self.produce_env_feats = produce_env_feats
+        self.edge_info_type = edge_info_type
+        if self.edge_info_type == 'mlp':
+            self.radial_act = 'silu'
+        else:
+            self.radial_act = 'sigmoid'
+        self.use_first_resnet = use_first_resnet
+        self.pre_norm_type = pre_norm_type
+        self.resnet_type = resnet_type
+        self.use_first_pre_norm = use_first_pre_norm
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.num_shared_experts = num_shared_experts or 0
+        self.moe_channel = moe_channel or self.num_channel
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:
@@ -160,6 +212,11 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.irreps_sc = _to_full_so3_irreps(target_weight, self.num_channel)
         else:
             self.irreps_sc = _to_full_so3_irreps(self.Lmax, self.num_channel)
+
+        if self.correlation == 1:
+            self.irreps_moe = _to_full_so3_irreps(self.Lmax, self.moe_channel)
+        else:
+            self.irreps_moe = _to_full_so3_irreps(self.lmax, self.moe_channel)
 
         self._setup()
     
@@ -187,6 +244,10 @@ class Product(torch.nn.Module):
         num_longitude: int,
         truncation: int,
         trainable_scale: bool,
+        num_experts: int | None,
+        top_k: int | None,
+        num_shared_experts: int | None,
+        nonlinear: str | None,
     ) -> None:
         super().__init__()
 
@@ -196,6 +257,7 @@ class Product(torch.nn.Module):
         self.lmax = lmax
         self.correlation = correlation[layer]
         self.num_channel = num_channel
+        self.target_weight = target_weight
         self.num_elements = num_elements
         self.l1l2 = l1l2
         self.ictp_ictc_like = ictp_ictc_like
@@ -218,6 +280,13 @@ class Product(torch.nn.Module):
             self.num_longitude = num_longitude  
         assert isinstance(self.num_latitude, int)    
         assert isinstance(self.num_longitude, int) 
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.num_shared_experts = num_shared_experts or 0
+        self.nonlinear_type = None
+        self.nonlinear_act = None
+        if nonlinear is not None:
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
 
         if self.correlation == 1:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
@@ -229,7 +298,7 @@ class Product(torch.nn.Module):
         else:
             self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
             self.irreps_hidden = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
-
+            
         self._setup()
     
     @abc.abstractmethod
@@ -249,6 +318,7 @@ class ReadOut(torch.nn.Module):
         target_weight: List[int],
         bias: bool,
         num_fidelities: int,
+        # cat_alllayer: bool,
         l: int,
     ) -> None:
         super().__init__()
@@ -261,18 +331,27 @@ class ReadOut(torch.nn.Module):
         self.bias = bias
         self.num_fidelities = num_fidelities
         self.l = l
-        self.hidden = hidden_channel[0]
         self.scalar_act = 'silu'
         self.tensor_act = 'sigmoid'
-
+        # self.cat_alllayer = cat_alllayer
+        
         if layer == num_layers-1:
             self.irreps_in = _to_full_so3_irreps(target_weight, self.num_channel)
         else:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
         self.irreps_out = _to_full_so3_irreps([l], num_fidelities)
 
-        self.irreps_hidden = o3.Irreps([(self.hidden * self.num_fidelities, (l, (-1)**l))])
-        self.irreps_gates =  o3.Irreps([(self.hidden * self.num_fidelities, (0, 1))])
+        # if self.cat_alllayer:
+        #     self.irreps_in = (self.irreps_in * self.num_channel).regroup()
+
+        self.irreps_gates = [
+            o3.Irreps([(c * self.num_fidelities, (0, 1))])
+            for c in hidden_channel
+        ]
+        self.irreps_hidden = [
+            o3.Irreps([(c * self.num_fidelities, (l, (-1)**l))])
+            for c in hidden_channel
+        ]
 
         self._setup()
     

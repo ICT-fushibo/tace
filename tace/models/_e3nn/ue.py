@@ -8,13 +8,13 @@ from typing import Dict
 
 import torch
 from e3nn import o3
-from cartnn.o3 import ICTD
+
 
 from ...dataset.quantity import PROPERTY
 from ..utils import expand_dims_to
 from ..mlp import ACTIVATION, MLP
 from ..layout import LayoutTransform
-
+from ..ictd import ICTD
 
 def add_l0_to_left(t: torch.Tensor, l0: torch.Tensor) -> torch.Tensor:
     return torch.cat(

@@ -28,7 +28,7 @@ def satisfy(l1: int, l2: int, restriction: Optional[str] = None) -> bool:
         raise ValueError(f"Unknown restriction: {restriction}")
     
 
-def generate_e3nn_paths(
+def generate_paths(
     irreps_out: o3.Irreps, 
     irreps_in1: o3.Irreps, 
     irreps_in2: o3.Irreps,  
@@ -39,7 +39,7 @@ def generate_e3nn_paths(
     ictp_ictc_like: bool = True,
     e3nn_mode = 'uvu',
 ):
-    
+
     e3nn_paths: List[Tuple[int, int, int, str, bool]] = []
     e3nn_out_irreps: List[Tuple[int, o3.Irrep]] = [] 
 
@@ -67,60 +67,6 @@ def generate_e3nn_paths(
                     k = len(e3nn_out_irreps)
                     e3nn_out_irreps.append((mul, (ir_out.l, ir_out.p)))
                     e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode=='uvu'))
-
+                    
     return e3nn_paths, o3.Irreps(e3nn_out_irreps)
-
-
-# def generate_e3nn_paths(
-#     irreps_out: o3.Irreps, 
-#     irreps_in1: o3.Irreps, 
-#     irreps_in2: o3.Irreps,  
-#     *,
-#     l1l2: Optional[str] = None,
-#     l2l3: Optional[str] = None,
-#     l3l1: Optional[str] = None,
-#     ictp_ictc_like: bool = True,
-#     e3nn_mode = 'uvu',
-# ):
-    
-#     e3nn_paths: List[Tuple[int, int, int, str, bool]] = []
-#     e3nn_out_irreps: List[Tuple[int, o3.Irrep]] = [] 
-
-
-#     for i, (mul, ir1) in enumerate(irreps_in1):
-#         for j, (_, ir2) in enumerate(irreps_in2):
-#             for _, (_, ir_out) in enumerate(irreps_out):
-
-#                 l1 = ir1.l
-#                 l2 = ir2.l
-#                 l3 = ir_out.l
-
-#                 triangle_ok = (
-#                     l3 in range(abs(l1 - l2), l1 + l2 + 1, 2)
-#                     if ictp_ictc_like
-#                     else True
-#                 )
-
-#                 if (
-#                     triangle_ok
-#                     and satisfy(l1, l2, l1l2)
-#                     and satisfy(l2, l3, l2l3)
-#                     and satisfy(l3, l1, l3l1)
-#                     and ir_out in ir1 * ir2
-#                 ):
-#                     k = len(e3nn_out_irreps)
-#                     e3nn_out_irreps.append((mul, (ir_out.l, ir_out.p)))
-#                     e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode=='uvu'))
-
-
-#     e3nn_out_irreps = o3.Irreps(e3nn_out_irreps)
-#     e3nn_out_irreps, p, _ = e3nn_out_irreps.sort()
-#     e3nn_paths = [
-#         (i_in1, i_in2, p[i_out], mode, train)
-#         for i_in1, i_in2, i_out, mode, train in e3nn_paths
-#     ]
-
-#     return e3nn_paths, o3.Irreps(e3nn_out_irreps)
-
-
 

@@ -37,12 +37,12 @@ Set the corresponding environment variable to 1 to enable it, and 0 to disable i
 
 1. ``tace.models.e3nnTACE``
    
-   Supports both ``oeq``` and ``cueq``.
+   Supports both ``oeq`` and ``cueq``.
 
-2. `tace.models.eqtTACE`
+2. ``tace.models.eqtTACE``
 
-   Supports both ``oeq``` and ``cueq``.
+   Supports both ``oeq`` and ``cueq``.
    
-3. `tace.models.cartTACE`
+3. ``tace.models.cartTACE``
 
    This model does not support acceleration.

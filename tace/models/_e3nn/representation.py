@@ -17,7 +17,8 @@ from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
-
+from .layer_norm import get_normalization_layer
+from ..layout import LayoutTransform
 
 class Representation(torch.nn.Module):
     def __init__(
@@ -35,6 +36,8 @@ class Representation(torch.nn.Module):
         edge_update: Dict,
         radial_basis: Dict,
         atomic_basis: Dict,
+        resnet: Dict,
+        layer_norm: Dict,
         product_basis: Dict,
         invariant_property: List[str],
         equivariant_property: List[str],
@@ -42,9 +45,11 @@ class Representation(torch.nn.Module):
     ):
         super().__init__()
 
+
         target_weight = list(set(target_weight))
         self.num_elements = len(atomic_numbers)
         self.num_channel = num_channel
+        self.num_layers = num_layers
         self.invariant_property = invariant_property
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
@@ -144,12 +149,20 @@ class Representation(torch.nn.Module):
                     radial_mlp=radial_basis['hidden'],
                     radial_bias=radial_basis['bias'],
                     l1l2=atomic_basis['l1l2'],
-                    norm=atomic_basis['norm'],
-                    resnet=atomic_basis['resnet'],
+                    scatter_norm=atomic_basis['scatter_norm'],
                     ictp_ictc_like=atomic_basis['ictp_ictc_like'],
                     nonlinear=atomic_basis['nonlinear'],
-                    has_linear_after_nonlinear=atomic_basis['has_linear_after_nonlinear'],
                     correlation=product_basis['correlation'],
+                    edge_info_type=atomic_basis['edge_info_type'],
+                    resnet_type=resnet['type'],
+                    use_first_resnet=resnet['use_first_resnet'],
+                    pre_norm_type=layer_norm['pre_norm_type'],
+                    use_first_pre_norm=layer_norm['use_first_pre_norm'],
+                    num_experts=atomic_basis['num_experts'],
+                    top_k=atomic_basis['top_k'],
+                    num_shared_experts=atomic_basis['num_shared_experts'],
+                    moe_channel=atomic_basis['moe_channel'],
+                    produce_env_feats=(f"{atomic_basis['nonlinear']}".endswith('moe')) or (product_basis['type'] == 'moe'),
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -175,11 +188,24 @@ class Representation(torch.nn.Module):
                     num_longitude=product_basis['num_longitude'],
                     truncation=product_basis['truncation'],
                     trainable_scale=product_basis['trainable_scale'],
+                    num_experts=product_basis['num_experts'],
+                    top_k=product_basis['top_k'],
+                    num_shared_experts=product_basis['num_shared_experts'],
+                    nonlinear=product_basis['nonlinear'],
                     bias=True,
                 )
                 for layer in range(num_layers)
             ]
         )
+
+        if layer_norm['final_norm_type'] is not None: # TODO for all l
+            self.final_norm = get_normalization_layer(
+                layer_norm['final_norm_type'],
+                lmax=0,
+                num_channels=self.num_channel,
+            )
+            self.final_reshape = LayoutTransform(f'{self.num_channel}x0e')
+
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
@@ -237,7 +263,7 @@ class Representation(torch.nn.Module):
             )
             if lmp and idx > 0:
                 node_attrs_slice = node_attrs_slice[:nlocal]
-            node_feats, sc = inter(
+            node_feats, sc, node_env = inter(
                 node_feats,
                 node_attrs_total, 
                 node_attrs_slice, 
@@ -251,11 +277,16 @@ class Representation(torch.nn.Module):
                 node_attrs_slice = node_attrs_slice[:nlocal] 
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
-            node_feats = prod(node_feats, node_attrs_slice, sc)
+            # node_feats = prod(node_feats, node_attrs_slice, sc, descriptors)
+            node_feats = prod(node_feats, node_attrs_slice, node_env, sc)
+            if (idx == self.num_layers - 1) and hasattr(self, "final_norm"):
+                node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             descriptors.append(node_feats)
 
         return {
             "descriptors": descriptors,
             "uie_feats": uie_feats,
         }
+
+
 

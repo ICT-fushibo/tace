@@ -8,6 +8,7 @@ from typing import Optional
 
 
 import torch
+from e3nn.nn import Activation
 
 
 from .base import EdgeEmbedding, EdgeUpdate
@@ -29,6 +30,7 @@ class IdentityEdgeEmbedding(EdgeEmbedding):
     ) -> torch.Tensor:
         
         return edge_feats
+
 
 class LinearEdgeEmbedding(EdgeEmbedding):
 
@@ -52,6 +54,7 @@ class LinearEdgeEmbedding(EdgeEmbedding):
         
         return self.radial_proj(edge_feats)
 
+
 class NonlinearEdgeEmbedding(EdgeEmbedding):
 
     def _setup(self) -> None:
@@ -64,7 +67,7 @@ class NonlinearEdgeEmbedding(EdgeEmbedding):
             bias=self.bias,
         )
 
-        self.act1 = torch.nn.SiLU()
+        self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
 
     def forward(
         self,
@@ -75,7 +78,8 @@ class NonlinearEdgeEmbedding(EdgeEmbedding):
     ) -> torch.Tensor:
         
         return self.act1(self.radial_proj(edge_feats))
-    
+
+
 class NonlinearElementEdgeEmbedding(EdgeEmbedding):
 
     def _setup(self) -> None:
@@ -97,7 +101,7 @@ class NonlinearElementEdgeEmbedding(EdgeEmbedding):
             f"{self.num_channel}x0e",
             bias=self.bias,
         )
-        self.act1 = torch.nn.SiLU()
+        self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
         torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
         torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
 
@@ -118,7 +122,8 @@ class NonlinearElementEdgeEmbedding(EdgeEmbedding):
         edge_feats = self.act1(edge_feats)
   
         return torch.cat([edge_feats, x_i, x_j], dim=-1)
-    
+
+
 class GroupEdgeEmbedding(EdgeEmbedding):
     
     def _setup(self) -> None:
@@ -177,7 +182,7 @@ class GroupEdgeEmbedding(EdgeEmbedding):
         torch.nn.init.uniform_(self.target_elem_emb2.weight, a=-0.001, b=0.001)
         torch.nn.init.uniform_(self.target_group_emb1.weight, a=-0.001, b=0.001)
 
-        self.act1 = torch.nn.SiLU()
+        self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
         self.act2 = torch.nn.Softmax(dim=-1)
 
 
@@ -213,7 +218,7 @@ class IdentityEdgeUpdate(EdgeUpdate):
     
     def _setup(self) -> None:
 
-        self.out_dim = self.num_radial_basis
+        self.out_dim = self.edge_embedding_channel
 
     def forward(
         self,
@@ -261,7 +266,29 @@ class ElementEdgeUpdate(EdgeUpdate):
             self.target_embedding(node_attrs[edge_index[1]])
         )
         return torch.cat(edge_feats_list, dim=-1)
+
+
+class Element2EdgeUpdate(ElementEdgeUpdate):
     
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+    ) -> torch.Tensor:
+        
+        edge_feats_list = [edge_feats]
+
+        edge_feats_list.append(
+            self.target_embedding(node_attrs[edge_index[1]])
+        )
+
+        edge_feats_list.append(
+            self.source_embedding(node_attrs[edge_index[0]])
+        )
+
+        return torch.cat(edge_feats_list, dim=-1)
 
 
 EDGE_EMBEDDING = {
@@ -275,6 +302,7 @@ EDGE_EMBEDDING = {
 EDGE_UPDATE = {
     "identity": IdentityEdgeUpdate,
     "element": ElementEdgeUpdate,
+    "element2": Element2EdgeUpdate,
 }
 
 

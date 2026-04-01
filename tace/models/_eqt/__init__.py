@@ -1,5 +1,4 @@
-from .tace import eqtTACE
-
+from ._tp_uuu import e3nnEqtTensorProduct
 __all__ = [
-    "eqtTACE",
+    "e3nnEqtTensorProduct",
 ]

@@ -43,6 +43,8 @@ class e3nnTACE(torch.nn.Module):
         statistics: List[Dict],
         target_property: List[str],
         max_neighbors: Optional[int],
+        resnet: Dict = {},
+        layer_norm: Dict = {},
         **kwargs,
     ):
         cfg = {
@@ -91,6 +93,8 @@ class e3nnTACE(torch.nn.Module):
             invariant_property=cfg['invariant_property'],
             equivariant_property=cfg['equivariant_property'],
             universal_embedding=cfg['universal_embedding'],
+            resnet=cfg['resnet'],
+            layer_norm=cfg['layer_norm'],
         )
 
         # === Readout ===

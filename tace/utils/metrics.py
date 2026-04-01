@@ -22,11 +22,9 @@ SCALE = 1000.0  # for example, metric units from eV to meV
 
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
-    '''jit-safe'''
     while T.ndim < n_dim:
         T = T.unsqueeze(dim)
     return T
-
 
 class MAE(Metric):
     def __init__(self, scale: float = SCALE):
@@ -139,6 +137,7 @@ class PolarizationMetric(Metric):
         else:  # rmse
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
 
+
 class AbsFinalCollinearMagmomsMetric(Metric):
     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
         """
@@ -186,7 +185,8 @@ class AbsFinalCollinearMagmomsMetric(Metric):
             return self.sum_abs_error / self.count * self.scale
         else:  # rmse
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
-        
+
+
 # class PartialHessiansMetric(Metric):
 #     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
 #         """

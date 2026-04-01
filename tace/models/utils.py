@@ -10,7 +10,7 @@ import torch
 from torch_scatter import scatter_sum
 
 
-_to_weight = {
+to_weight = {
     'energy': [0],
     'charges': [0],
     'direct_forces': [1],
@@ -21,17 +21,18 @@ _to_weight = {
     'abs_final_collinear_magmoms': [0],
 }
 
+
+def get_target_weight(target_property: List[str]) -> List[int]:
+    target_weight: List[int] = [0]
+    for p in target_property:
+        target_weight.extend(to_weight.get(p, []))
+    return sorted(set(target_weight))
+
+
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
-    '''jit-safe'''
     while T.ndim < n_dim:
         T = T.unsqueeze(dim)
     return T
-
-def get_target_weight(target_property: List[str]) -> List[int]:
-    target_weight: List[int] = []
-    for p in target_property:
-        target_weight.extend(_to_weight.get(p, []))
-    return sorted(set(target_weight))
 
 
 def compute_fixed_charge_dipole(
@@ -42,6 +43,7 @@ def compute_fixed_charge_dipole(
 ) -> torch.Tensor:
     mu = positions * charges.unsqueeze(-1) * 4.8032047  # e·Å to Debye
     return scatter_sum(src=mu, index=batch.unsqueeze(-1), dim=0, dim_size=num_graphs)
+
 
 def compute_symmetric_displacement(
         data: Dict[str, torch.Tensor], num_graphs: int
@@ -138,6 +140,7 @@ def compute_hessians_vmap(
         return torch.zeros((positions.shape[0], forces.shape[0], 3, 3))
     return gradient
 
+
 def compute_hessians_loop(
     forces: torch.Tensor,
     positions: torch.Tensor,
@@ -159,6 +162,7 @@ def compute_hessians_loop(
             hessian.append(hess_row)
     hessian = torch.stack(hessian)
     return hessian
+
 
 def sample_force_components(
     n_atoms: int,
@@ -240,6 +244,7 @@ def split_jacobian_per_graph(
         row_offset += k_g
 
     return jacs_per_graph
+
 
 def sample_force_jacobian(
     forces: torch.Tensor,

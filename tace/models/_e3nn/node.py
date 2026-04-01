@@ -8,7 +8,7 @@ from typing import Optional
 
 import torch
 from torch_scatter import scatter_sum
-
+from e3nn.nn import Activation
 
 from .base import NodeEmbedding
 from .linear import Linear
@@ -44,7 +44,7 @@ class NonlinearNodeEmbedding(NodeEmbedding):
             f"{self.num_channel}x0e",
             bias=self.bias,
         )
-        self.act1 = torch.nn.SiLU()
+        self.act1 = Activation(self.elem_emb1.irreps_out, [torch.nn.SiLU()])
 
     def forward(
         self,
@@ -81,7 +81,7 @@ class GroupNodeEmbedding(NodeEmbedding):
             bias=self.bias
         )
 
-        self.act1 = torch.nn.SiLU()
+        self.act1 = Activation(self.elem_emb1.irreps_out, [torch.nn.SiLU()])
         self.act2 = torch.nn.Softmax(dim=-1)
 
 

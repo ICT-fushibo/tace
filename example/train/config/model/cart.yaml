@@ -1,5 +1,5 @@
 config:
-  _target_: tace.models.eqtTACE # [e3nnTACE, eqtTACE, cartTACE] export TACE_USE_OEQ=1 to use openequivariance
+  _target_: tace.models.cartTACE # [e3nnTACE, eqtTACE, cartTACE] export TACE_USE_OEQ=1 to use openequivariance
   wrapper:
     _target_: tace.models.TensorModel # [TensorModel]
 
@@ -17,12 +17,15 @@ config:
       # (null, Dict[int, float])
       atomic_energy: {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
     }
-  
+
   node_embedding: 
     type: linear    # [linear, nonlinear, surrounding, group], linear is safer
 
   edge_embedding: 
     type: identity  # [identity, linear, nonlinear, element, group], identity is safer
+
+  edge_update:
+    type: identity  # [identity, element], identity is safer
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
@@ -42,12 +45,8 @@ config:
     hidden: [64, 64, 64, 1024] # list(int)
     bias: false # (bool)
 
-  angular_basis:
-    norm: true
-    traceless: true
-
   atomic_basis:
-    type: spectral # [spectral]
+    type: normal # [spectral]
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     conv_weights: [r_ij] # subset of [r_ij, z_ij], at least [r_ij]

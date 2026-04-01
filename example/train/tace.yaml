@@ -3,7 +3,7 @@ defaults:
   # Specify the logger backlend
   - config/logger@_here_: wandb
   # Specify the model architecture
-  - config/model@model: eqt
+  - config/model@model: e3nn
 
 # Specify the path to resume training, Files must be end with .ckpt
 resume_from_model: null
@@ -78,13 +78,27 @@ callbacks:
     filename: TACE-3BPA-{epoch}-{step}-{${synth_metric.monitor_metric_name}:.4f}
     monitor: ${synth_metric.monitor_metric_name}
     save_top_k: 3
-    save_last: true
+    save_last: false
     #every_n_epochs: 1
     # every_n_train_steps: 2000
     # mode: min
     save_weights_only: false
     auto_insert_metric_name: false
     verbose: false
+
+  # checkpoint2: 
+  #   _target_: lightning.pytorch.callbacks.ModelCheckpoint
+  #   dirpath: checkpoints2
+  #   filename: TACE-3BPA-{epoch}-{step}
+  #   # monitor: ${synth_metric.monitor_metric_name}
+  #   save_top_k: -1
+  #   save_last: false
+  #   #every_n_epochs: 1
+  #   every_n_train_steps: 25
+  #   # mode: min
+  #   save_weights_only: false
+  #   auto_insert_metric_name: false
+  #   verbose: false
 
 dataset:
   type: ase # ase or ase-db
@@ -152,7 +166,7 @@ dataset:
 
   valid_dataloader:
     _target_: torch_geometric.loader.DataLoader
-    batch_size: 5
+    batch_size: 25
     shuffle: false
     drop_last: false
     num_workers: 0 # If the batch size is large, you need to set up multiple workers
