@@ -96,10 +96,6 @@ utace-add_fidelity_idx = "tace.scripts.utils.add_fidelity_idx:main"
 include = [
     "tace", 
     "tace.*", 
-    "cartnn",
-    "cartnn.*",
-    "equitorch", 
-    "equitorch.*",
 ]
 
 [tool.setuptools.package-data]

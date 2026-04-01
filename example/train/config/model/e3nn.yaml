@@ -29,7 +29,7 @@ config:
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
-  num_layers: 2 # 2 for correlation >=3, can be higher when correlation=2
+  num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
   num_channel: 64 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
   
   radial_basis:
@@ -59,7 +59,7 @@ config:
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: sigmoid_norm # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    nonlinear: null # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
     edge_info_type: mlp
     num_experts: 4
     top_k: 2

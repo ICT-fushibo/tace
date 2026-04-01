@@ -123,7 +123,7 @@ class SpectralLinearACE(Product):
 #         self.shapes = []
 
 #         for nu in range(2, self.correlation+1):
-#             instructions, irreps_out, _, _ = generate_paths(
+#             instructions, irreps_out = generate_paths(
 #                 irreps_out=product_out,
 #                 irreps_in1=product_in1,
 #                 irreps_in2=self.irreps_in,
@@ -377,7 +377,7 @@ class AgnosticLinearACE(Product):
         self.shapes = []
 
         for nu in range(2, self.correlation+1):
-            instructions, irreps_out, _, _ = generate_paths(
+            instructions, irreps_out = generate_paths(
                 irreps_out=product_out,
                 irreps_in1=product_in1,
                 irreps_in2=self.irreps_in,
