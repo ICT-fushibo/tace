@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 
 
 import torch
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 
 
 from ..radial import ZBLBasis

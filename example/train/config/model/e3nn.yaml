@@ -22,14 +22,14 @@ config:
     type: linear    # [linear, nonlinear, surrounding, group], linear is safer
 
   edge_embedding: 
-    type: nonlinear # identity  # [identity, linear, nonlinear, element, group], identity is safer
+    type: identity # identity  # [identity, linear, nonlinear, element, group], identity is safer
 
   edge_update:
     type: identity  # [identity, element], identity is safer
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
-  num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
+  num_layers: 2 # 2 for correlation >=3, can be higher when correlation=2
   num_channel: 64 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
   
   radial_basis:

@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 
 import torch
 from torch import Tensor
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 
 from .utils import (
     compute_symmetric_displacement, 

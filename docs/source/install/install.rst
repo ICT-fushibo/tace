@@ -27,12 +27,12 @@ Install from Source (recommended)
 
     git clone https://github.com/xvzemin/tace.git
     cd tace
-    pip install torch==2.10.0 wandb 
-    pip install torch_scatter -f https://data.pyg.org/whl/torch-2.10.0+cu128.html
     pip install .
 
-    # optional, but strongly recommended
-    pip install .[oeq,cueq12]
+    # Optional packages for accelerating computations, highly recommended.
+    # For cueq, we are in test.
+    # For equitroch, we maintain a local version.
+    pip install openequivariance
 
 Install via pip (not recommended)
 ---------------------------------
@@ -41,6 +41,10 @@ Install via pip (not recommended)
 
     pip install tace 
 
+    # Optional packages for accelerating computations, highly recommended.
+    # For cueq, we are in test.
+    # For equitroch, we maintain a local version.
+    pip install openequivariance
 
 
 

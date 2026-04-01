@@ -4,7 +4,7 @@
 ################################################################################
 
 import torch
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
 
 

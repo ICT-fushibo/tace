@@ -13,7 +13,7 @@ import ase.data
 from omegaconf import ListConfig
 from scipy.optimize import brentq
 from scipy.special import jv
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 
 
 def jn_taylor(n, x, terms=5):

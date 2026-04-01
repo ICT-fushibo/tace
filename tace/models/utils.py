@@ -7,7 +7,7 @@ from typing import List, Tuple, Dict, Tuple, Callable
 
 
 import torch
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 
 
 to_weight = {

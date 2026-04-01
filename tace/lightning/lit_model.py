@@ -15,7 +15,7 @@ import torch.distributed as dist
 import lightning as L
 from torchmetrics import MetricCollection
 from omegaconf import OmegaConf
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 
 from .skip import LossSkipController
 from .select_model import select_model

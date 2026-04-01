@@ -8,7 +8,7 @@ from typing import Optional, Dict
 
 
 import torch
-from torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_sum
 import e3nn
 from e3nn import o3
 
