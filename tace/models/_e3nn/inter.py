@@ -245,7 +245,7 @@ class SpectralInteraction(Interaction):
             m_i = m_i + resBA
 
         if hasattr(self, "resnetAB"):
-            resAB = self.resnetAB(m_i, node_attrs_total)
+            resAB = self.resnetAB(m_i, node_attrs_slice)
 
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
@@ -258,7 +258,7 @@ class SpectralInteraction(Interaction):
             sc = None
         sc = self.truncate_ghosts(sc, nlocal)
 
-        return m_i, sc, node_envs
+        return m_i, sc
     
 
 INTERACTION: Dict[str, torch.nn.Module] = {

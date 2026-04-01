@@ -120,7 +120,7 @@ This is the exported model file that you will use in LAMMPS.
 .. code-block:: bash
    
    # When your input files are ready, start the simulation with the following command
-   ./lmp -k on g 1 -sf kk -pk kokkos newton on neigh half -in in.lmp
+   lmp -k on g 1 -sf kk -pk kokkos newton on neigh half -in in.lmp
 
    
 .. autoclass:: tace.interface.lammps.mliap.TACELammpsCalc

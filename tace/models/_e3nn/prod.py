@@ -80,7 +80,6 @@ class SpectralLinearACE(Product):
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
-            node_env: torch.Tensor,
             sc: torch.Tensor,
         ) -> torch.Tensor:
 
@@ -310,7 +309,6 @@ class SpatialLinearACE(Product):
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
-            node_env: torch.Tensor,
             sc: torch.Tensor,
         ) -> torch.Tensor:
 
@@ -420,7 +418,6 @@ class AgnosticLinearACE(Product):
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
-            node_env: torch.Tensor,
             sc: torch.Tensor,
         ) -> torch.Tensor:
 
@@ -463,7 +460,6 @@ class IdentityLinearACE(Product):
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
-            node_env: torch.Tensor,
             sc: torch.Tensor,
         ) -> torch.Tensor:
         outs = self.linear(self.coefs(node_feats, node_attrs))

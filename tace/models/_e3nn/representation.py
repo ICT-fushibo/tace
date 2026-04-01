@@ -263,7 +263,7 @@ class Representation(torch.nn.Module):
             )
             if lmp and idx > 0:
                 node_attrs_slice = node_attrs_slice[:nlocal]
-            node_feats, sc, node_env = inter(
+            node_feats, sc = inter(
                 node_feats,
                 node_attrs_total, 
                 node_attrs_slice, 
@@ -278,7 +278,7 @@ class Representation(torch.nn.Module):
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
             # node_feats = prod(node_feats, node_attrs_slice, sc, descriptors)
-            node_feats = prod(node_feats, node_attrs_slice, node_env, sc)
+            node_feats = prod(node_feats, node_attrs_slice, sc)
             if (idx == self.num_layers - 1) and hasattr(self, "final_norm"):
                 node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             descriptors.append(node_feats)
