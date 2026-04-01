@@ -8,14 +8,14 @@ from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
 
 
-from ..env import TACE_USE_OEQ, TACE_USE_CUEQ, TACE_USE_EQT
+from ..env import TACE_USE_OEQ, TACE_USE_CUE, TACE_USE_EQT
 from .paths import generate_paths
 try:
     from .._oeq import e3nnOeqTensorProduct
 except Exception:
     pass
 try:
-    from .._cueq import e3nnCueqTensorProduct
+    from .._cue import e3nnCueTensorProduct
 except Exception:
     pass
 try:
@@ -63,8 +63,8 @@ class ScatterTensorProduct(torch.nn.Module):
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
         self.use_oeq = TACE_USE_OEQ == '1'
-        self.use_cueq = TACE_USE_CUEQ == '1'
-        assert not (self.use_oeq & self.use_cueq)
+        self.use_cue = TACE_USE_CUE == '1'
+        # assert not (self.use_oeq & self.use_cue)
 
         if self.use_oeq:
             self.fused_tp = e3nnOeqTensorProduct(
@@ -73,12 +73,11 @@ class ScatterTensorProduct(torch.nn.Module):
                 irreps_out=self.irreps_out,
                 instructions=self.instructions,
             )
-        elif self.use_cueq:
-            self.fused_tp = e3nnCueqTensorProduct(
+        elif self.use_cue:
+            self.fused_tp = e3nnCueTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,
-                # irreps_out=self.irreps_out,
-                irreps_out=irreps_out,
+                irreps_out=self.irreps_out,
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,

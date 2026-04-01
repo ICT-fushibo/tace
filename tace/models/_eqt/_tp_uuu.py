@@ -46,7 +46,5 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        x = self.reshap1(x)
-        y = self.reshap2(y)
-        return self.reshap3.inverse(self.eqt_tp(x, y))
+        return self.reshap3.inverse(self.eqt_tp(self.reshap1(x), self.reshap2(y)))
 

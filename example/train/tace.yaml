@@ -166,7 +166,7 @@ dataset:
 
   valid_dataloader:
     _target_: torch_geometric.loader.DataLoader
-    batch_size: 25
+    batch_size: 5
     shuffle: false
     drop_last: false
     num_workers: 0 # If the batch size is large, you need to set up multiple workers

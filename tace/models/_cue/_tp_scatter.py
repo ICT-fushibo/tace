@@ -9,7 +9,6 @@ from e3nn import o3
 try:
     import cuequivariance as cue
     import cuequivariance_torch as cuet
-    from cuequivariance.group_theory.experimental.e3nn import O3_e3nn
 except Exception:
     pass
 
@@ -17,7 +16,7 @@ except Exception:
 from .paths import generate_cueq_paths
 
 
-class e3nnCueqTensorProduct(torch.nn.Module):
+class e3nnCueTensorProduct(torch.nn.Module):
     def __init__(
         self,
         irreps_in1: o3.Irreps,
@@ -36,9 +35,9 @@ class e3nnCueqTensorProduct(torch.nn.Module):
 
         self.cueq_tp = cuet.SegmentedPolynomial(
             generate_cueq_paths(
-                cue.Irreps(O3_e3nn, irreps_in1),
-                cue.Irreps(O3_e3nn, irreps_in2),
-                cue.Irreps(O3_e3nn, irreps_out),
+                irreps_out,
+                irreps_in1,
+                irreps_in2,
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,

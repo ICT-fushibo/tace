@@ -30,9 +30,15 @@ Install from Source (recommended)
     pip install .
 
     # Optional packages for accelerating computations, highly recommended.
-    # For cueq, we are in test.
     # For equitroch, we maintain a local version.
+
     pip install openequivariance
+
+    # cuda12
+    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+
+    # cuda13
+    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
 Install via pip (not recommended)
 ---------------------------------
@@ -42,9 +48,13 @@ Install via pip (not recommended)
     pip install tace 
 
     # Optional packages for accelerating computations, highly recommended.
-    # For cueq, we are in test.
     # For equitroch, we maintain a local version.
+
     pip install openequivariance
 
+    # cuda12
+    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
+    # cuda13
+    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
