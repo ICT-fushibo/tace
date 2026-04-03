@@ -13,11 +13,10 @@ from e3nn import o3
 
 
 from ..layout import LayoutTransform
-from ..mlp import ACTIVATION
 from .base import Product
 from .linear import Linear, ElementLinear
-from .paths import generate_paths
 from .fused import uuuTensorProduct
+from .matrix import MatrixTensorProduct
 
 
 class SpectralLinearACE(Product):
@@ -96,95 +95,12 @@ class SpectralLinearACE(Product):
         if sc is not None:
             outs = outs + sc
 
+        for k, v in corr_feats.items():
+            print(k)
+            print(v[0, :self.num_channel])
+
         return outs
     
-# class SpectralLinearACE(Product):
-    
-#     def _setup(self):
-
-#         self.aces = torch.nn.ModuleList()
-#         self.coefs = torch.nn.ModuleList()
-#         self.coefs.append(
-#             ElementLinear(
-#                 self.irreps_in,
-#                 self.irreps_hidden,
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#             )    
-#         )
-
-#         product_in1 = self.irreps_in
-#         if self.correlation == 2:
-#             product_out = self.irreps_out
-#         else:
-#             product_out = self.irreps_in 
-
-#         self.shapes = []
-
-#         for nu in range(2, self.correlation+1):
-#             instructions, irreps_out = generate_paths(
-#                 irreps_out=product_out,
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 l1l2=self.l1l2,
-#                 ictp_ictc_like=self.ictp_ictc_like,
-#                 e3nn_mode='uuu'
-#             )
-
-#             this_ace = o3.TensorProduct(
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 irreps_out=irreps_out,
-#                 instructions=instructions,
-#                 internal_weights=False,
-#                 shared_weights=False,
-#             )
-#             self.aces.append(this_ace)
-#             self.coefs.append(
-#                 ElementLinear(
-#                     this_ace.irreps_out.simplify(),
-#                     self.irreps_hidden,
-#                     bias=self.use_bias,
-#                     num_elements=self.num_elements,
-#                 )    
-#             )
-
-#             product_in1 = this_ace.irreps_out
-
-#             if nu == self.correlation-1:
-#                 product_out = self.irreps_out
-#             else:
-#                 product_out = self.irreps_in
-
-#         self.linear = Linear(
-#             self.irreps_hidden,
-#             self.irreps_out,
-#             bias=self.use_bias
-#         )    
-
-#     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
-#             node_attrs: torch.Tensor,
-#             node_env: torch.Tensor,
-#             sc: torch.Tensor,
-#         ) -> torch.Tensor:
-
-#         corr_feats = {
-#             1: node_feats,
-#         }
-#         outs = self.coefs[0](corr_feats[1], node_attrs)
-
-#         for nu in range(2, self.correlation+1):
-#             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-#             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
-#         outs = self.linear(outs)
-
-#         if sc is not None:
-#             outs = outs + sc
-
-#         return outs
-   
 
 class SpatialLinearACE(Product):
 
@@ -286,13 +202,36 @@ class SpatialLinearACE(Product):
         else:
             self.register_parameter("bias", None)
 
-        if self.trainable_scale:
-            self.scale = torch.nn.Parameter(torch.ones(self.correlation-1))
-        else:
-            self.register_buffer("scale", torch.ones(self.correlation-1), persistent=False)
         self.num_padding = (self.truncation+1)**2 - (self.lmax+1)**2
-
         self.reset_parameters()
+
+        def moment(f, n, dtype=None, device=None):
+            r"""
+            compute n th moment
+            <f(z)^n> for z normal
+            """
+            gen = torch.Generator(device=device).manual_seed(0)
+            z = torch.randn(1_000_000, generator=gen, dtype=torch.float64, device=device)
+            return f(z).pow(n).mean()
+
+
+        # class xn(torch.nn.Module):
+        #     def __init__(self, n: int) -> None:
+        #         super().__init__()
+        #         self.n = n
+
+        #     def forward(self, x: torch.Tensor):
+        #         return x ** self.n
+            
+        cst = []
+        for nu in range(1, self.correlation+1):
+            cst.append(1.0)
+            # cst.append(moment(xn(nu), 2).pow(-0.5).item())
+
+        if self.trainable_scale:
+            self.scale = torch.nn.Parameter(torch.tensor(cst))
+        else:
+            self.register_buffer("scale", torch.tensor(cst))
 
     def reset_parameters(self):
         torch.nn.init.normal_(self.weight)
@@ -328,7 +267,11 @@ class SpatialLinearACE(Product):
 
         for nu in range(2, self.correlation + 1):
             grid_prev = grid_prev * base_grid
-            corr_feats_list.append(grid_prev * self.scale[nu-2])
+            corr_feats_list.append(grid_prev)
+
+        for nu in range(1, self.correlation + 1):
+            corr_feats_list[nu-1] = corr_feats_list[nu-1] * self.scale[nu-1]
+
         corr_feats = torch.cat(corr_feats_list, dim=-1)
 
         weight = self.weight * self.alpha
@@ -354,6 +297,7 @@ class SpatialLinearACE(Product):
 
 class AgnosticLinearACE(Product):
     
+    
     def _setup(self):
 
         self.aces = torch.nn.ModuleList()
@@ -375,22 +319,13 @@ class AgnosticLinearACE(Product):
         self.shapes = []
 
         for nu in range(2, self.correlation+1):
-            instructions, irreps_out = generate_paths(
-                irreps_out=product_out,
+
+            this_ace = uuuTensorProduct(
                 irreps_in1=product_in1,
                 irreps_in2=self.irreps_in,
+                irreps_out=product_out,
                 l1l2=self.l1l2,
                 ictp_ictc_like=self.ictp_ictc_like,
-                e3nn_mode='uuu'
-            )
-
-            this_ace = o3.TensorProduct(
-                irreps_in1=product_in1,
-                irreps_in2=self.irreps_in,
-                irreps_out=irreps_out,
-                instructions=instructions,
-                internal_weights=False,
-                shared_weights=False,
             )
             self.aces.append(this_ace)
             self.coefs.append(
@@ -408,6 +343,7 @@ class AgnosticLinearACE(Product):
             else:
                 product_out = self.irreps_in
 
+
         self.linear = Linear(
             self.irreps_hidden,
             self.irreps_out,
@@ -424,7 +360,7 @@ class AgnosticLinearACE(Product):
         corr_feats = {
             1: node_feats,
         }
-        outs = self.coefs[0](corr_feats[1], node_attrs)
+        outs = self.coefs[0](corr_feats[1])
 
         for nu in range(2, self.correlation+1):
             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
@@ -441,7 +377,7 @@ class IdentityLinearACE(Product):
 
     def _setup(self):
 
-        assert self.correlation == 1
+        # assert self.correlation == 1
 
         self.coefs = ElementLinear(
             self.irreps_in,
@@ -464,6 +400,59 @@ class IdentityLinearACE(Product):
         ) -> torch.Tensor:
         outs = self.linear(self.coefs(node_feats, node_attrs))
          
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+
+class MatrixLinearACE(Product):
+    
+    def _setup(self):
+
+        self.reshape = LayoutTransform(self.irreps_in)
+
+        self.aces = torch.nn.ModuleList(
+            MatrixTensorProduct(
+                L1=self.irreps_in.lmax,
+                L2=self.irreps_in.lmax,
+                C=self.num_channel,
+            ) for _ in range(self.correlation)
+        )
+        self.coefs = torch.nn.ModuleList(
+            ElementLinear(
+                self.irreps_in,
+                self.irreps_hidden,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+            ) for _ in range(self.correlation)
+        )
+
+        self.linear = Linear(
+            self.irreps_hidden,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
+
+        node_feats = self.reshape(node_feats)
+
+        corr_feats = {
+            1: node_feats,
+        }
+        outs = self.coefs[0](self.reshape.inverse(corr_feats[1]), node_attrs)
+
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](self.reshape.inverse(corr_feats[nu]), node_attrs)
+        outs = self.linear(outs)
+
         if sc is not None:
             outs = outs + sc
 
@@ -675,9 +664,15 @@ class IdentityLinearACE(Product):
 
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": SpectralLinearACE,
-    "spectral": SpectralLinearACE,
+    "spectral": SpectralLinearACE, # TODO, refacor
+    "CGTP": SpectralLinearACE,
     "grid": SpatialLinearACE,
     "spatial": SpatialLinearACE,
+    "GTP": SpatialLinearACE,
+    "matrix": MatrixLinearACE,
+    "MTP": MatrixLinearACE,
+
+    # special
     "agnostic": AgnosticLinearACE,
     "identity": IdentityLinearACE,
     # "glu": GatedLinearUnitACE,

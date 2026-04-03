@@ -77,7 +77,7 @@ class NonlinearEdgeEmbedding(EdgeEmbedding):
         cutoff: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         
-        return self.act1(self.radial_proj(edge_feats))
+        return self.act1(self.radial_proj(edge_feats)) # / 1.6791767923989418
 
 
 class NonlinearElementEdgeEmbedding(EdgeEmbedding):

@@ -101,11 +101,11 @@ class Residual(torch.nn.Module):
         self,
         layer: int,
         num_layers: int,
-        Lmax: int,
-        target_weight: int,
+        irreps_in: o3.Irreps,
+        irreps_out: o3.Irreps,
         num_channel: int,
         num_elements: int,
-        bias: bool = False,
+        bias: bool = True,
     ) -> None:
         super().__init__()
 
@@ -113,8 +113,8 @@ class Residual(torch.nn.Module):
         self.num_layers = num_layers
         self.first_layer = (layer == 0)
         self.last_layer = (layer == num_layers - 1)
-        self.Lmax = Lmax
-        self.target_weight = target_weight
+        self.irreps_in = irreps_in
+        self.irreps_out = irreps_out
         self.num_channel = num_channel
         self.num_elements = num_elements
         self.use_bias = bias
@@ -149,14 +149,14 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         nonlinear: str | None = None,
         produce_env_feats: bool = False,
         edge_info_type: str = 'mlp',
-        resnet_type: str = 'AB',
+        resnet_type: str | List[str] = 'AB',
+        resnet_linear_type: str = 'aware',
         use_first_resnet: bool = False,
         pre_norm_type: str | None = None,
         use_first_pre_norm: bool = False,
         num_experts: int | None = None,
         top_k: int | None = None,
         num_shared_experts: int | None = None,
-        moe_channel: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -177,6 +177,10 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
         self.scatter_norm = scatter_norm
+        if self.scatter_norm == 'no_cutoff_density':
+            self.apply_density_cutoff = False
+        else:
+            self.apply_density_cutoff = True
         self.radial_layer_norm = False
         if self.edge_feats_channel != self.num_radial_basis:    
             self.radial_layer_norm = True
@@ -197,7 +201,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.num_experts = num_experts
         self.top_k = top_k
         self.num_shared_experts = num_shared_experts or 0
-        self.moe_channel = moe_channel or self.num_channel
+        self.resnet_linear_type = resnet_linear_type
+
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:
@@ -213,11 +218,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         else:
             self.irreps_sc = _to_full_so3_irreps(self.Lmax, self.num_channel)
 
-        if self.correlation == 1:
-            self.irreps_moe = _to_full_so3_irreps(self.Lmax, self.moe_channel)
-        else:
-            self.irreps_moe = _to_full_so3_irreps(self.lmax, self.moe_channel)
-
         self._setup()
     
     @abc.abstractmethod
@@ -226,6 +226,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
 
 
 class Product(torch.nn.Module):
+
     def __init__(
         self,
         layer: int,

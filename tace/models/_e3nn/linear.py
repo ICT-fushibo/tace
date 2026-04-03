@@ -150,6 +150,47 @@ class ElementLinear(torch.nn.Module):
         return repr(self.linear) + f"(bias={self.bias is not None})"
     
 
+
+# class IdentityLinear(torch.nn.Module):
+#     def __init__(self, irreps_in: o3.Irreps, irreps_out: o3.Irreps):
+#         super().__init__()
+
+#         self.linear = o3.Linear(
+#             irreps_in=irreps_in,
+#             irreps_out=irreps_out,
+#             internal_weights=False,
+#             shared_weights=True,
+#         )
+
+#         weight = torch.zeros(self.linear.weight_numel)
+
+#         offset = 0
+#         for ins in self.linear.instructions:
+#             size = math.prod(ins.path_shape)
+#             if ins.i_in == -1:
+#                 weight[offset:offset + size] = 0.0
+
+#             else:
+#                 mul_in, mul_out = ins.path_shape
+#                 k = min(mul_in, mul_out)
+
+#                 block = torch.zeros(mul_out, mul_in)
+#                 block[:k, :k] = torch.eye(k)
+#                 block = block / ins.path_weight
+
+#                 weight[offset:offset + size] = block.reshape(-1)
+
+#             offset += size
+
+#         self.register_buffer("weight", weight, persistent=False)
+
+#     def forward(self, x):
+#         return self.linear(x, self.weight)
+
+#     def forward(self, x):
+#         return self.linear(x, self.weight)
+
+
 # class NormGatedLinearUnit(torch.nn.Module):
 #     def __init__(
 #         self,

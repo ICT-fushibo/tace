@@ -53,6 +53,7 @@ class Representation(torch.nn.Module):
         self.invariant_property = invariant_property
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
+        self.resnet_type = resnet['type']
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -135,7 +136,7 @@ class Representation(torch.nn.Module):
         # === Interaction ===
         self.interactions = torch.nn.ModuleList(
             [
-                INTERACTION[atomic_basis['type']](
+                INTERACTION[atomic_basis['type'][layer]][resnet['type']](
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
@@ -155,14 +156,17 @@ class Representation(torch.nn.Module):
                     correlation=product_basis['correlation'],
                     edge_info_type=atomic_basis['edge_info_type'],
                     resnet_type=resnet['type'],
+                    resnet_linear_type=resnet['linear_type'],
                     use_first_resnet=resnet['use_first_resnet'],
                     pre_norm_type=layer_norm['pre_norm_type'],
                     use_first_pre_norm=layer_norm['use_first_pre_norm'],
                     num_experts=atomic_basis['num_experts'],
                     top_k=atomic_basis['top_k'],
                     num_shared_experts=atomic_basis['num_shared_experts'],
-                    moe_channel=atomic_basis['moe_channel'],
-                    produce_env_feats=(f"{atomic_basis['nonlinear']}".endswith('moe')) or (product_basis['type'] == 'moe'),
+                    produce_env_feats=(
+                        f"{atomic_basis['nonlinear']}".endswith('moe')) 
+                        or (product_basis['type'] == 'moe'),
+                        # or ((resnet['type'] == 'AttnRes' and layer != num_layers-1)),
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -172,7 +176,7 @@ class Representation(torch.nn.Module):
         # === Product ===
         self.products = torch.nn.ModuleList(
             [
-                PRODUCT[product_basis['type']](
+                PRODUCT[product_basis['type'][layer]](
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
@@ -251,7 +255,7 @@ class Representation(torch.nn.Module):
         edge_attrs = self.angular_basis(graph.edge_vector / graph.edge_length)
         
         # === representation Learning ===
-        descriptors = []
+        prev_feats = []
         for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):
             node_attrs_total = data['node_attrs']
             node_attrs_slice = data['node_attrs']
@@ -272,19 +276,19 @@ class Representation(torch.nn.Module):
                 data['edge_index'],
                 cutoff,
                 graph,
+                prev_feats,
             )
             if lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:nlocal] 
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
-            # node_feats = prod(node_feats, node_attrs_slice, sc, descriptors)
             node_feats = prod(node_feats, node_attrs_slice, sc)
             if (idx == self.num_layers - 1) and hasattr(self, "final_norm"):
                 node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
-            descriptors.append(node_feats)
+            prev_feats.append(node_feats)
 
         return {
-            "descriptors": descriptors,
+            "descriptors": prev_feats,
             "uie_feats": uie_feats,
         }
 

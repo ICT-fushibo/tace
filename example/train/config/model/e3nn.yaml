@@ -42,31 +42,32 @@ config:
     order: 0 # (int), specify order for jn, for j0, it is negligible, for jn
     trainable: false # (bool)
     apply_cutoff: false # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
-    hidden: [64, 64, 64, 1024] # list(int)
+    hidden: [64, 64, 64] # list(int)
     bias: false  # (bool)
 
   resnet: 
-    type: BB # [AB, BB, BAB] A = atomic_basis, B = product_basis, control how resnet connect
+    type: BB # [BB, BB_ba, BB_baA] A = atomic_basis, B = product_basis, control how resnet connect
+    linear_type: agnostic # [aware, agnostic, identity]
     use_first_resnet: false
 
   layer_norm:
     pre_norm_type: null # [layer_norm, layer_norm_sh, rms_norm_sh]
     final_norm_type: null
-    use_first_pre_norm: true
+    use_first_pre_norm: false
 
   atomic_basis:
-    type: normal # [spectral]
+    type: spectral # [spectral]
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: null # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    nonlinear: sigmoid_gate # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
     edge_info_type: mlp
     num_experts: 4
     top_k: 2
     num_shared_experts: 1
       
   product_basis:
-    type: spectral # [spectral, spatial, identity, moe]
+    type: matrix  # [spectral, spatial, identity, identity, agnostic] # [spectral, spatial, identity, moe]
     l1l2: null  # [null, <=]
     ictp_ictc_like: true
     correlation: 3 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
@@ -75,7 +76,7 @@ config:
     num_latitude: null
     num_longitude: null
     truncation: ${model.config.lmax}
-    trainable_scale: false 
+    trainable_scale: true
     num_experts: 4 
     top_k: 2
     num_shared_experts: 0
