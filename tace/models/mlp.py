@@ -73,8 +73,9 @@ class MLP(torch.nn.Module):
         forward_weight_init: bool = True,
         layer_norm: bool = False,
         rms_norm: bool = False,
-        norm_first: bool = False,
+        # parametrization: str | None = None, # ["spectral_norm", "weight_norm", "orthogonal"]
     ):
+        """Based on https://github.com/mir-group/nequip/blob/main/nequip/nn/mlp.py"""
         super().__init__()
 
         if len(channels) < 2:
@@ -96,14 +97,31 @@ class MLP(torch.nn.Module):
                     1.0 if act is None or (layer == self.num_layers - 1) else sqrt(2)
                 )
 
-            mlp.append(
-                LinearLayer(
-                    in_dim=h_in,
-                    out_dim=h_out,
-                    alpha=gain / sqrt(norm_dim),
-                    bias=bias,
-                )
+
+            linear_layer = LinearLayer(
+                in_dim=h_in,
+                out_dim=h_out,
+                alpha=gain / sqrt(norm_dim),
+                bias=bias,
             )
+
+            # if parametrization == "spectral_norm":
+            #     torch.nn.utils.parametrizations.spectral_norm(
+            #         linear_layer, "weight", dim=1
+            #     )
+            # elif parametrization == "weight_norm":
+            #     torch.nn.utils.parametrizations.weight_norm(
+            #         linear_layer, "weight", dim=1
+            #     )
+            # elif parametrization == "orthogonal":
+            #     torch.nn.utils.parametrizations.orthogonal(linear_layer, "weight")
+            # elif parametrization not in [None, "None", "null"]:
+            #     raise ValueError(
+            #         f"Unknown parametrization '{parametrization}'. "
+            #         "Available options: None, 'weight_norm', 'orthogonal', 'spectral_norm'"
+            #     )
+            
+            mlp.append(linear_layer)
 
             if layer < len(self.dims) -2:
                 if layer_norm:

@@ -40,6 +40,22 @@ def huber_energy_per_atom(
         delta=huber_delta,
     )
 
+
+@register_loss
+def real_huber_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.forces_weight)[batch].unsqueeze(-1)
+    key = "forces"
+    return torch.nn.functional.huber_loss(
+        total_weight * pred[key],
+        total_weight * label[key],
+        reduction="mean",
+        delta=huber_delta,
+    )
+
+
 @register_loss
 def huber_forces(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01

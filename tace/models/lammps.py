@@ -102,13 +102,14 @@ class eqtGhostExchangeMixin:
 
 class Graph(NamedTuple):
     lmp: bool
-    lmp_data: Optional[torch.Tensor]
+    lmp_data: torch.Tensor | None
     lmp_natoms: Tuple[int, int]
     num_graphs: int
-    displacement: Optional[torch.Tensor]
+    displacement: torch.Tensor | None
     positions: torch.Tensor
     edge_vector: torch.Tensor
     edge_length: torch.Tensor
     lattice: torch.Tensor
     node_fidelity: torch.Tensor
     num_atoms_arange: torch.Tensor
+    dcutoff: torch.Tensor | None # [E,]

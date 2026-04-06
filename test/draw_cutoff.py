@@ -50,6 +50,6 @@ def plot_cutoffs(p_list, num_points=500):
 
 
 if __name__ == "__main__":
-    p_list = [5, 6, 7]
+    p_list = [5, 6, 50]
 
     plot_cutoffs(p_list)

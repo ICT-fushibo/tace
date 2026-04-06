@@ -147,7 +147,7 @@ class ElementLinear(torch.nn.Module):
         return out
 
     def __repr__(self):
-        return repr(self.linear) + f"(bias={self.bias is not None})"
+        return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
     
 
 

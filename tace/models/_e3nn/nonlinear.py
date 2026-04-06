@@ -92,9 +92,10 @@ class MixtralExpertsGatedLinearUnit(torch.nn.Module):
         self.mul = ElementwiseTensorProduct(irreps_gated, self.act_gates.irreps_out)
         self.irreps_in = irreps_in
         self.irreps_out = self.mul.irreps_out
+        self.num_channel = irreps_out.count("0e")
 
         self.router = Linear(
-            f"{irreps_out.count("0e")}x0e",
+            f"{self.num_channel}x0e",
             f"{self.num_experts}x0e",
             bias=False,
         )
@@ -121,9 +122,9 @@ class MixtralExpertsGatedLinearUnit(torch.nn.Module):
             torch.nn.init.normal_(self.weight1)
         torch.nn.init.normal_(self.weight2)
 
-    def forward(self, node_feats: torch.Tensor, node_envs: torch.Tensor) -> torch.Tensor:
+    def forward(self, node_feats: torch.Tensor) -> torch.Tensor:
 
-        gate_logits = self.router(node_envs)
+        gate_logits = self.router(node_feats[:, :self.num_channel])
         gate_probs = torch.softmax(gate_logits, dim=-1)
         topk_probs, topk_idx = torch.topk(gate_probs, k=self.top_k, dim=-1) 
         gate_probs_sparse = torch.zeros_like(gate_probs)

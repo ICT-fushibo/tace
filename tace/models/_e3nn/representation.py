@@ -17,8 +17,7 @@ from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
-from .layer_norm import get_normalization_layer
-from ..layout import LayoutTransform
+
 
 class Representation(torch.nn.Module):
     def __init__(
@@ -45,7 +44,6 @@ class Representation(torch.nn.Module):
     ):
         super().__init__()
 
-
         target_weight = list(set(target_weight))
         self.num_elements = len(atomic_numbers)
         self.num_channel = num_channel
@@ -67,6 +65,8 @@ class Representation(torch.nn.Module):
             trainable=radial_basis['trainable'],
             apply_cutoff=radial_basis['apply_cutoff'],
             gaussian_width=radial_basis['gaussian_width'],
+            use_dydynamic_cutoff=radial_basis['use_dydynamic_cutoff'],
+            dydynamic_cutoff_mu=radial_basis['dydynamic_cutoff_mu'],
         )
 
         # === angular basis ===
@@ -79,17 +79,16 @@ class Representation(torch.nn.Module):
         # === node/edge embedding ===
         self.node_embedding = NODE_EMBEDDING[node_embedding['type']](
             num_elements=self.num_elements,
-            num_radial_basis=radial_basis['num_radial_basis'],
+            num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
             bias=False,
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
             num_elements=self.num_elements,
-            num_radial_basis=radial_basis['num_radial_basis'],
+            num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
             bias=False,
         )
-
 
         # === universal embedding ===
         if len(self.invariant_property) > 0:
@@ -124,7 +123,7 @@ class Representation(torch.nn.Module):
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
-                    num_radial_basis=radial_basis['num_radial_basis'],
+                    num_radial_basis=self.radial_basis.num_basis,
                     edge_embedding_channel=self.edge_embedding.out_dim,
                     num_channel=num_channel,
                 )
@@ -136,7 +135,7 @@ class Representation(torch.nn.Module):
         # === Interaction ===
         self.interactions = torch.nn.ModuleList(
             [
-                INTERACTION[atomic_basis['type'][layer]][resnet['type']](
+                INTERACTION[atomic_basis['type'][layer]](
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
@@ -158,15 +157,11 @@ class Representation(torch.nn.Module):
                     resnet_type=resnet['type'],
                     resnet_linear_type=resnet['linear_type'],
                     use_first_resnet=resnet['use_first_resnet'],
-                    pre_norm_type=layer_norm['pre_norm_type'],
-                    use_first_pre_norm=layer_norm['use_first_pre_norm'],
+                    resnet_window=resnet['window'],
                     num_experts=atomic_basis['num_experts'],
                     top_k=atomic_basis['top_k'],
                     num_shared_experts=atomic_basis['num_shared_experts'],
-                    produce_env_feats=(
-                        f"{atomic_basis['nonlinear']}".endswith('moe')) 
-                        or (product_basis['type'] == 'moe'),
-                        # or ((resnet['type'] == 'AttnRes' and layer != num_layers-1)),
+                    num_hidden_channel=product_basis['num_channel'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -192,24 +187,11 @@ class Representation(torch.nn.Module):
                     num_longitude=product_basis['num_longitude'],
                     truncation=product_basis['truncation'],
                     trainable_scale=product_basis['trainable_scale'],
-                    num_experts=product_basis['num_experts'],
-                    top_k=product_basis['top_k'],
-                    num_shared_experts=product_basis['num_shared_experts'],
-                    nonlinear=product_basis['nonlinear'],
                     bias=True,
                 )
                 for layer in range(num_layers)
             ]
         )
-
-        if layer_norm['final_norm_type'] is not None: # TODO for all l
-            self.final_norm = get_normalization_layer(
-                layer_norm['final_norm_type'],
-                lmax=0,
-                num_channels=self.num_channel,
-            )
-            self.final_reshape = LayoutTransform(f'{self.num_channel}x0e')
-
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
@@ -222,6 +204,7 @@ class Representation(torch.nn.Module):
             data['node_attrs'],
             data['edge_index'],
             self.atomic_numbers,
+            graph.dcutoff,
         )
 
         # === node initialize ===
@@ -283,8 +266,6 @@ class Representation(torch.nn.Module):
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
             node_feats = prod(node_feats, node_attrs_slice, sc)
-            if (idx == self.num_layers - 1) and hasattr(self, "final_norm"):
-                node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             prev_feats.append(node_feats)
 
         return {

@@ -18,7 +18,6 @@ from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
 from .matrix import MatrixTensorProduct
 
-
 class SpectralLinearACE(Product):
     
     def _setup(self):
@@ -36,11 +35,9 @@ class SpectralLinearACE(Product):
 
         product_in1 = self.irreps_in
         if self.correlation == 2:
-            product_out = self.irreps_out
+            product_out = self.irreps_hidden
         else:
             product_out = self.irreps_in 
-
-        self.shapes = []
 
         for nu in range(2, self.correlation+1):
 
@@ -68,7 +65,6 @@ class SpectralLinearACE(Product):
             else:
                 product_out = self.irreps_in
 
-
         self.linear = Linear(
             self.irreps_hidden,
             self.irreps_out,
@@ -90,18 +86,15 @@ class SpectralLinearACE(Product):
         for nu in range(2, self.correlation+1):
             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+
         outs = self.linear(outs)
 
         if sc is not None:
             outs = outs + sc
 
-        for k, v in corr_feats.items():
-            print(k)
-            print(v[0, :self.num_channel])
-
         return outs
     
-
+# TODO, refactor
 class SpatialLinearACE(Product):
 
     def _setup(self):
@@ -297,7 +290,6 @@ class SpatialLinearACE(Product):
 
 class AgnosticLinearACE(Product):
     
-    
     def _setup(self):
 
         self.aces = torch.nn.ModuleList()
@@ -312,11 +304,9 @@ class AgnosticLinearACE(Product):
 
         product_in1 = self.irreps_in
         if self.correlation == 2:
-            product_out = self.irreps_out
+            product_out = self.irreps_hidden
         else:
             product_out = self.irreps_in 
-
-        self.shapes = []
 
         for nu in range(2, self.correlation+1):
 
@@ -342,7 +332,6 @@ class AgnosticLinearACE(Product):
                 product_out = self.irreps_out
             else:
                 product_out = self.irreps_in
-
 
         self.linear = Linear(
             self.irreps_hidden,
@@ -381,13 +370,13 @@ class IdentityLinearACE(Product):
 
         self.coefs = ElementLinear(
             self.irreps_in,
-            self.irreps_out,
+            self.irreps_hidden,
             bias=self.use_bias,
             num_elements=self.num_elements,
         )
 
         self.linear = Linear(
-            self.irreps_out,
+            self.irreps_hidden,
             self.irreps_out,
             bias=self.use_bias,
         )
@@ -416,8 +405,8 @@ class MatrixLinearACE(Product):
             MatrixTensorProduct(
                 L1=self.irreps_in.lmax,
                 L2=self.irreps_in.lmax,
-                C=self.num_channel,
-            ) for _ in range(self.correlation)
+                C=self.num_hidden_channel,
+            ) for _ in range(self.correlation-1)
         )
         self.coefs = torch.nn.ModuleList(
             ElementLinear(

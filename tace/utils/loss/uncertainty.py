@@ -3,6 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import math
 from typing import List, Optional
 
 
@@ -30,7 +31,9 @@ class UncertaintyLoss(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        init_log_sigmas = loss_property_weights
+        init_log_sigmas = [
+            -math.log(2.0 * w) for w in loss_property_weights
+        ]
         assert isinstance(
             loss_property, (List, ListConfig)
         ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
@@ -75,8 +78,6 @@ class UncertaintyLoss(nn.Module):
             p_loss = LOSS_FN[fn_name](pred, label, huber_delta)
             log_sigma = self.log_sigmas[p]
             total_loss += 0.5 * torch.exp(-log_sigma) * p_loss + log_sigma
-        # if pred["moe_aux_loss"] is not None:
-        #     total_loss += pred["moe_aux_loss"]
         return total_loss
 
     def __repr__(self):

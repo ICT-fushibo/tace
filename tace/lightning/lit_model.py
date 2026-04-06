@@ -22,6 +22,8 @@ from .select_model import select_model
 from ..dataset.quantity import get_target_property, get_embedding_property
 from ..utils.metrics import build_metrics, update_metrics
 from .. utils._global import DTYPE, DEVICE
+from ..utils.loss.uncertainty import UncertaintyLoss
+
 
 def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module:
     if not finetune_cfg: 
@@ -329,7 +331,14 @@ class LightningWrapperModel(L.LightningModule):
         getattr(self, f"{prefix}_metrics").reset()
         
     def on_train_epoch_end(self):
-        self.on_epoch_end("train")
+        self.on_epoch_end("train")        
+        if isinstance(self.loss_fn, UncertaintyLoss):
+            with torch.no_grad():
+                logging.info("")
+                for k, v in self.loss_fn.log_sigmas.items():
+                    logging.info(
+                        f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
+                    )
 
     def on_train_epoch_start(self):
         dataloader = self.trainer.train_dataloader
@@ -360,6 +369,13 @@ class LightningWrapperModel(L.LightningModule):
     def on_fit_start(self):
         if hasattr(self, "ema") and self.ema is not None:
             self.ema.to(self.device)
+        if isinstance(self.loss_fn, UncertaintyLoss):
+            with torch.no_grad():
+                logging.info("")
+                for k, v in self.loss_fn.log_sigmas.items():
+                    logging.info(
+                        f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
+                    )
 
     def setup(self, stage=None):
         if self.trainer.world_size > 1:

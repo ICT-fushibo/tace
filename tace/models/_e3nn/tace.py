@@ -236,7 +236,7 @@ class e3nnTACE(torch.nn.Module):
                     graph.edge_length, 
                     data['node_attrs'], 
                     data["edge_index"],
-                    self.atomic_numbers
+                    self.atomic_numbers,
                 )[num_atoms_arange]
                 e_node = e_node + e_zbl_node
             # === scale and shift ===

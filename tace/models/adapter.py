@@ -337,9 +337,6 @@ class TensorModel(torch.nn.Module):
             else torch.full_like(data['batch'], self.fidelity_idx, dtype=torch.int64)
         )  # used for multi-fidelity and multi-head
 
-        if "spin_on" not in data: # used for uie
-            data['spin_on'] = torch.tensor([self.spin_on], device=data["node_attrs"].device, dtype=torch.int64)
-
         if self.lmp:
             for p in self.target_property:
                 for requires_grad_p in PROPERTY[p]['requires_grad_with']:
@@ -399,6 +396,21 @@ class TensorModel(torch.nn.Module):
             lmp_natoms = (positions.size(0), 0)
             num_atoms_arange = torch.arange(positions.shape[0], device=positions.device, dtype=torch.int64)
 
+
+        if self.readout_fn.representation.radial_basis.use_dydynamic_cutoff:
+            dcutoff = self.readout_fn.representation.radial_basis.dydynamic_cutoff_fn(
+                edge_length,
+                data["edge_index"],
+                data['node_attrs'].size(0),
+            )
+            mask = edge_length.squeeze(-1) < dcutoff.squeeze(-1)
+            data['edge_index'] = data['edge_index'][:, mask]
+            edge_length=edge_length[mask, :]
+            edge_vector=edge_vector[mask, :]
+            dcutoff=dcutoff[mask, :]
+        else:
+            dcutoff = None
+
         return Graph(
             lmp=self.lmp,
             lmp_data=lmp_data,
@@ -411,5 +423,6 @@ class TensorModel(torch.nn.Module):
             lattice=lattice,
             node_fidelity=node_fidelity,
             num_atoms_arange=num_atoms_arange,
+            dcutoff=dcutoff,
         )
     

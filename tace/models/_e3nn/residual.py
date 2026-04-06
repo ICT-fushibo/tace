@@ -53,18 +53,17 @@ class AwareResidual(Residual):
     
 
 class AttentionResidual(Residual):
-    """We do not need RMSNorm for key"""
     def _setup(self):
 
         assert self.layer > 0
         assert self.num_layers > 2
 
-        self.alpha = 1 / math.sqrt(self.num_channel)
+        self.alpha = 1 / math.sqrt(self.num_channel) # not use rms_norm for key
         self.query = torch.nn.Parameter(torch.zeros(1, self.num_channel)) # if need, can add element
         self.linear = torch.nn.ModuleList()
         self.reshape = LayoutTransform(self.irreps_out)
 
-        for _ in range(self.layer):
+        for _ in range(self.window):
             self.linear.append(
                 ElementLinear(
                     self.irreps_in,
@@ -75,19 +74,20 @@ class AttentionResidual(Residual):
             )
 
     def forward(self, prev_feats: list[torch.Tensor], node_attrs: torch.Tensor):
-
-        key = torch.stack([feats[:, :self.num_channel] for feats in prev_feats], dim=0) 
+        prev_feats = prev_feats[-self.window:]
+        key = torch.stack([feats[:, :self.num_channel] for feats in prev_feats], dim=0)
         logits = torch.einsum('c, lbc -> lb', self.query.squeeze(0), key) * self.alpha
         attn = F.softmax(logits, dim=0) 
         new_feats = []
-        for idx in range(self.layer):
+        for idx in range(self.window):
             new_feats.append(
                 self.reshape(self.linear[idx](prev_feats[idx], node_attrs))
             )
         value = torch.stack(new_feats, dim=0)
 
         return self.reshape.inverse(torch.einsum('lb, lbmc -> bmc', attn, value))
-      
+
+    
 RESIDUAL = {
     'aware': AwareResidual,
     'agnostic': AgnosticResidual,

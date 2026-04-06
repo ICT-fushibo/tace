@@ -104,6 +104,74 @@ class ScatterTensorProduct(torch.nn.Module):
         )
 
 
+class ThreeBodyScatterTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in1: o3.Irreps,
+        irreps_in2: o3.Irreps,
+        irreps_out: o3.Irreps,
+        l1l2: str | None = None,
+        l2l3: str | None = None,
+        l3l1: str | None = None,
+        ictp_ictc_like: bool = True,
+    ) -> None:
+        super().__init__()
+
+        instructions, actual_irreps_out = generate_paths(
+            irreps_out=irreps_out,
+            irreps_in1=irreps_in1,
+            irreps_in2=irreps_in2,
+            l1l2=l1l2,
+            l2l3=l2l3,
+            l3l1=l3l1,
+            ictp_ictc_like=ictp_ictc_like,
+            e3nn_mode='uvu',
+        )
+
+        self.tp = o3.TensorProduct(
+            irreps_in1,
+            irreps_in2,
+            actual_irreps_out,
+            instructions,
+            shared_weights=False,
+            internal_weights=False,
+        )
+
+        self.irreps_in1 = irreps_in1
+        self.irreps_in2 = irreps_in2
+        self.irreps_out = actual_irreps_out
+        self.instructions = instructions
+        self.weight_numel = self.tp.weight_numel
+
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            y: torch.Tensor, 
+            w: torch.Tensor, 
+            edge_index: torch.Tensor, 
+            i: torch.Tensor,
+            j: torch.Tensor,
+            k: torch.Tensor,
+        ) -> torch.Tensor:
+        x_source = x[edge_index][0]
+        x_jk = x_source[j] + x_source[k]
+        return scatter_sum(
+            scatter_sum(
+                self.tp(x_jk, y, w), 
+                i, 
+                dim=0, 
+                dim_size=x_source.size(0)
+            ), 
+            edge_index[1], 
+            dim=0, 
+            dim_size=x.size(0)
+        )
+    
+    
+    
+        
+
+
 class uuuTensorProduct(torch.nn.Module):
     def __init__(
         self,

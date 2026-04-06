@@ -61,9 +61,6 @@ class NormalLoss(torch.nn.Module):
             huber_delta = self.loss_huber_delta[i]
             loss = LOSS_FN[func_name](pred, label, huber_delta)
             total_loss += loss * self.loss_property_weights[i]
-        # if pred["moe_aux_loss"] is not None:
-        #     # print((pred["moe_aux_loss"] / total_loss)* 100)
-        #     total_loss += pred["moe_aux_loss"]
         return total_loss
 
     def __repr__(self):

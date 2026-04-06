@@ -231,3 +231,60 @@ class SphericalHarmonics(torch.nn.Module):
             )
 
         return sh
+
+
+# TODO, toy
+from e3nn.o3 import FullyConnectedTensorProduct
+class GeneralizedSphericalHarmonics(torch.nn.Module):
+    def __init__(
+            self, 
+            irreps_in: Irreps, 
+            irreps_out: Irreps, 
+        ):
+        super().__init__()
+
+        self.irreps_in = Irreps(irreps_in)
+        self.irreps_out = Irreps(irreps_out)
+        self.tp = FullyConnectedTensorProduct(irreps_in, irreps_in, irreps_out)
+
+    def forward(
+            self, 
+            node_attrs: torch.Tensor,
+            edge_attrs: torch.Tensor, 
+            edge_index: torch.Tensor,
+        ):
+
+        device = node_attrs.device
+        row, col = edge_index 
+    
+        sorted_idx = torch.argsort(col)
+        edge_attrs = edge_attrs[sorted_idx]
+        row = row[sorted_idx]
+        col = col[sorted_idx]
+
+        num_nodes = node_attrs.size(0)
+        edge_counts = torch.bincount(col, minlength=num_nodes)
+        edge_cumsum = torch.cumsum(edge_counts, dim=0)
+        start_idx = torch.cat([torch.tensor([0], device=device), edge_cumsum[:-1]])
+        end_idx = edge_cumsum
+
+        pair_idx_i, pair_idx_j, pair_centers = [], [], []
+        for s, e, c in zip(start_idx, end_idx, torch.arange(num_nodes, device=device)):
+            n = e - s
+            if n < 2:
+                continue
+            idx = torch.arange(s, e, device=device)
+            comb = torch.combinations(idx, r=2)
+            pair_idx_i.append(comb[:,0])
+            pair_idx_j.append(comb[:,1])
+            pair_centers.append(torch.full((comb.shape[0],), c, device=device, dtype=torch.long))
+
+        pair_idx_i = torch.cat(pair_idx_i)
+        pair_idx_j = torch.cat(pair_idx_j)
+        pair_centers = torch.cat(pair_centers)
+
+        Y_i = edge_attrs[pair_idx_i]
+        Y_j = edge_attrs[pair_idx_j]
+        Y_pair = self.tp(Y_i, Y_j)
+
+        return pair_centers, pair_idx_i, pair_idx_j, Y_pair

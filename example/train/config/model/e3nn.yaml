@@ -33,21 +33,23 @@ config:
   num_channel: 64 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
   
   radial_basis:
-    radial_basis: j0   # [j0, jn, gaussian]
+    radial_basis: jn   # [j0, jn, gaussian]
     num_radial_basis: 8 # (int) 8-10 for j0 and jn, 8-64 for gaussian 
     distance_transform: null # [null, Agnesi, Soft], this plug-in from mace, if you do not know what it means, never use
-    cutoff_fn: c2poly # [c2poly, c3poly, mollifier, cosine]
+    cutoff_fn: mollifier # [c2poly, c3poly, mollifier, cosine]
     polynomial_cutoff: 5 # (int)
     gaussian_width: 2.0
-    order: 0 # (int), specify order for jn, for j0, it is negligible, for jn
+    order: 10 # (int), specify order for jn, for j0, it is negligible, for jn, <7 stable
     trainable: false # (bool)
-    apply_cutoff: false # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
-    hidden: [64, 64, 64] # list(int)
+    apply_cutoff: true # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
+    hidden: [64, 64, 64, 1024] # list(int)
     bias: false  # (bool)
-
+    use_dydynamic_cutoff: false
+    dydynamic_cutoff_mu: 40
+   
   resnet: 
     type: BB # [BB, BB_ba, BB_baA] A = atomic_basis, B = product_basis, control how resnet connect
-    linear_type: agnostic # [aware, agnostic, identity]
+    linear_type: aware # [aware, agnostic]
     use_first_resnet: false
 
   layer_norm:
@@ -60,27 +62,23 @@ config:
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: sigmoid_gate # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    nonlinear: null # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
     edge_info_type: mlp
-    num_experts: 4
-    top_k: 2
-    num_shared_experts: 1
+    num_experts: null
+    top_k: null
+    num_shared_experts: null
       
   product_basis:
-    type: matrix  # [spectral, spatial, identity, identity, agnostic] # [spectral, spatial, identity, moe]
+    type: spectral  # [spectral, spatial, identity, identity, agnostic] # [spectral, spatial, identity, moe]
     l1l2: null  # [null, <=]
     ictp_ictc_like: true
     correlation: 3 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
-    num_channel: ${model.config.num_channel}
+    num_channel: null
     # below only useful for spatial product basis
     num_latitude: null
     num_longitude: null
     truncation: ${model.config.lmax}
-    trainable_scale: true
-    num_experts: 4 
-    top_k: 2
-    num_shared_experts: 0
-    nonlinear: sigmoid_norm
+    trainable_scale: false
    
   readout_emlp:
     bias: false
@@ -90,7 +88,7 @@ config:
 
   scale_shift:
     scale_type: rms_forces # [null, rms_forces, rms_forcesrms_forces_by_element]
-    shift_type: mean_delta_energy_per_atom_by_element # [null, rms_forces, rms_forcesrms_forces_by_element]
+    shift_type: null # [null, rms_forces, rms_forcesrms_forces_by_element]
     scale_trainable: false # (bool) 
     shift_trainable: false # (bool) 
 

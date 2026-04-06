@@ -41,6 +41,8 @@ DEFAULT_MODEL_CONFIG = {
         "apply_cutoff": True,
         "hidden": [64, 64, 64],
         "gaussian_width": 2.0,
+        'use_dydynamic_cutoff': False,
+        'dydynamic_cutoff_mu': 40,
     },
     "angular_basis": {
     },
@@ -60,6 +62,7 @@ DEFAULT_MODEL_CONFIG = {
         "type": "BB",
         "linear_type": 'aware',
         "use_first_resnet": False,
+        "window": None,
     },
     "layer_norm": {
         "pre_norm_type": None,
@@ -76,9 +79,6 @@ DEFAULT_MODEL_CONFIG = {
         "truncation": None,
         "trainable_scale": True,
         "num_channel": None,
-        "num_experts": None,
-        "num_shared_experts": None,
-        "top_k": None,
         "nonlinear": None,
     },
     "readout_emlp": {
