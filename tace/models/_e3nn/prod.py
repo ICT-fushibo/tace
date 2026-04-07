@@ -18,6 +18,7 @@ from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
 from .matrix import MatrixTensorProduct
 
+
 class SpectralLinearACE(Product):
     
     def _setup(self):
@@ -70,7 +71,7 @@ class SpectralLinearACE(Product):
             self.irreps_out,
             bias=self.use_bias
         )    
-
+        
     def forward(
             self, 
             node_feats: torch.Tensor, 
@@ -446,211 +447,86 @@ class MatrixLinearACE(Product):
             outs = outs + sc
 
         return outs
+
+
+class MoENonLinearACE(Product):
     
+    def _setup(self):
 
-# class GatedLinearUnitACE(Product):
-    
-#     def _setup(self):
+        self.aces = torch.nn.ModuleList()
+        self.coefs = torch.nn.ModuleList()
+        self.coefs.append(
+            ElementLinear(
+                self.irreps_in,
+                self.irreps_hidden,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+            )    
+        )
 
-#         self.aces = torch.nn.ModuleList()
-#         self.coefs = torch.nn.ModuleList()
-#         self.coefs.append(
-#             NONLINEAR_ACE[self.nonlinear_type](
-#                 self.irreps_in,
-#                 self.irreps_hidden,
-#                 activation=ACTIVATION[self.nonlinear_act](),
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#             )    
-#         )
+        product_in1 = self.irreps_in
+        if self.correlation == 2:
+            product_out = self.irreps_hidden
+        else:
+            product_out = self.irreps_in 
 
-#         product_in1 = self.irreps_in
-#         if self.correlation == 2:
-#             product_out = self.irreps_out
-#         else:
-#             product_out = self.irreps_in 
+        for nu in range(2, self.correlation+1):
 
-#         self.shapes = []
+            this_ace = uuuTensorProduct(
+                irreps_in1=product_in1,
+                irreps_in2=self.irreps_in,
+                irreps_out=product_out,
+                l1l2=self.l1l2,
+                ictp_ictc_like=self.ictp_ictc_like,
+            )
+            self.aces.append(this_ace)
+            self.coefs.append(
+                ElementLinear(
+                    this_ace.irreps_out.simplify(),
+                    self.irreps_hidden,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )    
+            )
 
-#         for nu in range(2, self.correlation+1):
-#             instructions, irreps_out = generate_e3nn_paths(
-#                 irreps_out=product_out,
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 l1l2=self.l1l2,
-#                 ictp_ictc_like=self.ictp_ictc_like,
-#                 e3nn_mode='uuu'
-#             )
+            product_in1 = this_ace.irreps_out
 
-#             this_ace = o3.TensorProduct(
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 irreps_out=irreps_out,
-#                 instructions=instructions,
-#                 internal_weights=False,
-#                 shared_weights=False,
-#             )
-#             self.aces.append(this_ace)
-#             self.coefs.append(
-#                 NONLINEAR_ACE[self.nonlinear_type](
-#                     this_ace.irreps_out.simplify(),
-#                     self.irreps_hidden,
-#                     activation=ACTIVATION[self.nonlinear_act](),
-#                     bias=self.use_bias,
-#                     num_elements=self.num_elements,
-#                 )    
-#             )
-
-#             product_in1 = this_ace.irreps_out
-
-#             if nu == self.correlation-1:
-#                 product_out = self.irreps_out
-#             else:
-#                 product_out = self.irreps_in
-
-#         self.linear = Linear(
-#             self.irreps_hidden,
-#             self.irreps_out,
-#             bias=self.use_bias
-#         )    
-
-#     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
-#             node_attrs: torch.Tensor,
-#             node_env: torch.Tensor,
-#             sc: torch.Tensor,
-#         ) -> torch.Tensor:
-
-#         corr_feats = {
-#             1: node_feats,
-#         }
-#         outs = self.coefs[0](corr_feats[1], node_attrs)
-
-#         for nu in range(2, self.correlation+1):
-#             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-#             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
-#         outs = self.linear(outs)
-
-#         if sc is not None:
-#             outs = outs + sc
-
-#         return outs
+            if nu == self.correlation-1:
+                product_out = self.irreps_out
+            else:
+                product_out = self.irreps_in
 
 
-# class MixtralExpertsGatedLinearUnitACE(Product):
-    
-#     def _setup(self):
 
-#         self.router = torch.nn.ModuleList(
-#             Linear(
-#                 f"{self.num_channel}x0e",
-#                 f"{self.num_experts}x0e",
-#                 bias=False,
-#             ) for _ in range(self.correlation)
-#         )
+        self.linear = Linear(
+            self.irreps_hidden,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
         
-#         self.aces = torch.nn.ModuleList()
-#         self.coefs = torch.nn.ModuleList()
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
 
-#         self.coefs.append(
-#             MixtralExpertsGateGatedLinearUnit(
-#                 self.irreps_in,
-#                 self.irreps_hidden,
-#                 activation=ACTIVATION[self.nonlinear_act](),
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#                 num_experts=self.num_experts,
-#                 num_shared_experts=self.num_shared_experts,
-#             )    
-#         )
+        corr_feats = {
+            1: node_feats,
+        }
+        outs = self.coefs[0](corr_feats[1], node_attrs)
 
-#         product_in1 = self.irreps_in
-#         if self.correlation == 2:
-#             product_out = self.irreps_out
-#         else:
-#             product_out = self.irreps_in 
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 
-#         self.shapes = []
+        outs = self.linear(outs)
 
-#         for nu in range(2, self.correlation+1):
-#             instructions, irreps_out = generate_e3nn_paths(
-#                 irreps_out=product_out,
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 l1l2=self.l1l2,
-#                 ictp_ictc_like=self.ictp_ictc_like,
-#                 e3nn_mode='uuu'
-#             )
+        if sc is not None:
+            outs = outs + sc
 
-#             this_ace = o3.TensorProduct(
-#                 irreps_in1=product_in1,
-#                 irreps_in2=self.irreps_in,
-#                 irreps_out=irreps_out,
-#                 instructions=instructions,
-#                 internal_weights=False,
-#                 shared_weights=False,
-#             )
-#             self.aces.append(this_ace)
-#             self.coefs.append(
-#                 MixtralExpertsGateGatedLinearUnit(
-#                     this_ace.irreps_out.simplify(),
-#                     self.irreps_hidden,
-#                     bias=self.use_bias,
-#                     activation=ACTIVATION[self.nonlinear_act](),
-#                     num_elements=self.num_elements,
-#                     num_experts=self.num_experts,
-#                     num_shared_experts=self.num_shared_experts,
-#                 )    
-#             )
-
-#             product_in1 = this_ace.irreps_out
-
-#             if nu == self.correlation-1:
-#                 product_out = self.irreps_out
-#             else:
-#                 product_out = self.irreps_in
-
-#         self.linear = Linear(
-#             self.irreps_hidden,
-#             self.irreps_out,
-#             bias=self.use_bias
-#         )
-
-#     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
-#             node_attrs: torch.Tensor,
-#             node_env: torch.Tensor,
-#             sc: torch.Tensor,
-#         ) -> torch.Tensor:
-#         gate_logits = self.router[0](node_env)
-#         gate_probs = torch.softmax(gate_logits, dim=-1)
-#         topk_probs, topk_idx = torch.topk(gate_probs, k=self.top_k, dim=-1) 
-#         gate_probs_sparse = torch.zeros_like(gate_probs)
-#         gate_probs_sparse.scatter_(-1, topk_idx, topk_probs / (topk_probs.sum(-1, keepdim=True)))
-#         corr_feats = {
-#             1: node_feats,
-#         }
-#         outs = self.coefs[0](corr_feats[1], node_attrs, gate_probs_sparse)
-
-#         for nu in range(2, self.correlation+1):
-#             gate_logits = self.router[nu-1](node_env)
-#             gate_probs = torch.softmax(gate_logits, dim=-1)
-#             topk_probs, topk_idx = torch.topk(gate_probs, k=self.top_k, dim=-1) 
-#             gate_probs_sparse = torch.zeros_like(gate_probs)
-#             gate_probs_sparse.scatter_(-1, topk_idx, topk_probs / (topk_probs.sum(-1, keepdim=True)))
-#             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-#             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs, gate_probs_sparse)
-
-#         outs = self.linear(outs)
-
-#         if sc is not None:
-#             outs = outs + sc
-
-#         return outs
+        return outs
     
-
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": SpectralLinearACE,
     "spectral": SpectralLinearACE, # TODO, refacor
@@ -660,11 +536,9 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "GTP": SpatialLinearACE,
     "matrix": MatrixLinearACE,
     "MTP": MatrixLinearACE,
-
     # special
     "agnostic": AgnosticLinearACE,
     "identity": IdentityLinearACE,
-    # "glu": GatedLinearUnitACE,
-    # "moe": MixtralExpertsGatedLinearUnitACE,
+    "moe": IdentityLinearACE,
 }
 

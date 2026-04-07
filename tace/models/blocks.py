@@ -7,6 +7,10 @@ from typing import List, Dict
 
 
 import torch
+from e3nn import o3
+
+from .angular import SphericalHarmonics
+from .s2 import FibonacciLattice
 
 
 def format_list(obj, ndigits=4):
@@ -194,3 +198,23 @@ class ScaleShift(torch.nn.Module):
             shift_trainable=cfg["shift_trainable"],
         )
 
+
+# class kSphericalHarmonics(torch.nn.Module):
+#     def __init__(
+#         self,
+#         num_sample: int,
+#         lmax: int
+#     ):
+#         super().__init__()
+
+#         sh = SphericalHarmonics(
+#             irreps_out=o3.Irreps.spherical_harmonics(lmax, p=-1),
+#             normalize=False,
+#         )
+#         k = FibonacciLattice.generate(num_sample) # [num_sammple, 3]
+#         ksh = sh(k)
+#         self.register_buffer("k")
+
+
+
+#     def forward(self, node_energy, node_attrs, ptr, edge_index, batch, node_fidelity):

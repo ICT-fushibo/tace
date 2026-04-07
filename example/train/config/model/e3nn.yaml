@@ -19,7 +19,7 @@ config:
     }
 
   node_embedding: 
-    type: linear    # [linear, nonlinear, surrounding, group], linear is safer
+    type: surrounding    # [linear, nonlinear, surrounding, group], linear is safer
 
   edge_embedding: 
     type: identity # identity  # [identity, linear, nonlinear, element, group], identity is safer
@@ -33,13 +33,13 @@ config:
   num_channel: 64 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
   
   radial_basis:
-    radial_basis: jn   # [j0, jn, gaussian]
+    radial_basis: ej0   # [j0, jn, gaussian]
     num_radial_basis: 8 # (int) 8-10 for j0 and jn, 8-64 for gaussian 
     distance_transform: null # [null, Agnesi, Soft], this plug-in from mace, if you do not know what it means, never use
-    cutoff_fn: mollifier # [c2poly, c3poly, mollifier, cosine]
+    cutoff_fn: c2poly # [c2poly, c3poly, mollifier, cosine]
     polynomial_cutoff: 5 # (int)
     gaussian_width: 2.0
-    order: 10 # (int), specify order for jn, for j0, it is negligible, for jn, <7 stable
+    order: 0 # (int), specify order for jn, for j0, it is negligible, for jn, <7 stable
     trainable: false # (bool)
     apply_cutoff: true # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
     hidden: [64, 64, 64, 1024] # list(int)
@@ -62,7 +62,7 @@ config:
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: null # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    nonlinear: sigmoid_gate # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
     edge_info_type: mlp
     num_experts: null
     top_k: null

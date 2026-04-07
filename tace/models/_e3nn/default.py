@@ -47,16 +47,16 @@ DEFAULT_MODEL_CONFIG = {
     "angular_basis": {
     },
     "atomic_basis": {
-        "type": "normal",
+        "type": "cgtp",
         "edge_info_type": "mlp",
-        "scatter_norm": "density",
-        "nonlinear": None,
+        "scatter_norm": "avg_num_neighbors",
+        "nonlinear": "sigmoid_gate",
         "l1l2": None,
         "ictp_ictc_like": True,
-        "num_experts": None,
-        "num_shared_experts": None,
-        "top_k": None,
-        "moe_channel": None,
+        # "num_experts": None,
+        # "num_shared_experts": None,
+        # "top_k": None,
+        # "moe_channel": None,
     },
     "resnet": {
         "type": "BB",
@@ -64,11 +64,11 @@ DEFAULT_MODEL_CONFIG = {
         "use_first_resnet": False,
         "window": None,
     },
-    "layer_norm": {
-        "pre_norm_type": None,
-        "final_norm_type": None,
-        "use_first_pre_norm": False,
-    },
+    # "layer_norm": {
+    #     "pre_norm_type": None,
+    #     "final_norm_type": None,
+    #     "use_first_pre_norm": False,
+    # },
     "product_basis": {
         "type": "coupled",
         "l1l2": None,

@@ -3,12 +3,12 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Optional
-
 
 import torch
-from tace.utils.torch_scatter import scatter_sum
+from tace.utils.torch_scatter import scatter_mean
 from e3nn.nn import Activation
+from e3nn import o3
+
 
 from .base import NodeEmbedding
 from .linear import Linear
@@ -17,6 +17,8 @@ from .linear import Linear
 class LinearNodeEmbedding(NodeEmbedding):
     
     def _setup(self) -> None:
+
+        self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
 
         self.elem_emb1 = Linear(
             f"{self.num_elements}x0e",
@@ -29,6 +31,7 @@ class LinearNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        edge_vector: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
@@ -38,6 +41,8 @@ class LinearNodeEmbedding(NodeEmbedding):
 class NonlinearNodeEmbedding(NodeEmbedding):
     
     def _setup(self) -> None:
+
+        self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
 
         self.elem_emb1 = Linear(
             f"{self.num_elements}x0e",
@@ -51,6 +56,7 @@ class NonlinearNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        edge_vector: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
@@ -61,6 +67,8 @@ class GroupNodeEmbedding(NodeEmbedding):
     
     def _setup(self) -> None:
         
+        self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
+
         self.num_groups = 32
 
         self.elem_emb1 = Linear(
@@ -90,6 +98,7 @@ class GroupNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        edge_vector: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
          
@@ -107,6 +116,8 @@ class GroupNodeEmbedding(NodeEmbedding):
 class SurroundingNodeEmbedding(NodeEmbedding):
 
     def _setup(self) -> None:
+
+        self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
 
         self.elem_emb1 = Linear(
             f"{self.num_elements}x0e",
@@ -128,23 +139,23 @@ class SurroundingNodeEmbedding(NodeEmbedding):
             f"{self.num_channel}x0e",
             bias=self.bias,
         )
+        self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
 
     def forward(
         self,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        edge_vector: torch.Tensor,
+        cutoff: torch.Tensor
     ) -> torch.Tensor:
 
         source, target = edge_index
         n_i = self.elem_emb1(node_attrs)
         e_ij = self.elem_emb2(node_attrs)[source]
-        w_ij = self.radial_proj(edge_feats)
-        if cutoff is not None:
-            w_ij = w_ij * cutoff
+        w_ij = self.act1(self.radial_proj(edge_feats))
         m_ij = e_ij * w_ij
-        m_i = scatter_sum(
+        m_i = scatter_mean(
             m_ij,
             target,
             dim=0,
@@ -155,8 +166,6 @@ class SurroundingNodeEmbedding(NodeEmbedding):
             torch.cat([n_i, m_i], dim=-1)
         )
     
-
-
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonlinearNodeEmbedding,

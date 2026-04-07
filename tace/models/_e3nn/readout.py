@@ -51,7 +51,7 @@ class ScalarReadOut(ReadOut):
                     Linear(
                         irreps_in,
                         irreps_out,
-                        bias=self.bias,
+                        bias=self.use_bias,
                     )
                 )
             self.last_layer = True
@@ -61,7 +61,7 @@ class ScalarReadOut(ReadOut):
                     Linear(
                         irreps_in=self.irreps_in,
                         irreps_out=self.irreps_out,
-                        bias=self.bias,
+                        bias=self.use_bias,
                     )
                 ]
             )
@@ -82,27 +82,48 @@ class TensorReadOut(ReadOut):
     def _setup(self):
 
         if self.layer == self.num_layers-1: 
-            self.linear1 = Linear(
-                irreps_in=self.irreps_in,
-                irreps_out=self.irreps_hidden + self.irreps_gates,
-                bias=self.bias,
+
+            self.linear2 = torch.nn.ModuleList()
+            self.acts = torch.nn.ModuleList()
+            for irreps_gates, irreps_gated in zip(self.irreps_gates, self.irreps_hidden):
+                self.acts.append(
+                    GatedLinearUnit(
+                        irreps_gates=irreps_gates,
+                        act_gates=[ACTIVATION[self.tensor_act]()],
+                        irreps_gated=irreps_gated,
+                    )
+                )
+            for idx, (irreps_in, irreps_out) in enumerate(
+                zip(
+                    ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[:-2],
+                    ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:-1]
+                )
+            ):
+                self.linear2.append(
+                    Linear(
+                    irreps_in=irreps_in,
+                    # irreps_out=f"{irreps_out.num_irreps}x0e+" + str(irreps_out),
+                    irreps_out=self.acts[idx].irreps_in,
+                    bias=self.use_bias,
+                )
             )
-            self.act = GatedLinearUnit(
-                irreps_gates=self.irreps_gates,
-                act_gates=[ACTIVATION[self.tensor_act]()] * len(self.irreps_gates),
-                irreps_gated=self.irreps_hidden,
-            )
-            self.linear2 = Linear(
-                irreps_in=self.irreps_hidden,
-                irreps_out=self.irreps_out,
-                bias=self.bias,
+            self.linear2.append(
+                Linear(
+                    irreps_in=self.irreps_hidden[-1],
+                    irreps_out=self.irreps_out,
+                    bias=self.use_bias,
+                )
             )
             self.last_layer = True
         else:
-            self.linear1 = Linear(
-                irreps_in=self.irreps_in,
-                irreps_out=self.irreps_hidden,
-                bias=self.bias,
+            self.linear1 = torch.nn.ModuleList(
+                [
+                    Linear(
+                        irreps_in=self.irreps_in,
+                        irreps_out=self.irreps_out,
+                        bias=self.use_bias,
+                    )
+                ]
             )
             self.last_layer = False
         
@@ -110,11 +131,12 @@ class TensorReadOut(ReadOut):
         self, x: torch.Tensor, node_fidelity: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         if not self.last_layer:
-            return self.linear1(x)
-        x = self.act(self.linear1(x))
-        if self.num_fidelities > 1:
-            x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
-        return self.linear2(x)
+            return self.linear1[0](x)
+        for idx, linear in enumerate(self.linear2[:-1]):
+            x = self.acts[idx](linear(x))
+            if self.num_fidelities > 1:
+                x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
+        return self.linear2[-1](x)
     
     
 def build_scalar_readout(

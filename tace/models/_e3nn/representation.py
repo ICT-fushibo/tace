@@ -67,6 +67,7 @@ class Representation(torch.nn.Module):
             gaussian_width=radial_basis['gaussian_width'],
             use_dydynamic_cutoff=radial_basis['use_dydynamic_cutoff'],
             dydynamic_cutoff_mu=radial_basis['dydynamic_cutoff_mu'],
+            num_elements=len(atomic_numbers),
         )
 
         # === angular basis ===
@@ -81,6 +82,7 @@ class Representation(torch.nn.Module):
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
+            Lmax=Lmax[0],
             bias=False,
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
@@ -158,10 +160,11 @@ class Representation(torch.nn.Module):
                     resnet_linear_type=resnet['linear_type'],
                     use_first_resnet=resnet['use_first_resnet'],
                     resnet_window=resnet['window'],
-                    num_experts=atomic_basis['num_experts'],
-                    top_k=atomic_basis['top_k'],
-                    num_shared_experts=atomic_basis['num_shared_experts'],
+                    # num_experts=atomic_basis['num_experts'],
+                    # top_k=atomic_basis['top_k'],
+                    # num_shared_experts=atomic_basis['num_shared_experts'],
                     num_hidden_channel=product_basis['num_channel'],
+                    irreps_node_embedding=self.node_embedding.irreps_out,
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -195,9 +198,6 @@ class Representation(torch.nn.Module):
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
-        lmp = graph.lmp
-        nlocal, _ = graph.lmp_natoms
-
         # === edge initialize (radial) ===
         edge_feats, cutoff = self.radial_basis(
             graph.edge_length,
@@ -212,6 +212,7 @@ class Representation(torch.nn.Module):
             data['node_attrs'],
             edge_feats,
             data['edge_index'],
+            graph.edge_vector,
             cutoff,
         )
         if hasattr(self, "uie_embedding"):
@@ -248,8 +249,8 @@ class Representation(torch.nn.Module):
                 edge_feats, 
                 data['edge_index'],
             )
-            if lmp and idx > 0:
-                node_attrs_slice = node_attrs_slice[:nlocal]
+            if graph.lmp and idx > 0:
+                node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]]
             node_feats, sc = inter(
                 node_feats,
                 node_attrs_total, 
@@ -261,8 +262,8 @@ class Representation(torch.nn.Module):
                 graph,
                 prev_feats,
             )
-            if lmp and idx == 0:
-                node_attrs_slice = node_attrs_slice[:nlocal] 
+            if graph.lmp and idx == 0:
+                node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
             node_feats = prod(node_feats, node_attrs_slice, sc)

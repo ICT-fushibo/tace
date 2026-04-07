@@ -35,10 +35,10 @@ Install from Source (recommended)
     pip install openequivariance
 
     # cuda12
-    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+    pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
     # cuda13
-    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+    pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
 Install via pip (not recommended)
 ---------------------------------
@@ -53,8 +53,8 @@ Install via pip (not recommended)
     pip install openequivariance
 
     # cuda12
-    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+    pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
     # cuda13
-    cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+    pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 

@@ -230,7 +230,9 @@ class SpectralInteraction(Interaction):
         
         return m_i, self.truncate_ghosts(sc, nlocal)
     
+
 INTERACTION: Dict[str, Interaction] = {
     "normal": SpectralInteraction,
     "spectral": SpectralInteraction,
+    "cgtp": SpectralInteraction,
 }

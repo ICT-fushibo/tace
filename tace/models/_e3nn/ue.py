@@ -8,7 +8,7 @@ from typing import Dict
 
 import torch
 from e3nn import o3
-
+from e3nn.nn import Activation
 
 from ...dataset.quantity import PROPERTY
 from ..utils import expand_dims_to
@@ -54,7 +54,7 @@ class UniversalInvariantEmbedding(torch.nn.Module):
         out_dim: int,
         invariant_embedding: Dict[str, bool | str | int],
         bias: bool,
-        act: str,
+        activation: str,
     ):
         super().__init__()
 
@@ -66,21 +66,17 @@ class UniversalInvariantEmbedding(torch.nn.Module):
             if p_type == "int":
                 self.uie[k] = torch.nn.Embedding(v["num_embeddings"], out_dim)
             elif p_type == "float":
-                self.uie[k] = MLP(
-                    [1, out_dim, out_dim],
-                    bias=bias,
-                    layer_norm=False,
-                    act=act,
-                )
+                self.uie[k] = MLP([1, out_dim, out_dim], bias=bias)
+            else:
+                raise
             total_dim += out_dim
 
         self.project = MLP(
             [total_dim, out_dim],
             bias=bias,
             layer_norm=False,
-            act=act,
         )
-        self.act = ACTIVATION[act]()
+        self.act = Activation(f"{out_dim}x0e", [ACTIVATION[activation]()])
 
     def forward(
         self,

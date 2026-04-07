@@ -28,6 +28,7 @@ class NodeEmbedding(torch.nn.Module):
         num_elements: int,
         num_radial_basis: int,
         num_channel: int,
+        Lmax: int,
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -36,6 +37,7 @@ class NodeEmbedding(torch.nn.Module):
         self.num_radial_basis = num_radial_basis
         self.num_channel = num_channel
         self.bias = bias
+        self.Lmax = Lmax
 
         self._setup()
     
@@ -151,6 +153,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_radial_basis: int,
         radial_mlp: List[int],
         radial_bias: bool,
+        irreps_node_embedding: o3.Irreps,
         l1l2: Optional[str] = None,
         scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
@@ -159,11 +162,11 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         edge_info_type: str = 'mlp',
         resnet_type: str | List[str] = 'BB',
         resnet_linear_type: str = 'aware',
-        use_first_resnet: bool = False,
-        num_experts: int | None = None,
-        top_k: int | None = None,
-        num_shared_experts: int | None = None,
         resnet_window: int | None = None,
+        use_first_resnet: bool = False,
+        # num_experts: int | None = None,
+        # top_k: int | None = None,
+        # num_shared_experts: int | None = None,
         num_hidden_channel: int | None = None,
     ) -> None:
         super().__init__()
@@ -203,9 +206,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'sigmoid'
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
-        self.num_experts = num_experts
-        self.top_k = top_k
-        self.num_shared_experts = num_shared_experts or 0
+        # self.num_experts = num_experts
+        # self.top_k = top_k
+        # self.num_shared_experts = num_shared_experts or 0
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
         if num_hidden_channel is not None:
@@ -220,7 +223,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.irreps_out = _to_full_so3_irreps(self.lmax, self.num_channel)
             self.irreps_hidden = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
         if layer == 0:
-            self.irreps_in = o3.Irreps(f'{self.num_channel}x0e')
+            self.irreps_in = irreps_node_embedding
         else:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
         if self.layer == num_layers - 1:
@@ -328,7 +331,7 @@ class ReadOut(torch.nn.Module):
         self.num_channel = num_channel
         self.Lmax = Lmax[layer]
         self.lmax = lmax
-        self.bias = bias
+        self.use_bias = bias
         self.num_fidelities = num_fidelities
         self.l = l
         self.scalar_act = 'silu'
