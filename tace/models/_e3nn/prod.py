@@ -18,11 +18,11 @@ from .base import Product
 from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
 from .matrix import MatrixTensorProduct
-from .nonlinear import GatedLinearUnit, MixtralExpertsGatedLinearUnit, NormLinearUnit, GridMLPUnit
+from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
 
 
-class SpectralLinearACE(Product):
+class CGTP_ACE(Product):
     
     def _setup(self):
 
@@ -99,7 +99,7 @@ class SpectralLinearACE(Product):
         return outs
     
 # TODO, refactor
-class SpatialLinearACE(Product):
+class GTP_ACE(Product):
 
     def _setup(self):
 
@@ -292,7 +292,7 @@ class SpatialLinearACE(Product):
         return f"{self.__class__.__name__}(nlon={self.num_longitude}, nlat={self.num_latitude}, truncation={self.truncation})"
     
 
-class AgnosticLinearACE(Product):
+class Agnostic_ACE(Product):
     
     def _setup(self):
 
@@ -366,7 +366,7 @@ class AgnosticLinearACE(Product):
         return outs
 
 
-class IdentityLinearACE(Product):
+class Identity_ACE(Product):
 
     def _setup(self):
 
@@ -399,7 +399,7 @@ class IdentityLinearACE(Product):
         return outs
     
 
-class MatrixLinearACE(Product):
+class MTP_ACE(Product):
     
     def _setup(self):
 
@@ -452,86 +452,7 @@ class MatrixLinearACE(Product):
         return outs
 
 
-class MoENonLinearACE(Product):
-    
-    def _setup(self):
-
-        self.aces = torch.nn.ModuleList()
-        self.coefs = torch.nn.ModuleList()
-        self.coefs.append(
-            ElementLinear(
-                self.irreps_in,
-                self.irreps_hidden,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-            )    
-        )
-
-        product_in1 = self.irreps_in
-        if self.correlation == 2:
-            product_out = self.irreps_hidden
-        else:
-            product_out = self.irreps_in 
-
-        for nu in range(2, self.correlation+1):
-
-            this_ace = uuuTensorProduct(
-                irreps_in1=product_in1,
-                irreps_in2=self.irreps_in,
-                irreps_out=product_out,
-                l1l2=self.l1l2,
-                ictp_ictc_like=self.ictp_ictc_like,
-            )
-            self.aces.append(this_ace)
-            self.coefs.append(
-                ElementLinear(
-                    this_ace.irreps_out.simplify(),
-                    self.irreps_hidden,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )    
-            )
-
-            product_in1 = this_ace.irreps_out
-
-            if nu == self.correlation-1:
-                product_out = self.irreps_out
-            else:
-                product_out = self.irreps_in
-
-
-
-        self.linear = Linear(
-            self.irreps_hidden,
-            self.irreps_out,
-            bias=self.use_bias
-        )    
-        
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-        ) -> torch.Tensor:
-
-        corr_feats = {
-            1: node_feats,
-        }
-        outs = self.coefs[0](corr_feats[1], node_attrs)
-
-        for nu in range(2, self.correlation+1):
-            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
-
-        outs = self.linear(outs)
-
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-    
-
-class NonLinearACE(Product):
+class NonLinear_ACE(Product):
     
     def _setup(self):
 
@@ -656,18 +577,23 @@ class NonLinearACE(Product):
     
 
 PRODUCT: Dict[str, torch.nn.Module] = {
-    "coupled": SpectralLinearACE,
-    "spectral": SpectralLinearACE, # TODO, refacor
-    "CGTP": SpectralLinearACE,
-    "grid": SpatialLinearACE,
-    "spatial": SpatialLinearACE,
-    "GTP": SpatialLinearACE,
-    "matrix": MatrixLinearACE,
-    "MTP": MatrixLinearACE,
+    "coupled": CGTP_ACE,
+    "spatial": CGTP_ACE,
+    "cgtp": CGTP_ACE,
+
+    "spectral": GTP_ACE,
+    "grid": GTP_ACE,
+    "gtp": GTP_ACE,
+
+    "matrix": MTP_ACE,
+    "mtp": MTP_ACE,
+
+    "nonlinear": NonLinear_ACE,
+    "glu": NonLinear_ACE,
+
     # special
-    "agnostic": AgnosticLinearACE,
-    "identity": IdentityLinearACE,
-    "moe": IdentityLinearACE,
-    "glu": NonLinearACE,
+    "agnostic": Agnostic_ACE,
+    "identity": Identity_ACE,
+
 }
 

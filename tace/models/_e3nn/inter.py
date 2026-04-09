@@ -24,7 +24,7 @@ from .layer_norm import get_normalization_layer
 from .residual import RESIDUAL, AttentionResidual
 
 
-class SpectralInteraction(Interaction):
+class CGTP_Interaction(Interaction):
     def _setup(self) -> None:
 
         self.linear_up = Linear(
@@ -232,7 +232,7 @@ class SpectralInteraction(Interaction):
     
 
 INTERACTION: Dict[str, Interaction] = {
-    "normal": SpectralInteraction,
-    "spectral": SpectralInteraction,
-    "cgtp": SpectralInteraction,
+    "normal": CGTP_Interaction,
+    "spectral": CGTP_Interaction,
+    "cgtp": CGTP_Interaction,
 }

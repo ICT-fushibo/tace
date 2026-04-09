@@ -60,10 +60,17 @@ def _parse_hf_resolve_url(url: str) -> tuple[str, str, str]:
 
 
 class CachedModelRegistry(Mapping):
-    def __init__(self, registry: dict[str, str]):
+    def __init__(self, registry: dict[str, str], legacy: dict[str, str]):
         self._registry = registry
+        self._legacy = legacy
 
     def __getitem__(self, key: str) -> Path:
+
+        if key in self._legacy:
+            print(f"[ERROR], Legacy pretrained model: {key}")
+            self.print_models()
+            raise KeyError(key)
+        
         if key not in self._registry:
             print(f"[ERROR], Unknown pretrained model: {key}")
             self.print_models()
@@ -114,5 +121,6 @@ class CachedModelRegistry(Mapping):
 
 
 tace_foundations = CachedModelRegistry(
-    OAM_SERIES | REICO_SERIES
+    registry=OAM_SERIES | REICO_SERIES,
+    legacy=LEGACY
 )

@@ -1,7 +1,3 @@
-.. note::
-
-   If you want to use ``tace``, please use ``tag-v0.1.0`` instead of the latest commit.
-
 Tensor Atomic Cluster Expansion
 ===============================
 .. = - ~ ^ "
@@ -18,7 +14,7 @@ https://tace.readthedocs.io/en/latest/index.html
 
 Tutorial
 --------
-In fact, the docs contain a complete tutorial. However, because TACE supports a 
+The docs contain a complete tutorial. However, because TACE supports a 
 wide range of physical quantities, beginners may find it a bit confusing.  
 In practice, to train additional physical quantities, you only need to modify the 
 corresponding loss and the key of the physical quantity.  
@@ -31,14 +27,7 @@ https://github.com/xvzemin/tace/tree/main/example
    # A simplest training example
    git clone https://github.com/xvzemin/tace.git
    cd tace/example/train
-   tace-train -cn cart_tace.yaml
-
-For tutorial purposes, we will also gradually provide input files for predicting 
-certain physical quantities directly. However, you should note that these may not be directly 
-suitable for production. In actual training, parameters need to be adjusted by yourself. 
-The files we provide are only to help you get started with your training.
-
-https://github.com/xvzemin/tace-fit
+   tace-train -cn tace.yaml
 
 
 Overview

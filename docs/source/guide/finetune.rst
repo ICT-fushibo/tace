@@ -9,8 +9,8 @@ foundation models directly, or finetune your own models.
 Currently, TACE supports two major finetuning strategies. In practice, these two
 strategies are often **used together**:
 
-1. Low-Rank Adaptation (LoRA)
-2. Freezing pretrained parameters
+1. Low-Rank Adaptation (LoRA, tace <= v0.1.0)
+2. Freezing pretrained parameters (LoRA, tace >= v0.1.0)
 
 Motivation for Finetuning
 -------------------------
@@ -71,8 +71,7 @@ Replay Data
 During finetuning, it is possible to mix in a portion of the training data used for
 the foundation model in order to mitigate catastrophic forgetting.
 
-However, in our current practice, we find that **LoRA alone is sufficient** for most
-finetuning scenarios. Therefore, we do not include replay data such as
+However, in our current version, we do not include replay data such as
 multi-fidelity or multi-head training data during finetuning by default.
 
 

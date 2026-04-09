@@ -55,7 +55,8 @@ def main():
         "wandb_logs",
         "lightning_logs",
         "outputs",
-        "checkpoints",
+        "checkpoints_epoch",
+        "checkpoints_step",
         "_full_config.yaml",
         "out.txt",
         "finetune_config.yaml"
@@ -63,8 +64,8 @@ def main():
     ]
     current_dir = Path.cwd()
     target_paths = [current_dir / t for t in targets]
-    extra_stats = list(current_dir.glob("statistics_*.yaml"))
-    target_paths.extend(extra_stats)
+    # extra_stats = list(current_dir.glob("statistics_*.yaml"))
+    # target_paths.extend(extra_stats)
 
 
     if all_under_limit(target_paths):

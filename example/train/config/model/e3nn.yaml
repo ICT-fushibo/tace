@@ -3,29 +3,35 @@ config:
   wrapper:
     _target_: tace.models.TensorModel # [TensorModel]
 
-  cutoff: 5.0 # (float), recommend 6.0
+  cutoff: 6.0 # (float), recommend 6.0
   max_neighbors: null # (null, int) if you want to use tace in lammps, do not use max_neighbors
   atomic_numbers: null # (null, list), null = read from dataset.
+  # fidelity:
+  #   - {
+  #     name: PBE, # (str) custom name
+  #     # (null, Dict[int, float])
+  #     atomic_energy: {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
+  #   }
+
   fidelity:
     - {
-      name: PBE, # (str) custom name
-      # (null, Dict[int, float])
-      atomic_energy: {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
+      name: PBE, 
+      atomic_energy: null
     }
 
   node_embedding: 
     type: linear    # [linear, nonlinear, surrounding, group], linear is safer
 
   edge_embedding: 
-    type: identity # identity  # [identity, linear, nonlinear, element, group], identity is safer
+    type: nonlinear # identity  # [identity, linear, nonlinear, element, group], identity is safer
 
   edge_update:
-    type: tensor_dot  # [identity, element], identity is safer
+    type: element  # [identity, element], identity is safer
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
-  num_layers: 2 # 2 for correlation >=3, can be higher when correlation=2
-  num_channel: 64 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
+  num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
+  num_channel: 48 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
   
   radial_basis:
     radial_basis: j0   # [j0, jn, gaussian]
@@ -37,8 +43,8 @@ config:
     order: 0 # (int), specify order for jn, for j0, it is negligible, for jn, <7 stable
     trainable: false # (bool)
     apply_cutoff: false # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
-    hidden: [64, 64, 64, 1024] # list(int)
-    bias: false  # (bool)
+    hidden: [64, 64] # list(int)
+    bias: true  # (bool)
     use_dydynamic_cutoff: false # in test
     dydynamic_cutoff_mu: 40     # in test
    
@@ -52,37 +58,38 @@ config:
     l1l2: null # [null, <=], restriction for each layer
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: sigmoid_gate # sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    nonlinear: sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
     edge_info_type: mlp # [mlp, glu]
       
   product_basis:
-    type: CGTP  # [cgtp, mtp, gtp, identity, agnostic]
+    type: cgtp  # [cgtp, mtp, gtp, nonlinear, identity, agnostic]
     l1l2: null  # [null, <=]
     ictp_ictc_like: true
-    correlation: 3 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
+    correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
     num_channel: null # (int)
     # below only useful for type=gtp
     num_latitude: null
     num_longitude: null
     truncation: ${model.config.lmax}
     trainable_scale: false
-    nonlinear: sigmoid_gate
-   
+    # below only useful for type=nonlinear
+    nonlinear: sigmoid_gate # [null, sigmoid_gate, sigmoid_norm]
+
   readout_emlp:
     bias: false
     hidden: [16]
-    use_alllayer: true # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
+    use_alllayer: false # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
     use_uie: false
    
   scale_shift:
-    scale_type: rms_forces # [null, rms_forces, rms_forcesrms_forces_by_element]
+    scale_type: rms_forces_by_element # [null, rms_forces, rms_forcesrms_forces_by_element]
     shift_type: null # [null, mean_delta_energy_per_atom, forces, mean_delta_energy_per_atom_by_element]
     scale_trainable: false # (bool) 
     shift_trainable: false # (bool) 
 
   short_range:
     zbl: # metal units
-      enable: false    # recommended true
+      enable: true    # recommended true
       trainable: false # recommended always false
 
   long_range:

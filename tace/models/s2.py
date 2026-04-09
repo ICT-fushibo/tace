@@ -1,3 +1,8 @@
+###############################################################################
+# Authors: Zemin Xu
+# License: MIT, see LICENSE.md
+################################################################################
+
 import logging
 import math
 from typing import Optional

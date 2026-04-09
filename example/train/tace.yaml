@@ -14,20 +14,20 @@ finetune_from_model: null
 finetune: null # this field equals ./finetune_config.yaml, auto read or write directly here
 
 misc:
-  project_name: 3bpa
+  project_name: BaTiO3
   global_seed: 42 
   device: cuda # cpu or cuda
-  allow_tf32: false
+  allow_tf32: true
   ignore_warning: true 
   log_level: debug # debug
   env: # You can specify here the environment variables that should always be used.
     WANDB_MODE: offline # For the convenience of Chinese users
   LossSkipController:
     enable: false
-    manual_threshold: 1e4
-    start_step: 0
+    manual_threshold: 1e6
+    start_step: 1000
     ema_window: 1000
-    multiplier: 1e4
+    multiplier: 1e6
     skip_nan: true
     skip_large: true
 
@@ -47,7 +47,7 @@ trainer:
   #   _target_: tace.utils.strategy.SimpleDDPStrategy                                                  
   gradient_clip_val: 10.0 
   enable_progress_bar: true # If you don't want to see the progress bar, you can turn it off
-  log_every_n_steps: 50
+  log_every_n_steps: 1000
 
   # Generally, no modification is required
   enable_model_summary: true
@@ -65,45 +65,41 @@ callbacks:
     log_rank_zero_only: true
     monitor: ${synth_metric.monitor_metric_name}
     # min_delta: 1e-5 
-    patience: 100
+    patience: 30
 
   ema: # ema is always recommended
     _target_: tace.utils.callbacks.EMACallback
-    decay: 0.99 # 0.99 - 0.999
+    decay: 0.999 # 0.99 - 0.999
     use_num_updates: true
 
-  checkpoint: # at leas one checkpoint and key=checkpoint is required
+  checkpoint_epoch: # at leas one checkpoint is required
     _target_: lightning.pytorch.callbacks.ModelCheckpoint
-    dirpath: checkpoints
-    filename: TACE-3BPA-{epoch}-{step}-{${synth_metric.monitor_metric_name}:.4f}
-    monitor: ${synth_metric.monitor_metric_name}
-    save_top_k: 3
-    save_last: false
-    #every_n_epochs: 1
-    # every_n_train_steps: 2000
+    dirpath: checkpoints_epoch
+    filename: TACE-{${misc.project_name}-{epoch}-{step}-{${synth_metric.monitor_metric_name}:.4f}
+    # monitor: ${synth_metric.monitor_metric_name}
+    save_top_k: -1
+    save_last: true
+    every_n_epochs: 10
     # mode: min
     save_weights_only: false
     auto_insert_metric_name: false
     verbose: false
 
-  # checkpoint2: 
-  #   _target_: lightning.pytorch.callbacks.ModelCheckpoint
-  #   dirpath: checkpoints2
-  #   filename: TACE-3BPA-{epoch}-{step}
-  #   # monitor: ${synth_metric.monitor_metric_name}
-  #   save_top_k: -1
-  #   save_last: false
-  #   #every_n_epochs: 1
-  #   every_n_train_steps: 25
-  #   # mode: min
-  #   save_weights_only: false
-  #   auto_insert_metric_name: false
-  #   verbose: false
+  checkpoint_step: 
+    _target_: lightning.pytorch.callbacks.ModelCheckpoint
+    dirpath: checkpoints2
+    filename: TACE-3BPA-{epoch}-{step}
+    save_top_k: -1
+    save_last: false
+    every_n_train_steps: 10000
+    save_weights_only: false
+    auto_insert_metric_name: false
+    verbose: false
 
 dataset:
   type: ase # ase or ase-db
   split_seed: ${misc.global_seed} # this random seed is useful if auto split
-  train_file: dataset/train_300K.xyz
+  train_file: ../data/BaTiO3.xyz
   valid_file: null                
   # test_files: # (null, str, list) recoomend to use tace-eval --test 1 to print test errors to avoild possible bugs
   #   - dataset/test_300K.xyz
@@ -119,7 +115,7 @@ dataset:
     - graphCache
   # If using LMDB mode, you must allocate a reasonable pre-storage size.  
   # Generally, if the number of neighboring atoms is around 60, about 200 KB per graph is sufficient.
-  shard_size: 10000 # number of graphs stored per file in LMDB mode, should be large, here is just an example, if small, it will be slow and may be error
+  shard_size: 100000 # number of graphs stored per file in LMDB mode, should be large, here is just an example, if small, it will be slow and may be error
   cache_size: 1024 # cache for faster load data from dataloader
   avg_graph_size_in_KB: 200 # in KB, the total disk usage equals the size of this multiplied by the total number of your structures.
   lmdb_wait_timeout: 86400 # in seconds; when training with multi-GPU, the maximum waiting time.
@@ -159,17 +155,17 @@ dataset:
 
   train_dataloader:
     _target_: torch_geometric.loader.DataLoader
-    batch_size: 5
+    batch_size: 8
     shuffle: true # always true
     drop_last: false
-    num_workers: 0 # If the batch size is large, you need to set up multiple workers
+    num_workers: 4 # If the batch size is large, you need to set up multiple workers
 
   valid_dataloader:
     _target_: torch_geometric.loader.DataLoader
-    batch_size: 5
+    batch_size: 4
     shuffle: false
     drop_last: false
-    num_workers: 0 # If the batch size is large, you need to set up multiple workers
+    num_workers: 2 # If the batch size is large, you need to set up multiple workers
 
   test_dataloader: ${dataset.valid_dataloader}
 
@@ -180,17 +176,17 @@ dataset:
 #   amsgrad: true
 
 optimizer:
- _target_: torch.optim.Adam
- lr: 1e-2
- weight_decay: 0.0 # 1e-3, 1e-8
+ _target_: torch.optim.AdamW
+ lr: 1e-3
+ weight_decay: 1e-8
  amsgrad: true
 
 scheduler: # validaton-based
   _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
   mode: min
-  factor: 0.8
+  factor: 0.5
   # min_lr: 1e-6
-  patience: 50
+  patience: 15
   # threshold: 1e-4 
   extra:
     monitor: ${synth_metric.monitor_metric_name}
@@ -211,45 +207,32 @@ scheduler: # validaton-based
 #     interval: step
 #     frequency: 1
 
-synth_metric: 
-  monitor_metric_name: val/forces_rmse # use for variable interpolation
 
-# # recommended for actual production and use
-# synth_metric: 
-#   # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
-#   # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
-#   # Specifically, we have a composite metric, val/synth_metric, for which we can specify a mixing ratio. This is particularly useful when training on large datasets with outliers.
-#   monitor_metric_name: val/synth_metric # use for variable interpolation
-#   # MAE
-#   val/energy_mae: 1.0
-#   val/energy_per_atom_mae: 5.0
-#   val/forces_mae: 5.0
-#   val/stress_mae: 2.5
-#   # RMSE
-#   val/energy_per_atom_rmse: 1.0
-#   val/forces_rmse: 1.0
-#   val/stress_rmse: 1.0
+# recommended for actual production and use
+synth_metric: 
+  # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
+  # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
+  # Specifically, we have a composite metric, val/synth_metric, for which we can specify a mixing ratio. This is particularly useful when training on large datasets with outliers.
+  monitor_metric_name: val/synth_metric # use for variable interpolation
+  # MAE
+  val/energy_mae: 1.0
+  val/energy_per_atom_mae: 5.0
+  val/forces_mae: 5.0
+  val/stress_mae: 2.5
+  # RMSE
+  val/energy_per_atom_rmse: 1.0
+  val/forces_rmse: 1.0
+  val/stress_rmse: 1.0
 
 loss:
   _target_: tace.utils.loss.NormalLoss
-  loss_property: [energy, forces] # [energy, forces, stress]
-  loss_function_name: 
+  loss_property: [energy, forces, stress] # [energy, forces, stress]
+  loss_function_name:       # prefix can be [mse, mae, huber, l2mae]
     - mse_energy_per_atom
     - mse_forces
-    # - mse_stress
-  loss_property_weights: [1.0, 10.0] # [1.0, 5.0, 0.1]
-  loss_huber_delta: 0.01
-
-# The performance is mediocre and cannot achieve full convergence, but it can be used as a toy loss.
-# loss:
-#   _target_: tace.utils.loss.UncertaintyLoss
-#   loss_property: [energy, forces]
-#   loss_function_name: 
-#     - mse_energy_per_atom
-#     - mse_forces
-#     # - mse_stress
-#   loss_property_weights: [1.0, 1.0]
-#   loss_huber_delta: [0.01, 0.01]
+    - mse_stress
+  loss_property_weights: [1.0, 5.0, 0.5]
+  loss_huber_delta: [0.01, 0.01, 0.01]
 
 
 

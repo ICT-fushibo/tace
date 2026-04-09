@@ -93,7 +93,6 @@ class e3nnTACE(torch.nn.Module):
             equivariant_property=cfg['equivariant_property'],
             universal_embedding=cfg['universal_embedding'],
             resnet=cfg['resnet'],
-            layer_norm=cfg['layer_norm'],
         )
 
         # === Readout ===
