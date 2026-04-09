@@ -85,6 +85,7 @@ DEFAULT_MODEL_CONFIG = {
         "bias": False,
         "hidden": [16],
         "use_alllayer": True,
+        "cat_alllayer": False,
         "use_uie": False,
     },
     "scale_shift": {

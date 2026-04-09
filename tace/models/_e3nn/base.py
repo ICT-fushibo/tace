@@ -77,6 +77,7 @@ class EdgeUpdate(torch.nn.Module):
         num_radial_basis: int,
         num_channel: int,
         edge_embedding_channel: int,
+        Lmax: List[int],
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -90,6 +91,8 @@ class EdgeUpdate(torch.nn.Module):
         self.num_channel = num_channel
         self.edge_embedding_channel=edge_embedding_channel
         self.use_bias = bias
+        self.Lmax = Lmax[layer]
+        self.irreps_node = _to_full_so3_irreps(self.Lmax, self.num_channel)
 
         self._setup()
     
@@ -258,6 +261,7 @@ class Product(torch.nn.Module):
         num_longitude: int,
         truncation: int,
         trainable_scale: bool,
+        nonlinear: str | None,
     ) -> None:
         super().__init__()
 
@@ -290,6 +294,11 @@ class Product(torch.nn.Module):
             self.num_longitude = num_longitude  
         assert isinstance(self.num_latitude, int)    
         assert isinstance(self.num_longitude, int) 
+        self.nonlinear = nonlinear
+        self.nonlinear_type = None
+        self.nonlinear_act = None
+        if nonlinear is not None:
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
 
         if self.correlation == 1:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
@@ -302,7 +311,7 @@ class Product(torch.nn.Module):
             self.irreps_hidden = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
             self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
 
-            
+
         self._setup()
     
     @abc.abstractmethod
@@ -336,7 +345,7 @@ class ReadOut(torch.nn.Module):
         self.l = l
         self.scalar_act = 'silu'
         self.tensor_act = 'sigmoid'
-        
+
         if layer == num_layers-1:
             self.irreps_in = _to_full_so3_irreps(target_weight, self.num_channel)
         else:

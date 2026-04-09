@@ -166,9 +166,37 @@ class SurroundingNodeEmbedding(NodeEmbedding):
             torch.cat([n_i, m_i], dim=-1)
         )
     
+
+# # TODO
+# class VectorNodeEmbedding(NodeEmbedding):
+    
+#     def _setup(self) -> None:
+
+#         self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
+
+#         self.elem_emb1 = Linear(
+#             f"{self.num_elements}x0e",
+#             f"{self.num_channel}x0e",
+#             bias=self.bias,
+#         )
+
+
+#     def forward(
+#         self,
+#         node_attrs: torch.Tensor,
+#         edge_feats: torch.Tensor,
+#         edge_index: torch.Tensor,
+#         edge_vector: torch.Tensor,
+#         cutoff: torch.Tensor
+#     ) -> torch.Tensor:
+        
+#         return self.elem_emb1(node_attrs)
+    
+
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonlinearNodeEmbedding,
     "group": GroupNodeEmbedding,
     "surrounding": SurroundingNodeEmbedding,
+    # "vector": VectorNodeEmbedding,
 }

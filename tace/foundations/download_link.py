@@ -4,7 +4,6 @@
 ################################################################################
 
 import shutil
-import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from collections.abc import Mapping
@@ -17,11 +16,19 @@ from ..utils._global import CACHE_DIR
 
 
 OAM_SERIES = {
-    "TACE-v1-OMat24-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OMat24-M.pt",
-    "TACE-v1-OAM-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OAM-M.pt",
+    "TACE-OMat24-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-L.pt",
+    "TACE-OAM-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-L.pt",
+    "TACE-OMat24-XL": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-XL.pt",
+    "TACE-OAM-XL": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-XL.pt",
 }
 
 REICO_SERIES = {
+
+}
+
+LEGACY = {
+    "TACE-v1-OMat24-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OMat24-M.pt",
+    "TACE-v1-OAM-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OAM-M.pt",
     "TACE-v1-LES-REICO-5-PdAgCHO.pt": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-LES-REICO-5-PdAgCHO.pt",
 }
 

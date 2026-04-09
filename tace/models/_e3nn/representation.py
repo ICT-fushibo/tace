@@ -36,7 +36,6 @@ class Representation(torch.nn.Module):
         radial_basis: Dict,
         atomic_basis: Dict,
         resnet: Dict,
-        layer_norm: Dict,
         product_basis: Dict,
         invariant_property: List[str],
         equivariant_property: List[str],
@@ -128,6 +127,7 @@ class Representation(torch.nn.Module):
                     num_radial_basis=self.radial_basis.num_basis,
                     edge_embedding_channel=self.edge_embedding.out_dim,
                     num_channel=num_channel,
+                    Lmax=Lmax,
                 )
                 for layer in range(num_layers)
             ]
@@ -190,6 +190,7 @@ class Representation(torch.nn.Module):
                     num_longitude=product_basis['num_longitude'],
                     truncation=product_basis['truncation'],
                     trainable_scale=product_basis['trainable_scale'],
+                    nonlinear=product_basis['nonlinear'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -229,6 +230,7 @@ class Representation(torch.nn.Module):
                 uee_data.update({k: data[k]})
 
         edge_feats = self.edge_embedding(
+            node_feats,
             data['node_attrs'],
             edge_feats,
             data['edge_index'],
@@ -248,6 +250,7 @@ class Representation(torch.nn.Module):
                 node_attrs_total, 
                 edge_feats, 
                 data['edge_index'],
+                cutoff,
             )
             if graph.lmp and idx > 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]]

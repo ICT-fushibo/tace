@@ -9,10 +9,12 @@ from typing import Optional
 
 import torch
 from e3nn.nn import Activation
+from e3nn import o3
 
 
 from .base import EdgeEmbedding, EdgeUpdate
 from .linear import Linear
+from ...utils.torch_scatter import scatter_sum
 
 
 class IdentityEdgeEmbedding(EdgeEmbedding):
@@ -23,10 +25,11 @@ class IdentityEdgeEmbedding(EdgeEmbedding):
 
     def forward(
         self,
+        node_feats: torch.Tensor,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         return edge_feats
@@ -46,10 +49,11 @@ class LinearEdgeEmbedding(EdgeEmbedding):
 
     def forward(
         self,
+        node_feats: torch.Tensor,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         return self.radial_proj(edge_feats)
@@ -71,10 +75,11 @@ class NonlinearEdgeEmbedding(EdgeEmbedding):
 
     def forward(
         self,
+        node_feats: torch.Tensor,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         return self.act1(self.radial_proj(edge_feats)) # / 1.6791767923989418
@@ -107,10 +112,11 @@ class NonlinearElementEdgeEmbedding(EdgeEmbedding):
 
     def forward(
         self,
+        node_feats: torch.Tensor,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
@@ -188,10 +194,11 @@ class GroupEdgeEmbedding(EdgeEmbedding):
 
     def forward(
         self,
+        node_feats: torch.Tensor,
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor] = None,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
@@ -226,6 +233,7 @@ class IdentityEdgeUpdate(EdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         return edge_feats
@@ -256,7 +264,9 @@ class ElementEdgeUpdate(EdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
+        
         edge_feats_list = [edge_feats]
         edge_feats_list.append(
             self.source_embedding(node_attrs[edge_index[0]])
@@ -276,6 +286,7 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
+        cutoff: torch.Tensor | None,
     ) -> torch.Tensor:
         
         edge_feats_list = [edge_feats]
@@ -291,6 +302,59 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         return torch.cat(edge_feats_list, dim=-1)
 
 
+class TensorDotEdgeUpdate(EdgeUpdate):
+    
+    def _setup(self) -> None:
+
+        c = 8
+        irreps_hidden = o3.Irreps([(c, ir) for _, ir in self.irreps_node])
+
+        if self.layer == 0:
+            self.out_dim = self.edge_embedding_channel       
+        else:
+            self.out_dim = self.edge_embedding_channel + c * len(self.irreps_node)
+
+        if self.layer > 0:
+            self.linear_q = Linear(
+                self.irreps_node,
+                irreps_hidden
+            )
+            self.linear_k = Linear(
+                self.irreps_node,
+                irreps_hidden
+            )
+            self.dot = o3.TensorProduct(
+                irreps_in1=irreps_hidden, 
+                irreps_in2=irreps_hidden, 
+                irreps_out=[(c, (0, 1)) for _, _ in self.irreps_node], 
+                instructions=[
+                    (i, i, 0, 'uuu', False)
+                    for i, (mul, ir) in enumerate(self.irreps_node)
+                ],
+                shared_weights=False,
+                internal_weights=False,
+            )
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+        cutoff: torch.Tensor | None,
+    ) -> torch.Tensor:
+        
+        edge_feats_list = [edge_feats]
+        if self.layer > 0:
+            Q = self.linear_q(node_feats)
+            K = self.linear_k(node_feats)
+            edge_feats_list.append(
+                self.dot(Q[edge_index[1]], K[edge_index[0]])
+            )
+        return torch.cat(edge_feats_list, dim=-1)
+        
+
+
 EDGE_EMBEDDING = {
     "identity": IdentityEdgeEmbedding,
     "linear": LinearEdgeEmbedding,
@@ -303,9 +367,8 @@ EDGE_UPDATE = {
     "identity": IdentityEdgeUpdate,
     "element": ElementEdgeUpdate,
     "element2": Element2EdgeUpdate,
+    "tensor_dot": TensorDotEdgeUpdate,
 }
-
-
 
 
 

@@ -101,12 +101,11 @@ class TensorReadOut(ReadOut):
             ):
                 self.linear2.append(
                     Linear(
-                    irreps_in=irreps_in,
-                    # irreps_out=f"{irreps_out.num_irreps}x0e+" + str(irreps_out),
-                    irreps_out=self.acts[idx].irreps_in,
-                    bias=self.use_bias,
+                        irreps_in=irreps_in,
+                        irreps_out=self.acts[idx].irreps_in,
+                        bias=self.use_bias,
+                    )
                 )
-            )
             self.linear2.append(
                 Linear(
                     irreps_in=self.irreps_hidden[-1],

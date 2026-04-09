@@ -9,6 +9,7 @@ from typing import Dict
 
 import torch
 import opt_einsum_fx
+import e3nn
 from e3nn import o3
 
 
@@ -17,6 +18,8 @@ from .base import Product
 from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
 from .matrix import MatrixTensorProduct
+from .nonlinear import GatedLinearUnit, MixtralExpertsGatedLinearUnit, NormLinearUnit, GridMLPUnit
+from ..mlp import ACTIVATION
 
 
 class SpectralLinearACE(Product):
@@ -527,6 +530,131 @@ class MoENonLinearACE(Product):
 
         return outs
     
+
+class NonLinearACE(Product):
+    
+    def _setup(self):
+
+        if self.nonlinear_type == 'gate':
+            self.irreps_nonlinear =(
+                self.irreps_hidden + o3.Irreps(f"{len(self.irreps_hidden)*self.num_hidden_channel}x0e")
+            ).regroup()
+        else:
+            self.irreps_nonlinear = self.irreps_hidden
+            
+        self.aces = torch.nn.ModuleList()
+        self.coefs = torch.nn.ModuleList()
+        self.coefs.append(
+            ElementLinear(
+                self.irreps_in,
+                self.irreps_nonlinear,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+            )    
+        )
+
+        product_in1 = self.irreps_in
+        if self.correlation == 2:
+            product_out = self.irreps_hidden
+        else:
+            product_out = self.irreps_in 
+
+        for nu in range(2, self.correlation+1):
+
+            this_ace = uuuTensorProduct(
+                irreps_in1=product_in1,
+                irreps_in2=self.irreps_in,
+                irreps_out=product_out,
+                l1l2=self.l1l2,
+                ictp_ictc_like=self.ictp_ictc_like,
+            )
+            self.aces.append(this_ace)
+            self.coefs.append(
+                ElementLinear(
+                    this_ace.irreps_out.simplify(),
+                    self.irreps_nonlinear,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )    
+            )
+
+            product_in1 = this_ace.irreps_out
+
+            if nu == self.correlation-1:
+                product_out = self.irreps_out
+            else:
+                product_out = self.irreps_in
+
+
+        if self.nonlinear_type is not None:
+            if self.nonlinear_type == 'norm':
+                self.nonlinearity = NormLinearUnit(
+                    self.irreps_hidden,
+                    activation=ACTIVATION[self.nonlinear_act](),
+                )
+            elif self.nonlinear_type == 'grid':
+                self.nonlinearity = GridMLPUnit(
+                    self.irreps_hidden,
+                    activation=ACTIVATION[self.nonlinear_act](),
+                    bias=False,
+                ) # will introduct higher freq
+            elif self.nonlinear_type == 'e3nngate':
+                irreps_scalars = o3.Irreps(
+                    [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
+                )
+                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_out if ir.l > 0])
+                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_gated)
+                activation_fn = torch.nn.functional.silu
+                act_gates_fn = torch.nn.functional.sigmoid
+                self.nonlinearity = e3nn.nn.Gate(
+                    irreps_scalars=irreps_scalars,
+                    act_scalars=[activation_fn for _ in irreps_scalars],
+                    irreps_gates=irreps_gates,
+                    act_gates=[act_gates_fn] * len(irreps_gates),
+                    irreps_gated=irreps_gated,
+                )
+            elif self.nonlinear_type == 'gate':
+                irreps_gated = self.irreps_hidden
+                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_hidden)
+                self.nonlinearity = GatedLinearUnit(
+                    irreps_gates=irreps_gates,
+                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
+                    irreps_gated=irreps_gated,
+                )
+            else:
+                raise
+
+        self.linear = Linear(
+            self.irreps_hidden,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+        
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
+
+        corr_feats = {
+            1: node_feats,
+        }
+        outs = self.coefs[0](corr_feats[1], node_attrs)
+
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+
+        outs = self.nonlinearity(outs)
+        outs = self.linear(outs)
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": SpectralLinearACE,
     "spectral": SpectralLinearACE, # TODO, refacor
@@ -540,5 +668,6 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "agnostic": AgnosticLinearACE,
     "identity": IdentityLinearACE,
     "moe": IdentityLinearACE,
+    "glu": NonLinearACE,
 }
 

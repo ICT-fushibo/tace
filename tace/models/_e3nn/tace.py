@@ -43,8 +43,7 @@ class e3nnTACE(torch.nn.Module):
         statistics: List[Dict],
         target_property: List[str],
         max_neighbors: Optional[int],
-        resnet: Dict = {},
-        layer_norm: Dict = {},
+        resnet: Dict,
         **kwargs,
     ):
         cfg = {
