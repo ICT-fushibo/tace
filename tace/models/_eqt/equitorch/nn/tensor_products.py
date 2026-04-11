@@ -348,7 +348,7 @@ class TensorProduct(torch.nn.Module):
                 # Pass channel_norm status to initializer
                 initialize_tensor_product(self.weight, self.feature_mode, channel_normed=self.channel_norm)
             else:
-                self.register_buffer('weight', torch.ones(*self.weight_shape))
+                self.register_buffer('weight', torch.ones(*self.weight_shape), persistent=False)
         else:
             self.weight = None
 

@@ -20,8 +20,6 @@ from .base import Interaction
 from .linear import Linear, ElementLinear
 from .fused import ScatterTensorProduct
 from .nonlinear import GatedLinearUnit, MixtralExpertsGatedLinearUnit, NormLinearUnit, GridMLPUnit
-from .layer_norm import get_normalization_layer
-from .residual import RESIDUAL, AttentionResidual
 
 
 class CGTP_Interaction(Interaction):
@@ -136,18 +134,6 @@ class CGTP_Interaction(Interaction):
                 num_elements=self.num_elements,
             )  
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'AttnRes':
-            self.resnetBB = AttentionResidual(
-                layer=self.layer,
-                num_layers=self.num_layers,
-                irreps_in = self.irreps_in,
-                irreps_out = self.irreps_sc,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-                num_channel=self.num_channel,
-                window=self.resnet_window,
-            )  
-
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'AB':
             self.resnetAB = ElementLinear(
                 irreps_in = self.irreps_out,
@@ -166,7 +152,7 @@ class CGTP_Interaction(Interaction):
         edge_index: torch.Tensor,
         cutoff: Optional[torch.Tensor],
         graph,
-        pre_feats: list[torch.Tensor],
+        prev_feats: list[torch.Tensor],
     ):
     
         lmp_data = graph.lmp_data

@@ -64,11 +64,11 @@ DEFAULT_MODEL_CONFIG = {
         "use_first_resnet": False,
         "window": None,
     },
-    # "layer_norm": {
-    #     "pre_norm_type": None,
-    #     "final_norm_type": None,
-    #     "use_first_pre_norm": False,
-    # },
+    "layer_norm": {
+        "pre_norm_type": None,
+        "final_norm_type": None,
+        "use_first_pre_norm": False,
+    },
     "product_basis": {
         "type": "coupled",
         "l1l2": None,

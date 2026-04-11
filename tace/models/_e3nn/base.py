@@ -126,7 +126,7 @@ class Residual(torch.nn.Module):
         self.num_channel = num_channel
         self.num_elements = num_elements
         self.use_bias = bias
-        self.window = min(window or layer, layer)
+        self.window = min(window or layer+1, layer+1)
 
         if isinstance(liner_type, list):
             self.linear_type = liner_type[layer]

@@ -18,7 +18,7 @@ from .representation import Representation
 from .default import check_model_config
 from .basis_change import PropertyBasisChange
 from .linear import Linear
-
+from .layer_norm import get_normalization_layer
 
 class e3nnTACE(torch.nn.Module):
     def __init__(
