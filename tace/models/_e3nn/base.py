@@ -162,6 +162,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         ictp_ictc_like: bool = True,
         bias: bool = True,
         nonlinear: str | None = None,
+        edge_nonlinear: str | None = None,
         edge_info_type: str = 'mlp',
         resnet_type: str | List[str] = 'BB',
         resnet_linear_type: str = 'aware',
@@ -171,6 +172,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         # top_k: int | None = None,
         # num_shared_experts: int | None = None,
         num_hidden_channel: int | None = None,
+        pre_norm_type: str | None = None,
+        use_first_pre_norm: bool = False,
     ) -> None:
         super().__init__()
 
@@ -217,6 +220,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         if num_hidden_channel is not None:
             assert nonlinear is not None
         self.num_hidden_channel = num_hidden_channel or num_channel
+        self.pre_norm_type = pre_norm_type
+        self.use_first_pre_norm = use_first_pre_norm
+        self.edge_nonlinear = edge_nonlinear
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:

@@ -40,6 +40,7 @@ class Representation(torch.nn.Module):
         invariant_property: List[str],
         equivariant_property: List[str],
         universal_embedding: Dict,
+        layer_norm: Dict,
     ):
         super().__init__()
 
@@ -51,6 +52,7 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
+        self.sue_eqt_so2 = atomic_basis['type'][-1] == 'so2' # TODO
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -67,13 +69,6 @@ class Representation(torch.nn.Module):
             use_dydynamic_cutoff=radial_basis['use_dydynamic_cutoff'],
             dydynamic_cutoff_mu=radial_basis['dydynamic_cutoff_mu'],
             num_elements=len(atomic_numbers),
-        )
-
-        # === angular basis ===
-        self.angular_basis = SphericalHarmonics(
-            o3.Irreps.spherical_harmonics(lmax, p=-1),
-            normalize=False,
-            normalization="component",
         )
 
         # === node/edge embedding ===
@@ -154,6 +149,7 @@ class Representation(torch.nn.Module):
                     scatter_norm=atomic_basis['scatter_norm'],
                     ictp_ictc_like=atomic_basis['ictp_ictc_like'],
                     nonlinear=atomic_basis['nonlinear'],
+                    edge_nonlinear=atomic_basis['edge_nonlinear'],
                     correlation=product_basis['correlation'],
                     edge_info_type=atomic_basis['edge_info_type'],
                     resnet_type=resnet['type'],
@@ -165,6 +161,8 @@ class Representation(torch.nn.Module):
                     # num_shared_experts=atomic_basis['num_shared_experts'],
                     num_hidden_channel=product_basis['num_channel'],
                     irreps_node_embedding=self.node_embedding.irreps_out,
+                    pre_norm_type=layer_norm['pre_norm_type'],
+                    use_first_pre_norm=layer_norm['use_first_pre_norm'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -196,6 +194,21 @@ class Representation(torch.nn.Module):
                 for layer in range(num_layers)
             ]
         )
+
+        # === angular basis ===
+        if self.sue_eqt_so2:
+            assert all(l == lmax for l in Lmax)
+            from .._eqt.equitorch.nn import AlignToZWignerD
+            self.angular_basis = AlignToZWignerD(
+                irreps="+".join(str(ir) for _, ir in self.interactions[-1].irreps_out),  
+                normalized=False,
+            )  
+        else:
+            self.angular_basis = SphericalHarmonics(
+                o3.Irreps.spherical_harmonics(lmax, p=-1),
+                normalize=False,
+                normalization="component",
+            )
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   

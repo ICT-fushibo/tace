@@ -350,209 +350,20 @@ class jnSphericalBesselBasis(torch.nn.Module):
         )
 
 
-class jnElementSphericalBesselBasis(torch.nn.Module):
+class GaussianBasis(torch.nn.Module):
     def __init__(
         self,
-        cutoff: float = 6.0,
-        order: int | List[int] = 0,
-        num_basis: int | List[int] = 8,
-        num_elements: int = -1,
+        start: float = -5.0,
+        stop: float = 5.0,
+        num_basis: int = 50,
+        width: float = 1.0,
     ) -> None:
-        super().__init__()
-
-        num_zero = num_basis
-        if isinstance(order, int):
-            if order < 0:
-                raise ValueError("order must be a nonnegative integer")
-            order = [order]
-        else:
-            if not isinstance(order, List):
-                raise TypeError("order must be a list of nonnegative integer")
-            if not all(isinstance(x, int) and x >= 0 for x in order):
-                raise ValueError("All elements of order must be nonnegative integer")
-
-        if isinstance(num_zero, int):
-            if num_zero <= 0:
-                raise ValueError("num_zero must be a positive integer")
-            num_zero = [num_zero]
-        else:
-            if not isinstance(num_zero, List):
-                raise TypeError("num_zero must be a list of positive integers")
-            if not all(isinstance(x, int) and x > 0 for x in num_zero):
-                raise ValueError("All elements of num_zero must be positive integers")
-
-        if len(order) != len(num_zero):
-            raise ValueError(
-                f"order and num_zero must have the same length, "
-                f"but got {len(order)} and {len(num_zero)}"
-            )
-
-        zeros = []
-        for o, n in zip(order, num_zero):
-            zeros.append(compute_jn_zeros(o, n))
-
-        normalizer = self._compute_normalizer(cutoff, order, zeros)
-
-        self.register_buffer(
-            "normalizer",
-            torch.tensor(
-                [y for x in normalizer for y in x], dtype=torch.get_default_dtype()
-            ).unsqueeze(0),
-        )  # (1, sum(order*zeros))
-        self.register_buffer(
-            "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
-        )
-        self.source_k = torch.nn.Parameter(
-            torch.tensor(
-                [y for x in zeros for y in x], dtype=torch.get_default_dtype()
-            ).unsqueeze(0).repeat(num_elements, 1)
-        )
-        self.target_k = torch.nn.Parameter(
-            torch.tensor(
-                [y for x in zeros for y in x], dtype=torch.get_default_dtype()
-            ).unsqueeze(0).repeat(num_elements, 1)
-        )
-
-        self.order = order
-        self.num_zero = num_zero
-        self.jn_taylor = torch.nn.ModuleList(
-            jnTaylorSphericalBessel(
-                n=o,
-                K=30,
-            ) for o in order
-        )
-
-    def torch_jn(self, i, order, x):
-        if order == 0:
-            return torch.sin(x) / x
-        elif order == 1:
-            return torch.sin(x) / x**2 - torch.cos(x) / x
-        elif order == 2:
-            return (3 / x**3 - 1 / x) * torch.sin(x) - (3 * torch.cos(x) / x**2)
-        elif order == 3:
-            return (15 / x**4 - 6 / x**2) * torch.sin(x) - (
-                15 / x**3 - 1 / x
-            ) * torch.cos(x)
-        elif order == 4:
-            return (105 / x**5 - 45 / x**3 + 1 / x) * torch.sin(x) - (
-                105 / x**4 - 10 / x**2
-            ) * torch.cos(x)
-        elif order == 5:
-            return (945 / x**6 - 420 / x**4 + 15 / x**2) * torch.sin(x) - (
-                945 / x**5 - 105 / x**3 + 1 / x
-            ) * torch.cos(x)
-        elif order == 6:
-            return (10395 / x**7 - 4725 / x**5 + 210 / x**3 - 1 / x) * torch.sin(
-                x
-            ) - (10395 / x**6 - 1260 / x**4 + 21 / x**2) * torch.cos(x)
-        elif order == 7:
-            return (
-                135135 / x**8 - 62370 / x**6 + 3150 / x**4 - 28 / x**2
-            ) * torch.sin(x) - (
-                135135 / x**7 - 17325 / x**5 + 378 / x**3 - 1 / x
-            ) * torch.cos(
-                x
-            )
-        elif order == 8:
-            return (
-                2027025 / x**9 - 945945 / x**7 + 51975 / x**5 - 630 / x**3 + 1 / x
-            ) * torch.sin(x) - (
-                2027025 / x**8 - 270270 / x**6 + 6930 / x**4 - 36 / x**2
-            ) * torch.cos(
-                x
-            )
-        elif order == 9:
-            return (
-                34459425 / x**10
-                - 16216200 / x**8
-                + 945945 / x**6
-                - 13860 / x**4
-                + 45 / x**2
-            ) * torch.sin(x) - (
-                34459425 / x**9 - 4729725 / x**7 + 135135 / x**5 - 990 / x**3 + 1 / x
-            ) * torch.cos(
-                x
-            )
-        else:
-            N = (
-                order + 100
-            )  # Starting point for backward recursion (Miller's algorithm)
-            device, dtype = x.device, x.dtype
-            j = torch.zeros(N + 1, *x.shape, dtype=dtype, device=device)
-
-            # j[N] = 1e-40
-            # j[N - 1] = 0.0
-            # for n in range(N - 1, 0, -1):
-            #     j[n - 1] = (2 * n + 1) / x * j[n] - j[n + 1]
-
-            j = [None] * (N + 1)
-            j[N] = torch.full_like(x, 1e-40)
-            j[N - 1] = torch.zeros_like(x)
-            for n in range(N - 1, 0, -1):
-                j[n - 1] = (2 * n + 1) / x * j[n] - j[n + 1]
-
-            j = torch.stack(j, dim=0)
-            # Normalize using accurately computed j0
-            j0_ground_truth = torch.sin(x) / x
-            scale_factor = j0_ground_truth / j[0]  # (...,)
-            j_normalized = j * scale_factor.unsqueeze(0)
-
-            return j_normalized[order]
-        # else:
-        #     return self.jn_taylor[i](x)
-
-    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
-
-        source_k = torch.einsum("bz, zi -> bi", node_attrs, self.source_k)
-        target_k = torch.einsum("bz, zi -> bi", node_attrs, self.target_k)
-        k = 0.5 * (source_k[edge_index[0]] + target_k[edge_index[1]])
-        orig_dtype = r.dtype
-        r = r.to(torch.float64)
-        cutoff = self.cutoff.to(torch.float64)
-        k = k.to(torch.float64)
-        normalizer = self.normalizer.to(torch.float64)
-
-        r = k * (r / cutoff) 
-
-        basis = []
-        idx = 0
-        for i, (o, n) in enumerate(zip(self.order, self.num_zero)):
-            r_order = r[..., idx : idx + n]
-            jn = self.torch_jn(i, o, r_order)
-            basis.append(jn)
-            idx += n
-        basis = torch.cat(basis, dim=-1)
-
-        out = basis * normalizer
-
-        return out.to(orig_dtype)
-
-    def _compute_normalizer(self, cutoff, order, zeros):
-        normalizer = []
-        for o, zero in zip(order, zeros):
-            o_normalizer = []
-            for i in range(len(zero)):
-                z = zero[i]
-                j_next = np.sqrt(np.pi / (2 * z)) * jv(o + 1 + 0.5, z)
-                norm = np.sqrt(2 / (cutoff**3 * j_next**2))
-                o_normalizer.append(norm)
-            normalizer.append(o_normalizer)
-        return normalizer
-
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}(cutoff={self.cutoff}, order={self.order},  num_zero={self.num_zero})"
-        )
-
-
-class GaussianBasis(torch.nn.Module):
-    """
-    From fairchem
-    """
-    def __init__(self, cutoff: float, num_basis: int = 64, width: float = 2.0):
+        """
+        From fairchem
+        """
         super().__init__()
         self.num_basis = num_basis
-        offset = torch.linspace(0, cutoff, num_basis)
+        offset = torch.linspace(start, stop, num_basis)
         self.coeff = -0.5 / (width * (offset[1] - offset[0])).item() ** 2
         self.register_buffer("offset", offset, persistent=False)
 
@@ -1050,14 +861,6 @@ class RadialBasis(torch.nn.Module):
                 num_basis=num_basis, 
                 num_elements=num_elements,
             )
-        elif radial_basis == "ejn":
-            self.radial_fn = jnElementSphericalBesselBasis(
-                cutoff=cutoff,
-                order=order,
-                num_basis=num_basis,
-                num_elements=num_elements,
-            )
-
         # elif radial_basis == "chebychev":
         #     self.radial_fn = ChebyshevTBasis(
         #         cutoff=cutoff,
@@ -1065,7 +868,6 @@ class RadialBasis(torch.nn.Module):
         #     )
         elif radial_basis == "gaussian":
             self.radial_fn = GaussianBasis(
-                cutoff=cutoff,
                 num_basis=num_basis,
                 width=gaussian_width,
             )

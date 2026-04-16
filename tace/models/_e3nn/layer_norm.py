@@ -1,148 +1,130 @@
 """
-Copyright (c) Meta Platforms, Inc. and affiliates.
+Copy From equiformer_v3
 
-This source code is licensed under the MIT license found in the
-LICENSE file in the root directory of this source tree.
+MIT License
+Copyright (c) 2026 The Atomic Architects
 
-1. Normalize features of shape (N, sphere_basis, C),
-with sphere_basis = (lmax + 1) ** 2.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-2. The difference from `layer_norm.py` is that all type-L vectors have
-the same number of channels and input features are of shape (N, sphere_basis, C).
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 """
 
-from __future__ import annotations
-
-import math
-from typing import Literal
-
 import torch
-import torch.nn as nn
+from functools import partial
 
 
-def get_normalization_layer(
-    norm_type: Literal["layer_norm", "layer_norm_sh", "rms_norm_sh"],
-    lmax: int,
-    num_channels: int,
-    eps: float = 1e-5,
-    affine: bool = True,
-    normalization: str = "component",
-):
-    assert norm_type in ["layer_norm", "layer_norm_sh", "rms_norm_sh"]
-    if norm_type == "layer_norm":
-        norm_class = EquivariantLayerNormArray
-    elif norm_type == "layer_norm_sh":
-        norm_class = EquivariantLayerNormArraySphericalHarmonics
-    elif norm_type == "rms_norm_sh":
-        norm_class = EquivariantRMSNormArraySphericalHarmonicsV2
+_NORM_TYPE_LIST = [
+    'equivariant_layer_norm',
+    'sep_layer_norm',
+    'merge_layer_norm',
+    'merge_rms_norm',
+]
+
+
+def get_normalization_layer(norm_type, lmax, num_channels, eps=1e-5, affine=True, normalization='component'):
+    assert norm_type in _NORM_TYPE_LIST
+    if norm_type == 'equivariant_layer_norm':
+        norm_class = EquivariantLayerNorm
+    elif norm_type == 'sep_layer_norm':
+        norm_class = EquivariantSeparableLayerNorm
+    elif norm_type in ['merge_layer_norm', 'merge_layer_norm_attn_rms_norm']:
+        norm_class = EquivariantMergeLayerNorm
+    elif norm_type == 'merge_rms_norm':
+        norm_class = partial(EquivariantMergeLayerNorm, centering=False)
     else:
         raise ValueError
     return norm_class(lmax, num_channels, eps, affine, normalization)
 
 
-def get_l_to_all_m_expand_index(lmax: int):
-    expand_index = torch.zeros([(lmax + 1) ** 2]).long()
-    for lval in range(lmax + 1):
-        start_idx = lval**2
-        length = 2 * lval + 1
-        expand_index[start_idx : (start_idx + length)] = lval
-    return expand_index
-
-
-class EquivariantLayerNormArray(nn.Module):
-    def __init__(
-        self,
-        lmax: int,
-        num_channels: int,
-        eps: float = 1e-5,
-        affine: bool = True,
-        normalization: str = "component",
-    ):
+class EquivariantLayerNorm(torch.nn.Module):
+    def __init__(self, lmax, num_channels, eps=1e-5, affine=True, normalization='component'):
         super().__init__()
-
         self.lmax = lmax
         self.num_channels = num_channels
         self.eps = eps
         self.affine = affine
-
+        
         if affine:
-            self.affine_weight = nn.Parameter(torch.ones(lmax + 1, num_channels))
-            self.affine_bias = nn.Parameter(torch.zeros(num_channels))
+            self.affine_weight = torch.nn.Parameter(torch.ones((self.lmax + 1), self.num_channels))
+            self.affine_bias   = torch.nn.Parameter(torch.zeros(self.num_channels))
         else:
-            self.register_parameter("affine_weight", None)
-            self.register_parameter("affine_bias", None)
+            self.register_parameter('affine_weight', None)
+            self.register_parameter('affine_bias', None)
 
-        assert normalization in ["norm", "component"]
+        assert normalization in ['norm', 'component']
         self.normalization = normalization
 
-    def __repr__(self) -> str:
+
+    def __repr__(self):
         return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, eps={self.eps})"
 
-    @torch.autocast("cuda", enabled=False)
-    @torch.autocast("cpu", enabled=False)
-    def forward(self, node_input):
+
+    def forward(self, inputs):
         """
-        Assume input is of shape [N, sphere_basis, C]
+            1.   `inputs` shape: (num_nodes, (self.lmax + 1) ** 2, self.num_channels)
         """
-
-        out = []
-
-        for lval in range(self.lmax + 1):
-            start_idx = lval**2
-            length = 2 * lval + 1
-
-            feature = node_input.narrow(1, start_idx, length)
-
+        outputs = []
+        
+        for l in range(self.lmax + 1):
+            start_idx = l ** 2
+            length = 2 * l + 1
+            
+            feature = inputs.narrow(1, start_idx, length)
+            
             # For scalars, first compute and subtract the mean
-            if lval == 0:
+            if l == 0:
                 feature_mean = torch.mean(feature, dim=2, keepdim=True)
                 feature = feature - feature_mean
-
+                
             # Then compute the rescaling factor (norm of each feature vector)
             # Rescaling of the norms themselves based on the option "normalization"
-            if self.normalization == "norm":
-                feature_norm = feature.pow(2).sum(dim=1, keepdim=True)  # [N, 1, C]
-            elif self.normalization == "component":
-                feature_norm = feature.pow(2).mean(dim=1, keepdim=True)  # [N, 1, C]
-
-            feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)  # [N, 1, 1]
+            if self.normalization == 'norm':
+                feature_norm = feature.pow(2).sum(dim=1, keepdim=True)      # [N, 1, C]
+            elif self.normalization == 'component':
+                feature_norm = feature.pow(2).mean(dim=1, keepdim=True)     # [N, 1, C]
+            
+            feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)    # [N, 1, 1]
             feature_norm = (feature_norm + self.eps).pow(-0.5)
-
+            
             if self.affine:
-                weight = self.affine_weight.narrow(0, lval, 1)  # [1, C]
-                weight = weight.view(1, 1, -1)  # [1, 1, C]
-                feature_norm = feature_norm * weight  # [N, 1, C]
-
+                weight = self.affine_weight.narrow(0, l, 1)     # [1, C]
+                weight = weight.view(1, 1, -1)                  # [1, 1, C]
+                feature_norm = feature_norm * weight            # [N, 1, C]
+            
             feature = feature * feature_norm
-
-            if self.affine and lval == 0:
+            
+            if self.affine and l == 0: 
                 bias = self.affine_bias
                 bias = bias.view(1, 1, -1)
                 feature = feature + bias
+            
+            outputs.append(feature)
+        
+        outputs = torch.cat(outputs, dim=1)
+        
+        return outputs
+        
 
-            out.append(feature)
-
-        return torch.cat(out, dim=1)
-
-
-class EquivariantLayerNormArraySphericalHarmonics(nn.Module):
+class EquivariantSeparableLayerNorm(torch.nn.Module):
     """
-    1. Normalize over L = 0.
-    2. Normalize across all m components from degrees L > 0.
-    3. Do not normalize separately for different L (L > 0).
+        1.  Use `expand_index` to skip for loop during affine transformation.
     """
-
-    def __init__(
-        self,
-        lmax: int,
-        num_channels: int,
-        eps: float = 1e-5,
-        affine: bool = True,
-        normalization: str = "component",
-        std_balance_degrees: bool = True,
-    ):
+    def __init__(self, lmax, num_channels, eps=1e-5, affine=True, normalization='component', std_balance_degrees=True):
         super().__init__()
-
         self.lmax = lmax
         self.num_channels = num_channels
         self.eps = eps
@@ -150,303 +132,168 @@ class EquivariantLayerNormArraySphericalHarmonics(nn.Module):
         self.std_balance_degrees = std_balance_degrees
 
         # for L = 0
-        self.norm_l0 = torch.nn.LayerNorm(
-            self.num_channels, eps=self.eps, elementwise_affine=self.affine
-        )
+        self.norm_l0 = torch.nn.LayerNorm(self.num_channels, eps=self.eps, elementwise_affine=self.affine)
 
         # for L > 0
         if self.affine:
-            self.affine_weight = nn.Parameter(torch.ones(self.lmax, self.num_channels))
+            self.affine_weight = torch.nn.Parameter(torch.ones(self.lmax, self.num_channels))
+            expand_index = torch.zeros([((self.lmax + 1) ** 2 - 1)]).long()     # L > 0
+            for l in range(1, self.lmax + 1):
+                start_idx = l ** 2 - 1
+                length = 2 * l + 1
+                expand_index[start_idx : (start_idx + length)] = (l - 1)
+            self.register_buffer('expand_index', expand_index)
         else:
-            self.register_parameter("affine_weight", None)
+            self.register_parameter('affine_weight', None)
 
-        assert normalization in ["norm", "component"]
+        assert normalization in ['norm', 'component']
         self.normalization = normalization
 
         if self.std_balance_degrees:
             balance_degree_weight = torch.zeros((self.lmax + 1) ** 2 - 1, 1)
-            for lval in range(1, self.lmax + 1):
-                start_idx = lval**2 - 1
-                length = 2 * lval + 1
-                balance_degree_weight[start_idx : (start_idx + length), :] = (
-                    1.0 / length
-                )
+            for l in range(1, self.lmax + 1):
+                start_idx = l ** 2 - 1
+                length = 2 * l + 1
+                balance_degree_weight[start_idx : (start_idx + length), :] = (1.0 / length)
             balance_degree_weight = balance_degree_weight / self.lmax
-            self.register_buffer(
-                "balance_degree_weight", balance_degree_weight, persistent=False
-            )
+            balance_degree_weight = balance_degree_weight.permute((1, 0))
+            self.register_buffer('balance_degree_weight', balance_degree_weight)
         else:
             self.balance_degree_weight = None
 
-    def __repr__(self) -> str:
+    
+    def __repr__(self):
         return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, eps={self.eps}, std_balance_degrees={self.std_balance_degrees})"
 
-    @torch.autocast("cuda", enabled=False)
-    @torch.autocast("cpu", enabled=False)
-    def forward(self, node_input):
-        """
-        Assume input is of shape [N, sphere_basis, C]
-        """
 
-        out = []
+    def forward(self, inputs):
+        """
+            1.  `inputs` shape: (num_nodes, (self.lmax + 1) ** 2, self.num_channels)
+        """
+        outputs = []
 
         # for L = 0
-        feature = node_input.narrow(1, 0, 1)
-        feature = self.norm_l0(feature)
-        out.append(feature)
+        scalars = inputs.narrow(1, 0, 1)
+        scalars = self.norm_l0(scalars)
+        outputs.append(scalars)
 
         # for L > 0
         if self.lmax > 0:
             num_m_components = (self.lmax + 1) ** 2
-            feature = node_input.narrow(1, 1, num_m_components - 1)
+            feature = inputs.narrow(1, 1, num_m_components - 1)
 
+            feature_norm = feature.pow(2)
+            feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)        # [N, (L_max + 1)**2 - 1, 1]
+            
             # Then compute the rescaling factor (norm of each feature vector)
             # Rescaling of the norms themselves based on the option "normalization"
-            if self.normalization == "norm":
-                feature_norm = feature.pow(2).sum(dim=1, keepdim=True)  # [N, 1, C]
-            elif self.normalization == "component":
+            if self.normalization == 'norm':
+                feature_norm = feature_norm.sum(dim=1, keepdim=True)            # [N, 1, 1]
+            elif self.normalization == 'component':
                 if self.std_balance_degrees:
-                    feature_norm = feature.pow(
-                        2
-                    )  # [N, (L_max + 1)**2 - 1, C], without L = 0
-                    feature_norm = torch.einsum(
-                        "nic, ia -> nac",
-                        feature_norm,
-                        self.balance_degree_weight,
-                    )  # [N, 1, C]
+                    #feature_norm = feature.pow(2)                               # [N, (L_max + 1)**2 - 1, C], without L = 0
+                    #feature_norm = torch.einsum('nic, ia -> nac', feature_norm, self.balance_degree_weight) # [N, 1, C]
+                    feature_norm = torch.einsum('ai, nic -> nac', self.balance_degree_weight, feature_norm) # [N, 1, C]
+                    #feature_norm = torch.matmul(self.balance_degree_weight, feature_norm) # [N, 1, 1]
                 else:
-                    feature_norm = feature.pow(2).mean(dim=1, keepdim=True)  # [N, 1, C]
+                    feature_norm = feature_norm.mean(dim=1, keepdim=True)       # [N, 1, 1]
 
-            feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)  # [N, 1, 1]
             feature_norm = (feature_norm + self.eps).pow(-0.5)
 
-            for lval in range(1, self.lmax + 1):
-                start_idx = lval**2
-                length = 2 * lval + 1
-                feature = node_input.narrow(1, start_idx, length)  # [N, (2L + 1), C]
-                if self.affine:
-                    weight = self.affine_weight.narrow(0, (lval - 1), 1)  # [1, C]
-                    weight = weight.view(1, 1, -1)  # [1, 1, C]
-                    feature_scale = feature_norm * weight  # [N, 1, C]
-                else:
-                    feature_scale = feature_norm
-                feature = feature * feature_scale
-                out.append(feature)
-
-        return torch.cat(out, dim=1)
-
-
-class EquivariantRMSNormArraySphericalHarmonics(nn.Module):
-    """
-    1. Normalize across all m components from degrees L >= 0.
-    """
-
-    def __init__(
-        self,
-        lmax: int,
-        num_channels: int,
-        eps: float = 1e-5,
-        affine: bool = True,
-        normalization: str = "component",
-    ):
-        super().__init__()
-
-        self.lmax = lmax
-        self.num_channels = num_channels
-        self.eps = eps
-        self.affine = affine
-
-        # for L >= 0
-        if self.affine:
-            self.affine_weight = nn.Parameter(
-                torch.ones((self.lmax + 1), self.num_channels)
-            )
-        else:
-            self.register_parameter("affine_weight", None)
-
-        assert normalization in ["norm", "component"]
-        self.normalization = normalization
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, eps={self.eps})"
-
-    @torch.autocast("cuda", enabled=False)
-    @torch.autocast("cpu", enabled=False)
-    def forward(self, node_input):
-        """
-        Assume input is of shape [N, sphere_basis, C]
-        """
-
-        out = []
-
-        # for L >= 0
-        feature = node_input
-        if self.normalization == "norm":
-            feature_norm = feature.pow(2).sum(dim=1, keepdim=True)  # [N, 1, C]
-        elif self.normalization == "component":
-            feature_norm = feature.pow(2).mean(dim=1, keepdim=True)  # [N, 1, C]
-
-        feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)  # [N, 1, 1]
-        feature_norm = (feature_norm + self.eps).pow(-0.5)
-
-        for lval in range(self.lmax + 1):
-            start_idx = lval**2
-            length = 2 * lval + 1
-            feature = node_input.narrow(1, start_idx, length)  # [N, (2L + 1), C]
             if self.affine:
-                weight = self.affine_weight.narrow(0, lval, 1)  # [1, C]
-                weight = weight.view(1, 1, -1)  # [1, 1, C]
-                feature_scale = feature_norm * weight  # [N, 1, C]
-            else:
-                feature_scale = feature_norm
-            feature = feature * feature_scale
-            out.append(feature)
+                weight = self.affine_weight.view(1, self.lmax, self.num_channels)
+                weight = torch.index_select(weight, dim=1, index=self.expand_index)
+                feature_norm = feature_norm * weight
+            feature = feature * feature_norm
 
-        return torch.cat(out, dim=1)
+            outputs.append(feature)
+
+        outputs = torch.cat(outputs, dim=1)
+        return outputs
 
 
-class EquivariantRMSNormArraySphericalHarmonicsV2(nn.Module):
+class EquivariantMergeLayerNorm(torch.nn.Module):
     """
-    1. Normalize across all m components from degrees L >= 0.
-    2. Expand weights and multiply with normalized feature to prevent slicing and concatenation.
+        1.  Use `expand_index` to skip for loop during affine transformation.
+        2.  Different from `EquivariantSeparableLayerNorm`, we normalize over all degrees L >= 0.
+        3.  If `centering == False`, this becomes RMSNorm for all degrees.
     """
-
-    def __init__(
-        self,
-        lmax: int,
-        num_channels: int,
-        eps: float = 1e-5,
-        affine: bool = True,
-        normalization: str = "component",
-        centering: bool = True,
-        std_balance_degrees: bool = True,
-    ):
+    def __init__(self, lmax, num_channels, eps=1e-5, affine=True, normalization='component', std_balance_degrees=True, centering=True):
         super().__init__()
-
         self.lmax = lmax
         self.num_channels = num_channels
         self.eps = eps
         self.affine = affine
-        self.centering = centering
         self.std_balance_degrees = std_balance_degrees
+        self.centering = centering
 
-        # for L >= 0
         if self.affine:
-            self.affine_weight = nn.Parameter(
-                torch.ones((self.lmax + 1), self.num_channels)
-            )
+            self.affine_weight = torch.nn.Parameter(torch.ones((self.lmax + 1), self.num_channels))
+            expand_index = torch.zeros([((self.lmax + 1) ** 2)]).long()     # L >= 0
+            for l in range(self.lmax + 1):
+                start_idx = l ** 2
+                length = 2 * l + 1
+                expand_index[start_idx : (start_idx + length)] = l
+            self.register_buffer('expand_index', expand_index)
+
             if self.centering:
-                self.affine_bias = nn.Parameter(torch.zeros(self.num_channels))
+                self.affine_bias = torch.nn.Parameter(torch.zeros(self.num_channels))
             else:
-                self.register_parameter("affine_bias", None)
+                self.register_parameter('affine_bias', None)
         else:
-            self.register_parameter("affine_weight", None)
-            self.register_parameter("affine_bias", None)
+            self.register_parameter('affine_weight', None)
+            self.register_parameter('affine_bias', None)
 
-        assert normalization in ["norm", "component"]
+        assert normalization in ['norm', 'component']
         self.normalization = normalization
-
-        expand_index = get_l_to_all_m_expand_index(self.lmax)
-        self.register_buffer("expand_index", expand_index, persistent=False)
 
         if self.std_balance_degrees:
             balance_degree_weight = torch.zeros((self.lmax + 1) ** 2, 1)
-            for lval in range(self.lmax + 1):
-                start_idx = lval**2
-                length = 2 * lval + 1
-                balance_degree_weight[start_idx : (start_idx + length), :] = (
-                    1.0 / length
-                )
+            for l in range(self.lmax + 1):
+                start_idx = l ** 2
+                length = 2 * l + 1
+                balance_degree_weight[start_idx : (start_idx + length), :] = (1.0 / length)
             balance_degree_weight = balance_degree_weight / (self.lmax + 1)
-            self.register_buffer(
-                "balance_degree_weight", balance_degree_weight, persistent=False
-            )
+            balance_degree_weight = balance_degree_weight.permute((1, 0))
+            self.register_buffer('balance_degree_weight', balance_degree_weight)
         else:
             self.balance_degree_weight = None
 
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, eps={self.eps}, centering={self.centering}, std_balance_degrees={self.std_balance_degrees})"
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, eps={self.eps}, std_balance_degrees={self.std_balance_degrees}, centering={self.centering})"
 
-    @torch.autocast("cuda", enabled=False)
-    @torch.autocast("cpu", enabled=False)
-    def forward(self, node_input):
+
+    def forward(self, inputs):
         """
-        Assume input is of shape [N, sphere_basis, C]
+            1.  `inputs` shape: (num_nodes, (self.lmax + 1) ** 2, self.num_channels)
         """
-
-        feature = node_input
-
+        # for L = 0
         if self.centering:
-            feature_l0 = feature.narrow(1, 0, 1)
-            feature_l0_mean = feature_l0.mean(dim=2, keepdim=True)  # [N, 1, 1]
-            feature_l0 = feature_l0 - feature_l0_mean
-            feature = torch.cat(
-                (feature_l0, feature.narrow(1, 1, feature.shape[1] - 1)), dim=1
-            )
+            scalars = inputs.narrow(1, 0, 1)
+            scalars_mean = scalars.mean(dim=2, keepdim=True) # [N, 1, 1]
+            scalars = scalars - scalars_mean
+            inputs = torch.cat((scalars, inputs.narrow(1, 1, inputs.shape[1] - 1)), dim=1)
 
         # for L >= 0
-        if self.normalization == "norm":
-            assert not self.std_balance_degrees
-            feature_norm = feature.pow(2).sum(dim=1, keepdim=True)  # [N, 1, C]
-        elif self.normalization == "component":
+        feature_norm = inputs.pow(2)
+        feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)        # [N, (L_max + 1)**2, 1]
+        if self.normalization == 'norm':
+            feature_norm = feature_norm.sum(dim=1, keepdim=True)            # [N, 1, 1]
+        elif self.normalization == 'component':
             if self.std_balance_degrees:
-                feature_norm = feature.pow(2)  # [N, (L_max + 1)**2, C]
-                feature_norm = torch.einsum(
-                    "nic, ia -> nac", feature_norm, self.balance_degree_weight
-                )  # [N, 1, C]
+                feature_norm = torch.einsum('ai, nic -> nac', self.balance_degree_weight, feature_norm) # [N, 1, 1]
             else:
-                feature_norm = feature.pow(2).mean(dim=1, keepdim=True)  # [N, 1, C]
-
-        feature_norm = torch.mean(feature_norm, dim=2, keepdim=True)  # [N, 1, 1]
+                feature_norm = feature_norm.mean(dim=1, keepdim=True)       # [N, 1, 1]
         feature_norm = (feature_norm + self.eps).pow(-0.5)
-
         if self.affine:
-            weight = self.affine_weight.view(
-                1, (self.lmax + 1), self.num_channels
-            )  # [1, L_max + 1, C]
-            weight = torch.index_select(
-                weight, dim=1, index=self.expand_index
-            )  # [1, (L_max + 1)**2, C]
-            feature_norm = feature_norm * weight  # [N, (L_max + 1)**2, C]
-
-        out = feature * feature_norm
+            weight = self.affine_weight.view(1, (self.lmax + 1), self.num_channels)
+            weight = torch.index_select(weight, dim=1, index=self.expand_index)
+            feature_norm = feature_norm * weight
+        outputs = inputs * feature_norm
 
         if self.affine and self.centering:
-            out[:, 0:1, :] = out.narrow(1, 0, 1) + self.affine_bias.view(
-                1, 1, self.num_channels
-            )
-
-        return out
-
-
-class EquivariantDegreeLayerScale(nn.Module):
-    """
-    1. Similar to Layer Scale used in CaiT (Going Deeper With Image Transformers (ICCV'21)), we scale the output of both attention and FFN.
-    2. For degree L > 0, we scale down the square root of 2 * L, which is to emulate halving the number of channels when using higher L.
-    """
-
-    def __init__(self, lmax: int, num_channels: int, scale_factor: float = 2.0) -> None:
-        super().__init__()
-
-        self.lmax = lmax
-        self.num_channels = num_channels
-        self.scale_factor = scale_factor
-
-        self.affine_weight = nn.Parameter(
-            torch.ones(1, (self.lmax + 1), self.num_channels)
-        )
-        for lval in range(1, self.lmax + 1):
-            self.affine_weight.data[0, lval, :].mul_(
-                1.0 / math.sqrt(self.scale_factor * lval)
-            )
-        expand_index = get_l_to_all_m_expand_index(self.lmax)
-        self.register_buffer("expand_index", expand_index, persistent=False)
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(lmax={self.lmax}, num_channels={self.num_channels}, scale_factor={self.scale_factor})"
-
-    def forward(self, node_input):
-        weight = torch.index_select(
-            self.affine_weight, dim=1, index=self.expand_index
-        )  # [1, (L_max + 1)**2, C]
-        return node_input * weight  # [N, (L_max + 1)**2, C]
+            outputs[:, 0:1, :] = outputs.narrow(1, 0, 1) + self.affine_bias.view(1, 1, self.num_channels)
+        
+        return outputs
+    

@@ -51,6 +51,7 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
+        "edge_nonlinear": "sep-merge_gates2_swiglu",
         "l1l2": None,
         "ictp_ictc_like": True,
         # "num_experts": None,

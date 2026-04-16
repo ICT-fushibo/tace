@@ -9,9 +9,8 @@ from typing import List, Dict
 import torch
 from e3nn import o3
 
-from .angular import SphericalHarmonics
-from .s2 import FibonacciLattice
 
+from ..utils.torch_scatter import scatter_sum
 
 def format_list(obj, ndigits=4):
     if isinstance(obj, int):
@@ -199,6 +198,19 @@ class ScaleShift(torch.nn.Module):
         )
 
 
+def has_no_isolated_atoms(edge_index: torch.Tensor, num_atoms: int):
+    if torch.all(
+        scatter_sum(
+            torch.ones((num_atoms,))[edge_index[0]], 
+            edge_index[1], 
+            dim_size=num_atoms, 
+            dim=0,
+        )
+    ):
+        return True
+    else:
+        return False
+    
 # class kSphericalHarmonics(torch.nn.Module):
 #     def __init__(
 #         self,

@@ -3,10 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-
-from typing import Optional
-
-
 import torch
 from e3nn.nn import Activation
 from e3nn import o3
