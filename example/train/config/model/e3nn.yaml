@@ -26,7 +26,8 @@ config:
     type: nonlinear # identity  # [identity, linear, nonlinear, element, group], identity is safer
 
   edge_update:
-    type: element  # [identity, element], identity is safer
+    type: element  # [identity, element, tensor_dot], identity is safer
+    tensor_dot_channel: null # [null, int] null=8
 
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.

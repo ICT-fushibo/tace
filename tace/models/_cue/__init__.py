@@ -1,5 +1,5 @@
-from ._tp_scatter import e3nnCueTensorProduct
+from ._tp_scatter import e3nnCueScatterTensorProduct
 
 __all__ = [
-    'e3nnCueTensorProduct',
+    'e3nnCueScatterTensorProduct',
 ]

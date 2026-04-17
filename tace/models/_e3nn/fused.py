@@ -13,18 +13,17 @@ from ..env import TACE_USE_OEQ, TACE_USE_CUE, TACE_USE_EQT
 from .paths import generate_paths
 from .._eqt.equitorch.nn import SO2TensorProduct
 try:
-    from .._oeq import e3nnOeqTensorProduct
+    from .._oeq import e3nnOeqScatterTensorProduct
 except Exception:
     pass
 try:
-    from .._cue import e3nnCueTensorProduct
+    from .._cue import e3nnCueScatterTensorProduct
 except Exception:
     pass
 try:
     from .._eqt import e3nnEqtTensorProduct
 except Exception:
     pass
-
 
 
 class O3ScatterTensorProduct(torch.nn.Module):
@@ -70,14 +69,14 @@ class O3ScatterTensorProduct(torch.nn.Module):
         # assert not (self.use_oeq & self.use_cue)
 
         if self.use_oeq:
-            self.fused_tp = e3nnOeqTensorProduct(
+            self.fused_tp = e3nnOeqScatterTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,
                 irreps_out=self.irreps_out,
                 instructions=self.instructions,
             )
         elif self.use_cue:
-            self.fused_tp = e3nnCueTensorProduct(
+            self.fused_tp = e3nnCueScatterTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,
                 irreps_out=self.irreps_out,

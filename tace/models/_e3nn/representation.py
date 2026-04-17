@@ -123,6 +123,7 @@ class Representation(torch.nn.Module):
                     edge_embedding_channel=self.edge_embedding.out_dim,
                     num_channel=num_channel,
                     Lmax=Lmax,
+                    tensor_dot_channel=edge_update['tensor_dot_channel'],
                 )
                 for layer in range(num_layers)
             ]

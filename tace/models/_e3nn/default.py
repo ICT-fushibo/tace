@@ -28,6 +28,7 @@ DEFAULT_MODEL_CONFIG = {
     },
     "edge_update": {
         "type": "identity",
+        "tensor_dot_channel": None,
     },
     "radial_basis": {
         "bias": False,

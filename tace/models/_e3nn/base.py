@@ -78,6 +78,7 @@ class EdgeUpdate(torch.nn.Module):
         num_channel: int,
         edge_embedding_channel: int,
         Lmax: List[int],
+        tensor_dot_channel: int | None,
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -93,6 +94,7 @@ class EdgeUpdate(torch.nn.Module):
         self.use_bias = bias
         self.Lmax = Lmax[layer]
         self.irreps_node = _to_full_so3_irreps(self.Lmax, self.num_channel)
+        self.tensor_dot_channel = tensor_dot_channel or 8
 
         self._setup()
     

@@ -36,7 +36,6 @@ __pycache__/
 tmp/
 xzm/
 draw/
-openmm/
 3bpa/
 
 # Ignore specific files

@@ -274,7 +274,7 @@ class TensorDotEdgeUpdate(EdgeUpdate):
 
     def _setup(self) -> None:
 
-        c = 8
+        c = self.tensor_dot_channel
         irreps_hidden = o3.Irreps([(c, ir) for _, ir in self.irreps_node])
 
         if self.layer == 0:

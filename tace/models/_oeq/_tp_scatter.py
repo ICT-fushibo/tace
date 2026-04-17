@@ -35,6 +35,39 @@ class e3nnOeqTensorProduct(torch.nn.Module):
             irrep_dtype=dtype,
             weight_dtype=dtype,
         )
+        self.oeq_tp = oeq.TensorProduct(
+            tpp, 
+            torch_op=True, 
+            use_opaque=False,
+        )
+        self.weight_numel = self.oeq_tp.weight_numel
+        self.irreps_out = irreps_out
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        return self.oeq_tp(x, y, w) 
+    
+
+class e3nnOeqScatterTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in1: o3.Irreps,
+        irreps_in2: o3.Irreps,
+        irreps_out: o3.Irreps,
+        instructions: Tuple,
+    ):
+        super().__init__()
+
+        dtype = oeq.torch_to_oeq_dtype(torch.get_default_dtype())
+        tpp = oeq.TPProblem(
+            irreps_in1,
+            irreps_in2,
+            irreps_out,
+            instructions,
+            shared_weights=False,
+            internal_weights=False,
+            irrep_dtype=dtype,
+            weight_dtype=dtype,
+        )
         self.oeq_tp = oeq.TensorProductConv(
             tpp, 
             deterministic=False, 
