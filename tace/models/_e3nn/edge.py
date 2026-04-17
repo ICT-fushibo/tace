@@ -162,7 +162,12 @@ class ElementEdgeEmbedding(EdgeEmbedding):
 
 
 class IdentityEdgeUpdate(EdgeUpdate):
-    
+    """
+    An identity edge update module.
+
+    This class directly returns the input edge features (edge embedding) without modification.
+    """
+
     def _setup(self) -> None:
 
         self.out_dim = self.edge_embedding_channel
@@ -180,7 +185,14 @@ class IdentityEdgeUpdate(EdgeUpdate):
     
 
 class ElementEdgeUpdate(EdgeUpdate):
-    
+    """
+    An edge update module that incorporates edge element information.
+
+    This class augments edge features by concatenating embeddings of the
+    source and target node elements, allowing edge representations to
+    explicitly depend on the types of connected nodes.
+    """
+
     def _setup(self) -> None:
 
         self.out_dim = self.edge_embedding_channel + self.num_channel * 2
@@ -219,7 +231,13 @@ class ElementEdgeUpdate(EdgeUpdate):
 
 
 class Element2EdgeUpdate(ElementEdgeUpdate):
-    
+    """
+    A variant of element-based edge update with reversed ordering.
+
+    This class is similar to ElementEdgeUpdate but swaps the order of
+    source and target element embeddings when concatenating.
+    """
+
     def forward(
         self,
         node_feats: torch.Tensor,
@@ -243,7 +261,17 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
 
 
 class TensorDotEdgeUpdate(EdgeUpdate):
-    
+    """
+    An edge update module based on tensor dot interactions.
+
+    This module is analogous to self-attention. However,
+    instead of applying a softmax to obtain attention weights, the resulting
+    interactions are directly treated as edge features and used to generate
+    convolution weights, enabling the model to capture higher-order geometric 
+    and feature correlations between connected nodes.
+
+    """
+
     def _setup(self) -> None:
 
         c = 8

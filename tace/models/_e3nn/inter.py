@@ -19,11 +19,19 @@ from ..layout import LayoutTransform
 from .base import Interaction
 from .linear import Linear, ElementLinear
 from .fused import O3ScatterTensorProduct, SO2ScatterTensorProduct
-from .nonlinear import GatedLinearUnit, MixtralExpertsGatedLinearUnit, NormLinearUnit, GridMLPUnit
+from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from .layer_norm import get_normalization_layer
 
 
 class CGTP_Interaction(Interaction):
+    """
+    An interaction module based on Clebsch-Gordan tensor products (CGTP).
+
+    This module performs edge-level convolution using Clebsch-Gordan tensor
+    products. It supports operator fusion via OpenEquivariance or CuEquivariance,
+    which can significantly reduce memory consumption and improve efficiency.
+    """
+
     def _setup(self) -> None:
 
         self.linear_up = Linear(
@@ -246,6 +254,19 @@ class CGTP_Interaction(Interaction):
     
 
 class SO2_Interaction(Interaction):
+    """
+    An interaction module based on SO(2) tensor products.
+
+    This module uses the SO(2) tensor product implemented in EquiTorch.
+
+    SO(2) tensor product was originally introduced in 
+    "Reducing SO(3) Convolutions to SO(2) for Efficient Equivariant GNNs".
+
+    In theory, it becomes more advantageous than CGTP as the maximum angular
+    momentum increases. However, since operator fusion is not currently
+    supported, CGTP with fusion is generally recommended in practice.
+    """
+
     def _setup(self) -> None:
 
         self.linear_up = Linear(
