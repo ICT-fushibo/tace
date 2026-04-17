@@ -28,5 +28,6 @@ and `Hydra <https://hydra.cc/>`_.
    property.rst
    ase.rst
    lammps.rst
+   openmm.rst
    torchSim.rst
    scripts.rst

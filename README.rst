@@ -80,11 +80,13 @@ TACE currently supports the following plugin:
 Interfaces
 ----------
 
-- ✅ Supports integration with **TorchSim**.
+- ✅ Supports integration with **ASE Calculator**.
 
 - ✅ Supports integration with **LAMMPS-ML-IAP**.
 
-- ✅ Supports integration with **ASE Calculator**.
+- ✅ Supports integration with **OpenMM-ML-ASE**.
+
+- ✅ Supports integration with **TorchSim**.
 
 
 
