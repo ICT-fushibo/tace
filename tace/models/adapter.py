@@ -8,8 +8,10 @@ from typing import List, Dict, Optional
 
 import torch
 from torch import Tensor
-from tace.utils.torch_scatter import scatter_sum
 
+
+from tace.dataset.element import TorchElement
+from ..dataset.quantity import PROPERTY, ComputeFlag
 from .utils import (
     compute_symmetric_displacement, 
     compute_atomic_virials_stresses,
@@ -18,107 +20,25 @@ from .utils import (
 )
 from .lammps import Graph
 
-from ..dataset.quantity import PROPERTY, ComputeFlag
-
 
 class TensorModel(torch.nn.Module):
 
     def __init__(self, readout_fn: torch.nn.Module):
         super().__init__()
         self.readout_fn = readout_fn
-        target_property = readout_fn.target_property
         self.num_fidelities = len(readout_fn.fidelity)
-        self._set_target_property(target_property)
+        self._set_target_property()
         self._set_lammps_mliap()
-        self._set_special
-        self._set_embedding_property()
-        self._set_universal_embedding()
-        self._set_spin_on()
-        self.set_fidelity_idx()
+        self.reset_fidelity_idx()
    
-    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Optional[torch.Tensor | List[torch.Tensor]]]:
-        # === pre processing ===
+    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor | None]:
         graph = self.prepare_graph(data)
-
-        # === predict ===
         RESULTS = self.readout_fn(data, graph)
         FIRST = self.first_derivative_fn(data, graph, RESULTS)
         SECOND = self.second_derivative_fn(data, graph, RESULTS, FIRST)
 
         return {**RESULTS, **FIRST, **SECOND}
     
-    def _set_spin_on(self, enable: bool = False):
-        self.spin_on = 1 if enable else 0
-
-    def reset_spin_on(self, enable: bool = True):
-        self._set_spin_on(enable)
-
-    def get_spin_on(self) -> int:
-        return self.spin_on
-
-    def _set_embedding_property(self):
-        self.embedding_property = getattr(
-            self.readout_fn, "embedding_property", []
-        )
-
-    def get_embedding_property(self):
-        return self.embedding_property
-
-    def _set_universal_embedding(self):
-        self.universal_embedding = getattr(
-            self.readout_fn, "universal_embedding", {}
-        )
-
-    def _set_special(self):
-        self.special = getattr(
-            self.readout_fn, "special", {}
-        )
-
-    def set_fidelity_idx(self, fidelity_idx: int = 0):
-        self.fidelity_idx = fidelity_idx
-        
-    def get_fidelity_idx(self) -> int:
-        return self.fidelity_idx
-
-    def _set_target_property(self, target_property: List[str]):
-
-        assert 'direct_hessians' not in target_property
-        assert 'final_collinear_magmoms' not in target_property
-        assert 'final_noncollinear_magmoms' not in target_property
-
-        self.target_property = target_property
-
-        self.flags = ComputeFlag()
-        for k in self.target_property:
-            setattr(self.flags, f"compute_{k}", k in self.target_property)
-
-        self.compute_first_derivative = False
-        for p in self.target_property:
-            if PROPERTY[p]['first_derivative']:
-                self.compute_first_derivative = True
-
-        self.compute_second_derivative = False
-        for p in self.target_property:
-            if PROPERTY[p]['second_derivative']:
-                self.compute_second_derivative = True
-
-        self.retain_graph = self.compute_second_derivative
-        self.create_graph = self.compute_second_derivative
-        
-    def reset_target_property(self, target_property: List[str]):
-        assert isinstance(target_property, List)
-        self._set_target_property(target_property)
-        self.readout_fn._reset_target_property(target_property)
-
-    def get_target_property(self) -> List[str]:
-        return list(set(self.target_property))
-
-    def _set_lammps_mliap(self, enable: bool = False):
-        self.lmp = enable
-
-    def reset_lammps_mliap(self, enable: bool = True):
-        self._set_lammps_mliap(enable)
-
     def first_derivative_fn(
         self, data: Dict[str, Tensor], graph: Graph, results: Dict[str, Tensor]
     ) -> Dict[str, Optional[Tensor]]:
@@ -338,7 +258,7 @@ class TensorModel(torch.nn.Module):
         )  # used for multi-fidelity and multi-head
 
         if self.lmp:
-            for p in self.target_property:
+            for p in self.get_target_property():
                 for requires_grad_p in PROPERTY[p]['requires_grad_with']:
                     if p != 'forces':
                         data[requires_grad_p].requires_grad_(True)
@@ -364,7 +284,7 @@ class TensorModel(torch.nn.Module):
             num_atoms_arange = torch.arange(nlocal, device=positions.device, dtype=torch.int64)
         else:
             requires_grad_p_list = []
-            for p in self.target_property:
+            for p in self.get_target_property():
                 for requires_grad_p in PROPERTY[p]['requires_grad_with']:
                     requires_grad_p_list.append(requires_grad_p)
                     if requires_grad_p != "edge_vector":
@@ -388,7 +308,7 @@ class TensorModel(torch.nn.Module):
                     "ni,nij->nj", data["edge_shifts"], data["lattice"][edge_batch]
                 )
             )
-            if set(self.target_property) & {"edge_vector", "atomic_stresses", "atomic_virials"}:
+            if set(self.get_target_property()) & {"edge_vector", "atomic_stresses", "atomic_virials"}:
                     edge_vector.requires_grad_(True)
             edge_length = (edge_vector**2).sum(dim=1, keepdim=True).sqrt() + 1e-9
             lattice = data['lattice']
@@ -426,3 +346,59 @@ class TensorModel(torch.nn.Module):
             dcutoff=dcutoff,
         )
     
+    def get_fidelity_idx(self) -> int:
+        return int(self.fidelity_idx)
+    
+    def reset_fidelity_idx(self, fidelity_idx: int | None = 0) -> None:
+        if fidelity_idx is not None:
+            self.fidelity_idx = fidelity_idx
+        
+    def get_embedding_property(self) -> List[str]:
+        return list(set(self.readout_fn.embedding_property))
+    
+    def get_target_property(self) -> List[str]:
+        return list(set(self.readout_fn.target_property))
+
+    def _set_target_property(self) -> None:
+
+        target_property = self.get_target_property()
+
+        self.flags = ComputeFlag()
+        for k in target_property:
+            setattr(self.flags, f"compute_{k}", k in target_property)
+
+        self.compute_first_derivative = False
+        for p in target_property:
+            if PROPERTY[p]['first_derivative']:
+                self.compute_first_derivative = True
+
+        self.compute_second_derivative = False
+        for p in target_property:
+            if PROPERTY[p]['second_derivative']:
+                self.compute_second_derivative = True
+
+        self.retain_graph = self.compute_second_derivative
+        self.create_graph = self.compute_second_derivative
+        
+    def reset_target_property(self, target_property: List[str]) -> None:
+        assert isinstance(target_property, List)
+        self.readout_fn.target_property = target_property
+        self._set_target_property()
+      
+    def _set_lammps_mliap(self, enable: bool = False) -> None:
+        self.lmp = enable
+
+    def get_model_dtype(self) -> torch.dtype:
+        return self.readout_fn.cutoff.dtype
+    
+    def get_max_neighbors(self) -> int | None:
+        return self.readout_fn.max_neighbors
+    
+    def get_cutoff(self) -> float:
+        return float(self.readout_fn.cutoff.item())
+    
+    def get_atomic_numbers(self) -> float:
+        return [int(z) for z in self.readout_fn.atomic_numbers.cpu().tolist()]
+    
+    def get_torch_element(self) -> TorchElement:
+        return TorchElement(self.get_atomic_numbers())

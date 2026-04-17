@@ -22,10 +22,10 @@ except ImportError:
     LAMMPS_ML_IAP_AVAILABLE = False
 
 from tace.lightning import load_tace
+from tace.models.adapter import TensorModel
 
-# TODO check device 
 class EdgeForcesWrapper(torch.nn.Module):
-    def __init__(self, model: torch.nn.Module, **kwargs):
+    def __init__(self, model: TensorModel, **kwargs):
         super().__init__()
         model.lmp = True
         model.flags.compute_forces = False
@@ -55,7 +55,7 @@ class EdgeForcesWrapper(torch.nn.Module):
 
 
 class TACELammpsCalc(MLIAPUnified):
-    '''Not test for cpu running, only cuda devices are tested by author'''
+    '''Not test for cpu running, only cuda devices are tested'''
     def __init__(self, model, **kwargs):
         super().__init__()
         model = load_tace(model)

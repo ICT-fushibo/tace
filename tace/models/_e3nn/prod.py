@@ -23,7 +23,18 @@ from ..mlp import ACTIVATION
 
 
 class CGTP_ACE(Product):
-    
+    """
+    The most expressive ACE implementation based on Clebsch-Gordan tensor products.
+
+    This class computes all possible many-body tensor product paths and couples
+    all channels, forming a highly expressive product basis.
+
+    Note:
+        It is recommended to use no more than 64 channels, as increasing the
+        number of channels beyond this does not necessarily lead to better
+        performance and may introduce unnecessary computational overhead.
+    """
+
     def _setup(self):
 
         if self.nonlinear_type == 'gate':
@@ -151,9 +162,85 @@ class CGTP_ACE(Product):
             outs = outs + sc
 
         return outs
-    
+
+
+class MTP_ACE(Product):
+    """
+    An ACE implementation based on matrix tensor products.
+
+    This module performs many-body expansion using matrix tensor products.
+    This approach is inspired by the FusedTensor in e3x, and the idea was
+    motivated by a reviewer's suggestion in one of my papers.
+
+    Similar to GTP-based methods, it averages over paths.
+    However, it includes antisymmetric interactions, and its computational
+    scaling at higher correlation orders is significantly more efficient
+    than CGTP_ACE.
+    """
+
+    def _setup(self):
+
+        self.reshape = LayoutTransform(self.irreps_in)
+
+        self.aces = torch.nn.ModuleList(
+            MatrixTensorProduct(
+                L1=self.irreps_in.lmax,
+                L2=self.irreps_in.lmax,
+                C=self.num_hidden_channel,
+            ) for _ in range(self.correlation-1)
+        )
+        self.coefs = torch.nn.ModuleList(
+            ElementLinear(
+                self.irreps_in,
+                self.irreps_hidden,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+            ) for _ in range(self.correlation)
+        )
+
+        self.linear = Linear(
+            self.irreps_hidden,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
+
+        node_feats = self.reshape(node_feats)
+
+        corr_feats = {
+            1: node_feats,
+        }
+        outs = self.coefs[0](self.reshape.inverse(corr_feats[1]), node_attrs)
+
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](self.reshape.inverse(corr_feats[nu]), node_attrs)
+        outs = self.linear(outs)
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+      
 # TODO, refactor
 class GTP_ACE(Product):
+    """
+    An ACE implementation based on Gaunt tensor products.
+
+    This module uses Gaunt tensor products to perform many-body expansions.
+    However, this approach introduces equivariance errors (though typically small),
+    lacks antisymmetric interactions, and averages over multiple many-body
+    expansion paths.
+
+    As a result, increasing the correlation order does not always lead to improved
+    accuracy. This module is subject to future redesign and refinement.
+    """
 
     def _setup(self):
 
@@ -345,215 +432,7 @@ class GTP_ACE(Product):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(nlon={self.num_longitude}, nlat={self.num_latitude}, truncation={self.truncation})"
     
-
-class Identity_ACE(Product):
-
-    def _setup(self):
-
-        # assert self.correlation == 1
-
-        self.coefs = ElementLinear(
-            self.irreps_in,
-            self.irreps_hidden,
-            bias=self.use_bias,
-            num_elements=self.num_elements,
-        )
-
-        self.linear = Linear(
-            self.irreps_hidden,
-            self.irreps_out,
-            bias=self.use_bias,
-        )
-
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-        ) -> torch.Tensor:
-        outs = self.linear(self.coefs(node_feats, node_attrs))
-         
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-    
-
-class MTP_ACE(Product):
-    
-    def _setup(self):
-
-        self.reshape = LayoutTransform(self.irreps_in)
-
-        self.aces = torch.nn.ModuleList(
-            MatrixTensorProduct(
-                L1=self.irreps_in.lmax,
-                L2=self.irreps_in.lmax,
-                C=self.num_hidden_channel,
-            ) for _ in range(self.correlation-1)
-        )
-        self.coefs = torch.nn.ModuleList(
-            ElementLinear(
-                self.irreps_in,
-                self.irreps_hidden,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-            ) for _ in range(self.correlation)
-        )
-
-        self.linear = Linear(
-            self.irreps_hidden,
-            self.irreps_out,
-            bias=self.use_bias
-        )    
-
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-        ) -> torch.Tensor:
-
-        node_feats = self.reshape(node_feats)
-
-        corr_feats = {
-            1: node_feats,
-        }
-        outs = self.coefs[0](self.reshape.inverse(corr_feats[1]), node_attrs)
-
-        for nu in range(2, self.correlation+1):
-            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            outs = outs + self.coefs[nu-1](self.reshape.inverse(corr_feats[nu]), node_attrs)
-        outs = self.linear(outs)
-
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-
-
-class Agnostic_ACE(Product):
-    
-    def _setup(self):
-
-        if self.nonlinear_type == 'gate':
-            self.irreps_nonlinear =(
-                self.irreps_hidden + o3.Irreps(f"{len(self.irreps_hidden)*self.num_hidden_channel}x0e")
-            ).regroup()
-        else:
-            self.irreps_nonlinear = self.irreps_hidden
-            
-        self.aces = torch.nn.ModuleList()
-        self.coefs = torch.nn.ModuleList()
-        self.coefs.append(
-            Linear(
-                self.irreps_in,
-                self.irreps_nonlinear,
-                bias=self.use_bias,
-            )    
-        )
-
-        product_in1 = self.irreps_in
-        if self.correlation == 2:
-            product_out = self.irreps_hidden
-        else:
-            product_out = self.irreps_in 
-
-        for nu in range(2, self.correlation+1):
-
-            this_ace = uuuTensorProduct(
-                irreps_in1=product_in1,
-                irreps_in2=self.irreps_in,
-                irreps_out=product_out,
-                l1l2=self.l1l2,
-                ictp_ictc_like=self.ictp_ictc_like,
-            )
-            self.aces.append(this_ace)
-            self.coefs.append(
-                Linear(
-                    this_ace.irreps_out.simplify(),
-                    self.irreps_nonlinear,
-                    bias=self.use_bias,
-                )    
-            )
-
-            product_in1 = this_ace.irreps_out
-
-            if nu == self.correlation-1:
-                product_out = self.irreps_out
-            else:
-                product_out = self.irreps_in
-
-
-        if self.nonlinear_type is not None:
-            if self.nonlinear_type == 'norm':
-                self.nonlinearity = NormLinearUnit(
-                    self.irreps_hidden,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                )
-            elif self.nonlinear_type == 'grid':
-                self.nonlinearity = GridMLPUnit(
-                    self.irreps_hidden,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                    bias=False,
-                ) # will introduct higher freq
-            elif self.nonlinear_type == 'e3nngate':
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_out if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = e3nn.nn.Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-            elif self.nonlinear_type == 'gate':
-                irreps_gated = self.irreps_hidden
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_hidden)
-                self.nonlinearity = GatedLinearUnit(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-            else:
-                raise
-
-        self.linear = Linear(
-            self.irreps_hidden,
-            self.irreps_out,
-            bias=self.use_bias
-        )    
-        
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-        ) -> torch.Tensor:
-
-        corr_feats = {
-            1: node_feats,
-        }
-        outs = self.coefs[0](corr_feats[1])
-
-        for nu in range(2, self.correlation+1):
-            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            outs = outs + self.coefs[nu-1](corr_feats[nu])
-
-        outs = self.nonlinearity(outs)
-        outs = self.linear(outs)
-
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-
-
+ 
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": CGTP_ACE,
     "spatial": CGTP_ACE,
@@ -567,10 +446,5 @@ PRODUCT: Dict[str, torch.nn.Module] = {
 
     "matrix": MTP_ACE,
     "mtp": MTP_ACE,
-
-    # special
-    "agnostic": Agnostic_ACE,
-    "identity": Identity_ACE,
-
 }
 

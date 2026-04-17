@@ -17,13 +17,14 @@ from torchmetrics import MetricCollection
 from omegaconf import OmegaConf
 from tace.utils.torch_scatter import scatter_sum
 
+
 from .skip import LossSkipController
 from .select_model import select_model
 from ..dataset.quantity import get_target_property, get_embedding_property
 from ..utils.metrics import build_metrics, update_metrics
 from .. utils._global import DTYPE, DEVICE
 from ..utils.loss.uncertainty import UncertaintyLoss
-
+from ..models.adapter import TensorModel
 
 def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module:
     if not finetune_cfg: 
@@ -554,7 +555,7 @@ def _load_tace(
     strict: Optional[bool] = True,
     use_ema: bool = True,
     **kwargs: Any,
-):
+) -> TensorModel:
     device = DEVICE[device]
     if isinstance(model, str | Path):
         model_path = str(model)
@@ -595,7 +596,8 @@ def load_tace(
     use_ema: bool = True,
     target_property: Optional[list[str]] = None,
     **kwargs: Any,
-):
+) -> TensorModel:
+    
     model = _load_tace(
         model=model,
         device=device,

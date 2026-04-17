@@ -12,16 +12,14 @@ from typing import Dict
 import ase.io
 from tqdm import tqdm
 import torch
-from torch import Tensor
 from torch_geometric.loader import DataLoader
 from e3nn.util.jit import compile
 
 
 from ..lightning import load_tace
-from ..dataset.element import TorchElement
 from ..dataset.graph import from_atoms
 from ..utils.metrics import build_metrics, update_metrics
-from ..utils._global import DTYPE, BOOL
+from ..utils._global import DTYPE
 from ..utils.utils import num_params
 from ..dataset.quantity import KeySpecification, update_keyspec_from_kwargs, PROPERTY
 from ..dataset.read import check_keys
@@ -56,21 +54,18 @@ def main():
     atoms_list_copy = copy.deepcopy(atomsList)
     key_spec = KeySpecification()
     update_keyspec_from_kwargs(key_spec, vars(args))
-    training = True if args.test else False # test which means your should provide label for error
-    model =load_tace(args.model, args.device, strict=True, use_ema=args.ema)
-    max_neighbors = model.max_neighbors.item() if hasattr(model, "max_neighbors") else None
-    cutoff = model.readout_fn.cutoff.item()
-    atomic_numbers = model.readout_fn.atomic_numbers.tolist()
-    device = args.device
-    model_dtype = model.readout_fn.cutoff.dtype
-    args_dtype = DTYPE[args.dtype]
-
-
-    target_property = list(set(model.target_property))
-    embedding_property = getattr(model, "embedding_property", [])
-
-    model.eval().to(device)
+    model = load_tace(args.model, args.device, strict=True, use_ema=args.ema)
     print(f"Number of parameters: {num_params(model)}")
+    max_neighbors = model.get_max_neighbors()
+    cutoff = model.get_cutoff()
+    element = model.get_torch_element()
+    model_dtype = model.get_model_dtype()
+    target_property = model.get_target_property()
+    embedding_property = model.get_embedding_property()
+    args_dtype = DTYPE[args.dtype]
+    model.eval().to(args.device)
+    for param in model.parameters():
+        param.requires_grad = False
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype {(model_dtype)} does not match args.dtype {(args_dtype)}. Forcing dtype to {args_dtype}")
     torch.set_default_dtype(args_dtype)
@@ -80,10 +75,10 @@ def main():
     if args.test == 1:
         metrics: Dict = build_metrics("test", target_property)
         for m in metrics.values():
-            m.to(device)
+            m.to(args.device)
 
     # Dataset
-    element = TorchElement([int(z) for z in atomic_numbers])
+    training = True if args.test else False # test which means your should extra provide label
     dataset = [
         from_atoms(
             element,
@@ -93,7 +88,6 @@ def main():
             keyspec=key_spec,
             target_property=target_property,
             embedding_property=embedding_property,
-            universal_embedding=getattr(model, 'universal_embedding', {}),
             neighborlist_backend=args.nl_backend,
         )
         for atoms in check_keys(atomsList, target_property, key_spec, embedding_property, training)
@@ -105,7 +99,7 @@ def main():
 
     # Run inference
     for batch in tqdm(dataloader):
-        batch.to(device)
+        batch.to(args.device)
         for p in target_property:
             for requires_grad_p in PROPERTY[p]['requires_grad_with']:
                 batch[requires_grad_p].requires_grad_(True)
@@ -117,7 +111,7 @@ def main():
 
             preds.append(
                 {
-                    k: v.detach().cpu() if isinstance(v, Tensor) else None
+                    k: v.detach().cpu() if isinstance(v, torch.Tensor) else None
                     for k, v in outputs.items()
                 }
             )
@@ -129,7 +123,7 @@ def main():
     if args.device == "cuda" and torch.cuda.is_available():
         print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
     else:
-        print(f"Device name: {device.upper()}")
+        print(f"Device name: {args.device.upper()}")
 
     if args.test == 1:  
         # Print metrics

@@ -90,6 +90,7 @@ def check_keys(
             elif p in list(keyspec.arrays_keys):
                 key = keyspec.arrays_keys[p]
                 atoms.arrays[key] = value
+                
     return atomsList
 
 

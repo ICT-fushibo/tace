@@ -18,7 +18,7 @@ fidelity_idx = 0  # first fidelity
 atoms = read('../data/BaTiO3.xyz', index=0)
 
 
-# The training property of TACE-v1-OAM-M.pt are ['energy', 'forces', 'stress'],
+# The training property of TACE-OAM-L are ['energy', 'forces', 'stress'],
 # but we can also predict properties such as hessians, atomic_stresses
 target_property = ["energy", "forces", "stress", "atomic_stresses", "hessians"]
 calc = TACEAseCalc(

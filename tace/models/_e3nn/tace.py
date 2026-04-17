@@ -450,7 +450,4 @@ class e3nnTACE(torch.nn.Module):
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)
         return self.readout_fn(data, graph, rep)
-    
-    def _reset_target_property(self, target_property: List[str]):
-        self.target_property = target_property
 

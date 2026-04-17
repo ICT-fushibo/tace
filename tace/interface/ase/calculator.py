@@ -4,7 +4,6 @@
 ################################################################################
 
 import warnings
-from typing import Optional
 
 
 import torch
@@ -14,17 +13,17 @@ from ase.calculators.mixing import SumCalculator
 from torch_geometric.loader import DataLoader
 
 
-from ...lightning import load_tace
-from ...dataset.quantity import PROPERTY
-from ...dataset.element import TorchElement
-from ...dataset.graph import from_atoms
-from ...dataset.quantity import (
+from tace.models.adapter import TensorModel
+from tace.lightning import load_tace
+from tace.dataset.quantity import PROPERTY
+from tace.dataset.graph import from_atoms
+from tace.dataset.quantity import (
     PROPERTY,
     KEYS,
     KeySpecification,
     update_keyspec_from_kwargs,
 )
-from ...utils._global import DTYPE, DEVICE
+from tace.utils._global import DTYPE, DEVICE
 
 
 class TACEAseCalc(Calculator):
@@ -38,17 +37,14 @@ class TACEAseCalc(Calculator):
     ----------
     model_path : str
         Path to the trained model, file ends with pt, .pth or .ckpt.
-    device : str | torch.device, optional
+    dtype : str, optional
+        Model dtype for computations, e.g., float32 or float64.
+    device : str, optional
         The device to run computations on, e.g., cpu or cuda.
         If None, the device is automatically inferred.
-    dtype : str, optional, default=None
-        Model dtype for computations, e.g., float32 or float64.
-    fidelity_idx : int
+    fidelity_idx : int, optional
         Specify which fidelity fidelity_idx to use. 
-    spin_on : bool
-        If your model uses spin_on uie embedding, you can control whether 
-        your calculation enables spin polarization.
-    target_property: list(str)
+    target_property: list(str), optional
         Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
         If you want to use this parameter, you must provide all the required physical quantities.
     neighborlist_backend: str
@@ -61,36 +57,39 @@ class TACEAseCalc(Calculator):
         self,
         model: str,
         *,
-        dtype: Optional[str] = None,
-        device: Optional[str] = None,
-        fidelity_idx: Optional[int] = None,
-        spin_on: Optional[bool] = None,
-        target_property: Optional[list[str]] = None,
+        dtype: str | None = None,
+        device: str | None = None,
+        fidelity_idx: int | None = None,
+        target_property: list[str] | None = None,
         neighborlist_backend: str = "matscipy",
         **kwargs,
     ):
         super().__init__(**kwargs)
         # === init ===
-        model = load_tace(
+        model: TensorModel = load_tace(
             model, 
             device, 
             strict=True, 
             use_ema=True, 
             target_property=target_property
         )
-        model_dtype = model.readout_fn.cutoff.dtype
-        dtype = dtype or model_dtype
-        self.dtype = DTYPE[dtype]
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad = False
+
+        model_dtype = model.get_model_dtype()
+        self.dtype = DTYPE[dtype or model_dtype]
         self.device = DEVICE[device or torch.device("cuda" if torch.cuda.is_available() else "cpu")]
         torch.set_default_dtype(self.dtype)
         if DTYPE[dtype] != DTYPE[model_dtype]:
-            warnings.warn(
-                f"Model dtype {model_dtype} != default dtype {dtype}. "
-                f"This may cause silent type conversions."
-            )
+            print(f"[Warning] Model dtype {(model_dtype)} does not match args.dtype {(dtype)}. Forcing dtype to {self.dtype}")
         model = model.to(dtype=self.dtype)
         self.target_property = model.get_target_property() 
         self.embedding_property = model.get_embedding_property()
+        self.max_neighbors = model.get_max_neighbors()
+        self.cutoff = model.get_cutoff()
+        self.element = model.get_torch_element()
+        self.neighborlist_backend = neighborlist_backend
         self.implemented_properties = []
         for p in self.target_property:
             ase_name = PROPERTY[p]['ase_name']
@@ -99,29 +98,13 @@ class TACEAseCalc(Calculator):
                 self.implemented_properties.extend(["energy" ,"free_energy"])
             else:
                 self.implemented_properties.append(save_name)
-        self.max_neighbors = getattr(model.readout_fn, "max_neighbors", None)
-        self.cutoff = float(model.readout_fn.cutoff.item())
-        self.element = TorchElement([int(z) for z in model.readout_fn.atomic_numbers.cpu().tolist()])
-        self.neighborlist_backend = neighborlist_backend
-        model.eval()
-        for param in model.parameters():
-            param.requires_grad = False
-
-        self.keySpecification = KeySpecification()
-        update_keyspec_from_kwargs(self.keySpecification, KEYS)
- 
         if fidelity_idx is not None:
             self.fidelity_idx = fidelity_idx
-            model.set_fidelity_idx(fidelity_idx) 
+            model.reset_fidelity_idx(fidelity_idx) 
         else:
             self.fidelity_idx = model.get_fidelity_idx()
-
-        if spin_on is not None:
-            self.spin_on = 1 if spin_on else 0
-            model.reset_spin_on(self.spin_on) 
-        else:
-            self.spin_on = model.get_spin_on() 
-
+        self.keySpecification = KeySpecification()
+        update_keyspec_from_kwargs(self.keySpecification, KEYS)
         self.model = model.to(self.device)
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
@@ -157,9 +140,8 @@ class TACEAseCalc(Calculator):
         for p in self.target_property:
             p_rank = PROPERTY[p]['rank']
             p_scope = PROPERTY[p]['scope']
-            # ase_name = PROPERTY[p]['ase_name']
-            # save_name = ase_name if ase_name else p
-            save_name = p
+            ase_name = PROPERTY[p]['ase_name']
+            save_name = ase_name if ase_name else p
             if p_scope == 'per-system':
                 if p_rank == 0:
                     if p == 'energy':
