@@ -11,6 +11,7 @@ Documentation Structure
 
    install/install
    guide/guide
+   model/model
    
 .. toctree::
    :maxdepth: 1
@@ -40,10 +41,7 @@ Currently, the officially supported properties include:
 - Atomic virials (conservative, predict only)
 - absolute final collinear magmoms
 - Noncollinear magnetic forces (conservative)
-.. - Magnetization (conservative) *(not tested by us)*
-.. - Magnetic susceptibility (conservative) *(not tested by us)*
-.. - final (non)collinear magmoms (not time reversal)
-.. - total (non)collinear magmoms *(not tested by us)*
+
 
 For embedding property, we support:
 

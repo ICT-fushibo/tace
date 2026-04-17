@@ -49,13 +49,13 @@ html_theme_options = {
             "icon": "fab fa-github",
         },
     ],
-    "show_nav_level": 2,
+    "show_nav_level": 1,
     "footer_start": [],
     "footer_end": [],
 }
 html_show_sourcelink = False
 html_static_path = ["_static"]
-html_logo = "_static/logo.png"
+# html_logo = "_static/logo.png"
 html_favicon = "_static/favicon.ico"
 
 import os
