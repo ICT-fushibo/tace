@@ -137,6 +137,8 @@ class CGTP_ACE(Product):
         outs = self.coefs[0](corr_feats[1], node_attrs)
 
         for nu in range(2, self.correlation+1):
+            # if nu == 3:
+            #     node_feats = node_feats.mean(dim=0, keepdim=True).expand(node_feats.size(0), -1)
             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 

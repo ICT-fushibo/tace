@@ -170,8 +170,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         out = self.resahpe_out.inverse(out)
         return out
 
-
-    
+  
 class uuuTensorProduct(torch.nn.Module):
     def __init__(
         self,

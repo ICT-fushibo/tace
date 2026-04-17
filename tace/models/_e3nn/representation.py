@@ -52,7 +52,7 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
-        self.sue_eqt_so2 = atomic_basis['type'][-1] == 'so2' # TODO
+        self.use_eqt_so2 = atomic_basis['type'][-1] == 'so2' # TODO
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -196,7 +196,7 @@ class Representation(torch.nn.Module):
         )
 
         # === angular basis ===
-        if self.sue_eqt_so2:
+        if self.use_eqt_so2:
             assert all(l == lmax for l in Lmax)
             from .._eqt.equitorch.nn import AlignToZWignerD
             self.angular_basis = AlignToZWignerD(
