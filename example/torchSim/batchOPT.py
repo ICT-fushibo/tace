@@ -30,7 +30,7 @@ from tace.interface.torchsim import TACETorchSimCalc
 # === Input ===
 
 # Put your (auto)download model in ~/.cache/tace
-model = tace_foundations["TACE-v1-OAM-M"]
+model = tace_foundations["TACE-OAM-L"]
 
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -38,7 +38,6 @@ fidelity_idx = 0  # first fidelity
 model = TACETorchSimCalc(
     model,
     fidelity_idx=fidelity_idx,
-    spin_on=False,
     device=device,
     dtype=dtype, 
     compute_forces=True,
@@ -53,7 +52,7 @@ outDir = "results"
 # === unrelaxed atoms ===
 outDir = Path(outDir)
 outDir.mkdir(exist_ok=True)
-unrelaxed_atomsList = read('data/BaTiO3.xyz', index=':')[:2]
+unrelaxed_atomsList = read('../data/BaTiO3.xyz', index=':')[:2]
 
 # filter
 # === torchSim ===

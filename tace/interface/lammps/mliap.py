@@ -4,7 +4,7 @@
 ################################################################################
 '''
 This interface is general. As long as you have successfully compiled LAMMPS 
-with any one of the models TACE, MACE, NequIP, or Allegro ...
+with any one of the models TACE, TACE, NequIP, or Allegro ...
 then all MLIPs that have an interface with LAMMPS-ML-IAP can be used.
 '''
 
