@@ -160,7 +160,7 @@ class TensorModel(torch.nn.Module):
         BEC = None
         ALPHA = None
         CHI_M = None
-        HESSIANS = None
+        HESSIAN = None
         jacs_per_graph = None
         samples_per_graph = None
 
@@ -228,20 +228,20 @@ class TensorModel(torch.nn.Module):
             CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
 
 
-        if self.flags.compute_hessians:
+        if self.flags.compute_hessian:
             if self.training:
                 jacs_per_graph, samples_per_graph = sample_force_jacobian(
                     forces, 
                     graph.positions, 
                     data["ptr"], 
-                    num_samples=self.special.get("special", 2),
+                    num_samples=self.readout_fn.special['hessian']['num_samples'],
                     create_graph=self.training,
                 )
             else:
-                HESSIANS = compute_hessians_vmap(forces, graph.positions)
+                HESSIAN = compute_hessians_vmap(forces, graph.positions)
 
         return {
-            "hessians": HESSIANS,
+            "hessian": HESSIAN,
             "jacs_per_graph": jacs_per_graph,
             "samples_per_graph": samples_per_graph,
             "conservative_polarizability": ALPHA,

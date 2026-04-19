@@ -148,7 +148,7 @@ DEFAULT_MODEL_CONFIG = {
         },
     },
     "special": {
-        "hessians": {
+        "hessian": {
             "num_samples": 2
         },
         "charges": {

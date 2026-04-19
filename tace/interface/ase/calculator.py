@@ -45,7 +45,7 @@ class TACEAseCalc(Calculator):
     fidelity_idx : int, optional
         Specify which fidelity fidelity_idx to use. 
     target_property: list(str), optional
-        Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
+        Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
         If you want to use this parameter, you must provide all the required physical quantities.
     neighborlist_backend: str
         Support backend in one of [ase, matscipy, vesin], recommend matscipy

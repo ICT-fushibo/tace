@@ -10,9 +10,8 @@ import multiprocessing
 from concurrent.futures import as_completed
 from concurrent.futures import ProcessPoolExecutor
 
-import numpy as np
+
 from ase import Atoms
-from ase.calculators.calculator import all_properties
 
 
 from .split import random_split
@@ -110,8 +109,11 @@ def ase_io_read(filename: str):
 def ase_db_connect(filename: str):
     from ase.db import connect
     try:
+        atoms_list = []
         with connect(filename) as db:
-            atoms_list = [row.toatoms() for row in connect(filename).select()]
+            for row in db.select():
+                atoms = row.toatoms()
+                atoms_list.append(atoms)
         if not atoms_list:
             logging.warning(f"Database {filename} is empty")
             return []
@@ -121,19 +123,27 @@ def ase_db_connect(filename: str):
     return atoms_list
 
 
-def fair_aselmdb(filename: str): # [only test energy, forces, stress]
+def fair_aselmdb(filename: str):  # [only test energy, forces, stress]
     from ase.db import connect
     try:
+        atoms_list = []
         with connect(filename) as db:
-            atoms_list = [row.toatoms() for row in connect(filename).select()]
+            for row in db.select():
+                atoms = row.toatoms()
+                if hasattr(row, 'data'):
+                    for k, v in row.data.items():
+                        if not k.startswith("_"):
+                            atoms.info[k] = v
+                            atoms.arrays[k] = v
+                atoms_list.append(atoms)
         if not atoms_list:
             logging.warning(f"Database {filename} is empty")
             return []
+        return atoms_list
     except Exception as e:
         logging.error(f"Failed to read {filename}: {e}")
         return []
-    return atoms_list
-
+    
 
 def torchsim_h5(filename: str): # TODO
     raise NotImplementedError("torchsim_h5 is not yet implemented")
@@ -223,7 +233,6 @@ def read_all_files(
                 for pattern in RGLOB[backend]
                 for f in path.rglob(pattern)
             )
-
         else:
             raise ValueError(f"Unsupported path type: {path}")
 
@@ -248,7 +257,6 @@ def read_all_files(
             ): f
             for f in all_files
         }
-
         for future in as_completed(futures):
             all_structures.extend(future.result())
 

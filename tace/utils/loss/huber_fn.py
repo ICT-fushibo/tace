@@ -171,6 +171,21 @@ def huber_direct_virials_per_atom(
     )
 
 @register_loss
+def huber_direct_diagonal_hessian(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = 'direct_diagonal_hessian'
+    batch = label['batch']
+    total_weight = (label['entropy'] * label[key+'_weight'])[batch].unsqueeze(-1).unsqueeze(-1)
+    return torch.nn.functional.huber_loss(
+        total_weight * label[key],
+        total_weight * pred[key],
+        reduction="mean",
+        delta=huber_delta,
+    )
+
+
+@register_loss
 def huber_direct_dipole(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:

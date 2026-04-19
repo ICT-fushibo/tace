@@ -14,16 +14,20 @@ from .mse_fn import register_loss
 
 
 @register_loss # TODO, check
-def l2mae_hessians(
+def hessian(
         pred: Dict[str, Tensor], 
         label: Dict[str, Tensor],
+        huber_delta: float = 0.01,
     ) -> torch.Tensor:
 
-    true_hessian_flat = label["hessians"]
+    true_hessian_flat = label["hessian"]
     num_atoms_per_graph = label["ptr"][1:] - label["ptr"][:-1]
     jacs_per_graph = pred["jacs_per_graph"]
     samples_per_graph = pred["samples_per_graph"]
 
+    if jacs_per_graph is None:
+        return torch.tensor(0.0).to(label["ptr"].device)
+    
     offset = 0
     losses = []
 

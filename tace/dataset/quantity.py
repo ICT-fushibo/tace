@@ -11,9 +11,10 @@ from dataclasses import dataclass, field
 
 from .utils import (
     voigt_to_matrix,
-    shape_fn_for_hessians,
+    shape_fn_for_hessian,
+    shape_fn_for_direct_diagonal_hessian,
     shape_fn_for_abs_fc_mag,
-    default_value_for_hessians,
+    default_value_for_hessian,
     default_value_for_rank0_atom,
     default_value_for_rank1_atom,
     default_value_for_rank2_atom,
@@ -118,7 +119,7 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "hessians": {
+    "hessian": {
         "ase_name": None,
         'type': 'float',
         "scope": "per-edge",
@@ -126,9 +127,9 @@ PROPERTY = {
         "abbreviation": "HESSIAN",
         "shape": {
             "in_data": (-1,),
-            "shape_fn": shape_fn_for_hessians,
+            "shape_fn": shape_fn_for_hessian,
         },
-        "default_value_fn": default_value_for_hessians,
+        "default_value_fn": default_value_for_hessian,
         "must_be_with": ['energy', 'forces'],
         "enable_prediction": True,
         "enable_embedding": False,
@@ -136,17 +137,17 @@ PROPERTY = {
         "second_derivative": True,
         "requires_grad_with": ['positions'],
     },
-    "direct_hessians": {
+    "direct_diagonal_hessian": {
         "ase_name": None,
         'type': 'float',
-        "scope": "per-edge",
+        "scope": "per-atom",
         "rank": 2,
-        "abbreviation": "D_HESSIAN",
+        "abbreviation": "D_DIAG_H",
         "shape": {
-            "in_data": (-1,),
-            "shape_fn": shape_fn_for_hessians,
+            "in_data": (-1, 3, 3),
+            "shape_fn": shape_fn_for_direct_diagonal_hessian,
         },
-        "default_value_fn": default_value_for_hessians,
+        "default_value_fn": default_value_for_rank2_atom,
         "must_be_with": [],
         "enable_prediction": True,
         "enable_embedding": False,
@@ -696,24 +697,6 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "spin_on": {
-        "ase_name": None,
-        'type': 'int',
-        "scope": "per-system",
-        "rank": 0,
-        "abbreviation": "SPIN_ON",
-        "shape": {
-            "in_data": (1,),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": [],
-        "enable_prediction": False,   
-        "enable_embedding": True,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
 }
 
 SUPPORT_PREDICT_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_prediction']]
@@ -728,7 +711,7 @@ class DefaultKeys(Enum):
     STRESS = "stress"
     VIRIALS = "virials"
 
-    HESSIANS = "hessians"
+    HESSIAN = "hessian"
     EDGE_FORCES = "edge_forces"
     ATOMIC_VIRIALS = "atomic_virials"
     ATOMIC_STRESSES = "atomic_stresses"
@@ -739,7 +722,7 @@ class DefaultKeys(Enum):
     DIRECT_VIRIALS = "direct_virials"
     DIRECT_DIPOLE = "direct_dipole"
     DIRECT_POLARIZABILITY = "direct_polarizability"
-    DIRECT_HESSIANS = "direct_hessians"
+    DIRECT_DIAGONAL_HESSIAN = "direct_hessian"
 
     # charges
     CHARGES = "charges"
@@ -766,7 +749,6 @@ class DefaultKeys(Enum):
     NONCOLLINEAR_MAGNETIC_FORCES = "noncollinear_magnetic_forces"
     TOTAL_COLLINEAR_MAGMOM = "total_collinear_magmom"
     TOTAL_NONCOLLINEAR_MAGMOM = "total_noncollinear_magmom"
-    SPIN_ON = "spin_on"
 
     # only for embedding
     FIDELITY_IDX = "fidelity_idx"
@@ -891,13 +873,13 @@ def get_need_property(
 MAE_PROPERTY = [
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        and p != "hessians"
+        and p != "hessian"
         and p != "abs_final_collinear_magmoms"
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
-        and p != "hessians"
+        and p != "hessian"
         and p != "abs_final_collinear_magmoms"
     ]
 MAE_PER_ATOM_PROPERTY = [
@@ -906,7 +888,7 @@ MAE_PER_ATOM_PROPERTY = [
     and p != "polarization"
     and p != "stress"   
     and p != "direct_stress"  
-    and p != "hessians"
+    and p != "hessian"
     and p != "abs_final_collinear_magmoms"
 ]
 RMSE_PER_ATOM_PROPERTY = [
@@ -915,7 +897,7 @@ RMSE_PER_ATOM_PROPERTY = [
     and p != "polarization" 
     and p != "stress"    
     and p != "direct_stress"   
-    and p != "hessians" 
+    and p != "hessian" 
     and p != "abs_final_collinear_magmoms"
 ]
 

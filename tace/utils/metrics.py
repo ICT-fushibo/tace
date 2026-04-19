@@ -187,6 +187,56 @@ class AbsFinalCollinearMagmomsMetric(Metric):
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
 
 
+class DirectDiagonalHessianMetric(Metric):
+    def __init__(self, metric_type: str = "mae", scale: float = SCALE):
+        """
+        Args:
+            metric_type: "mae" or "rmse"
+            scale: scaling factor
+        """
+        super().__init__()
+        assert metric_type in ["mae", "rmse"], "metric_type must be 'mae' or 'rmse'"
+        self.metric_type = metric_type
+        self.scale = scale
+
+        if self.metric_type == "mae":
+            self.add_state(
+                "sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+            )
+        else:  # rmse
+            self.add_state(
+                "sum_squared_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+            )
+
+        self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, pred: Tensor, label: Tensor):
+        batch = label['batch']
+        key = 'direct_diagonal_hessian'
+        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        mask = total_weight != 0
+        error = pred[key] - label[key]
+        error = error * total_weight.unsqueeze(-1).unsqueeze(-1)
+        error = error[mask]
+
+        if self.metric_type == "mae":
+            abs_error = torch.abs(error)
+            self.sum_abs_error += abs_error.sum()
+        else:  # rmse
+            squared_error = error**2
+            self.sum_squared_error += squared_error.sum()
+        self.count += error.numel()
+
+    def compute(self):
+        if self.count == 0:
+            return torch.tensor(0.0, device=self.count.device)
+
+        if self.metric_type == "mae":
+            return self.sum_abs_error / self.count * self.scale
+        else:  # rmse
+            return torch.sqrt(self.sum_squared_error / self.count) * self.scale
+        
+
 # class PartialHessiansMetric(Metric):
 #     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
 #         """
@@ -223,7 +273,7 @@ class AbsFinalCollinearMagmomsMetric(Metric):
 
 #     def update(self, pred: Dict[str, torch.Tensor | List[torch.Tensor]], label: Dict[str, torch.Tensor]):
 
-#         true_hessian_flat = label["hessians"]
+#         true_hessian_flat = label["hessian"]
 #         num_atoms_per_graph = label["ptr"][1:] - label["ptr"][:-1]
 #         jacs_per_graph = pred["jacs_per_graph"]
 #         samples_per_graph = pred["samples_per_graph"]
@@ -277,7 +327,7 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
         if property_name == "abs_final_collinear_magmoms":
             metrics[f"{prefix}/{property_name}_mae"] = AbsFinalCollinearMagmomsMetric("mae")
             metrics[f"{prefix}/{property_name}_rmse"] = AbsFinalCollinearMagmomsMetric("rmse")
-        # if property_name == "hessians":
+        # if property_name == "hessian":
         #     metrics[f"{prefix}/{property_name}_mae"] = PartialHessiansMetric("mae")
         #     metrics[f"{prefix}/{property_name}_rmse"] = PartialHessiansMetric("rmse")
 
@@ -312,6 +362,6 @@ def update_metrics(metrics, prefix, pred, label, loss_property):
         if p == "abs_final_collinear_magmoms":
             metrics[f"{prefix}/{p}_mae"](pred, label)
             metrics[f"{prefix}/{p}_rmse"](pred, label)
-        # if p == "hessians":
+        # if p == "hessian":
         #     metrics[f"{prefix}/{p}_mae"](pred, label)
         #     metrics[f"{prefix}/{p}_rmse"](pred, label)

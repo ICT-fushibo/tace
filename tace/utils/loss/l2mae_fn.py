@@ -99,6 +99,42 @@ def l2mae_direct_forces(
         * total_weight
     )
 
+# @register_loss # TODO
+# def l2mae_direct_hessians(
+#     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+# ) -> torch.Tensor:
+#     key = 'direct_hessians'
+#     ptr = label['ptr']
+#     error = pred[key] - label[key] # [-1]
+#     error_list = []
+#     offset = 0
+#     for start, end in zip(ptr[:-1], ptr[1:]):
+#         n = end - start
+#         length = 9*n**2
+#         this_error = error[offset:offset+length]
+#         this_error = this_error.reshape(n, 3, n, 3).permute(0, 2, 1, 3).contiguous().view(-1, 3, 3)
+#         offset += length
+#         error_list.append(this_error)
+#     error = torch.cat(error_list, dim=0)
+#     print(error[0, :, :])
+#     return torch.mean(
+#         torch.linalg.vector_norm(error, ord=2, dim=(1, 2))
+#         # * total_weight
+#     )
+@register_loss
+def l2mae_direct_diagonal_hessian(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = 'direct_diagonal_hessian'
+    batch = label['batch']
+    total_weight = (label['entropy'] * label[key+'_weight'])[batch]
+    return torch.mean(
+        torch.linalg.vector_norm(
+            pred[key] - label[key], ord=2, dim=(1, 2)
+        )
+        * total_weight.unsqueeze(-1).unsqueeze(-1)
+    )
+
 @register_loss
 def l2mae_direct_stress(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01

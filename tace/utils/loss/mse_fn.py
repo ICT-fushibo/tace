@@ -94,6 +94,21 @@ def mse_direct_forces(
     ].unsqueeze(-1)
     return torch.mean(torch.square(pred["direct_forces"] - label["direct_forces"]) * total_weight)
 
+# torch.set_printoptions(sci_mode=False, precision=4)
+@register_loss
+def mse_direct_diagonal_hessian(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = 'direct_diagonal_hessian'
+    batch = label['batch']
+    total_weight = (label['entropy'] * label[key+'_weight'])[batch]
+    # print(1, pred[key][0, :, :])
+    # print(2, label[key][0, :, :])
+    return torch.mean(
+        torch.square((pred[key] - label[key]))
+        * total_weight.unsqueeze(-1).unsqueeze(-1)
+    )
+
 
 @register_loss
 def mse_direct_stress(

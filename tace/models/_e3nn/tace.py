@@ -18,7 +18,7 @@ from .representation import Representation
 from .default import check_model_config
 from .basis_change import PropertyBasisChange
 from .linear import Linear
-from .layer_norm import get_normalization_layer
+
 
 class e3nnTACE(torch.nn.Module):
     def __init__(
@@ -43,6 +43,7 @@ class e3nnTACE(torch.nn.Module):
         short_range: Dict,
         long_range: Dict,
         universal_embedding: Dict,
+        special: Dict,
         resnet: Dict = {},
         layer_norm: Dict = {},
         **kwargs,
@@ -63,6 +64,7 @@ class e3nnTACE(torch.nn.Module):
         self.target_property = cfg['target_property']
         self.num_layers = cfg['num_layers']
         self.statistics = cfg['statistics']
+        self.special = cfg['special']
         self.embedding_property = cfg['invariant_property'] + cfg['equivariant_property']
         self.register_buffer('cutoff', torch.tensor(cfg['cutoff'], dtype=torch.get_default_dtype()))
         self.register_buffer('atomic_numbers', torch.tensor(cfg['atomic_numbers'], dtype=torch.int64))
@@ -193,11 +195,19 @@ class e3nnTACE(torch.nn.Module):
                     f"Unknown predict_charges_method: {self.predict_charges_method}. "
                     "Supported methods are ['lagrangian', 'uniform_distribution']."
                 )
-            
+
+        # === Direct Diagonal Hessian ===
+        if "direct_diagonal_hessian" in self.target_property:
+            self.direct_diagonal_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
+            self.direct_diagonal_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+            self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
+
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
             self.abs_final_collinear_magmoms_readouts = build_scalar_readout(l=0, **for_scalar_readout)
             
+
+
     def readout_fn(
         self,
         data: Dict[str, torch.Tensor],
@@ -384,6 +394,29 @@ class e3nnTACE(torch.nn.Module):
                 c_delta_node = (c_graph - data["total_charge"]) / (data["ptr"][1:] - data["ptr"][:-1])
                 CHARGES = c_node + c_delta_node[batch]
        
+        # === Direct Diagonal Hessian ===
+        D_DIAG_H = None
+        if 'direct_diagonal_hessian' in self.target_property:
+            d_diag_h0_list = []; d_diag_h2_list = []
+            for ii, (direct_diagonal_hessian_readout0, direct_diagonal_hessian_readout2) in enumerate(
+                zip(self.direct_diagonal_hessian_readout0s, self.direct_diagonal_hessian_readout2s)
+            ):
+                if not self.use_alllayer:
+                    ii = -1
+                d_diag_h0_list.append(
+                    direct_diagonal_hessian_readout0(
+                        descriptors[ii],
+                    )[num_atoms_arange, node_fidelity]
+                )
+                d_diag_h2_list.append(
+                    direct_diagonal_hessian_readout2(
+                        descriptors[ii],
+                    ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                )
+            d_diag_h0_node = torch.sum(torch.stack(d_diag_h0_list, dim=-1), dim=-1)
+            d_diag_h2_node = torch.sum(torch.stack(d_diag_h2_list, dim=-1), dim=-1)
+            D_DIAG_H  = self.direct_diagonal_hessian_basis_change(d_diag_h0_node, d_diag_h2_node)
+
         # === ABS_F_C_MAG === 
         ABS_F_C_MAG = None
         if "abs_final_collinear_magmoms" in self.target_property:
@@ -431,7 +464,6 @@ class e3nnTACE(torch.nn.Module):
                 scalar_descriptor_list.append(descriptor[:, :self.num_channel])
             scalar_descriptor = torch.cat(scalar_descriptor_list, dim=-1)
 
-
         return {
             "energy": E,
             "node_energy": e_node, # not include les
@@ -440,6 +472,7 @@ class e3nnTACE(torch.nn.Module):
             "direct_forces": D_F,
             "direct_virials": D_V,
             "direct_stress": D_S,
+            "direct_diagonal_hessian": D_DIAG_H,
             "charges": CHARGES,
             "les_energy": LES_E,
             "les_latent_charges": LES_LQ,

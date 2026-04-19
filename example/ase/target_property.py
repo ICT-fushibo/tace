@@ -19,8 +19,8 @@ atoms = read('../data/BaTiO3.xyz', index=0)
 
 
 # The training property of TACE-OAM-L are ['energy', 'forces', 'stress'],
-# but we can also predict properties such as hessians, atomic_stresses
-target_property = ["energy", "forces", "stress", "atomic_stresses", "hessians"]
+# but we can also predict properties such as hessian, atomic_stresses
+target_property = ["energy", "forces", "stress", "atomic_stresses", "hessian"]
 calc = TACEAseCalc(
     model=model,
     dtype=dtype,
@@ -38,7 +38,7 @@ print(calc_results['energy'])
 print(calc_results['forces'].shape)
 print(calc_results['stress'].shape)
 print(calc_results['stresses'].shape)
-print(calc_results['hessians'].shape)
+print(calc_results['hessian'].shape)
 
 
 

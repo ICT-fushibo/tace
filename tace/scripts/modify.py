@@ -31,7 +31,7 @@ def main():
         help=(
             "Override the model target properties at inference time. "
             "This allows requesting additional outputs that were not explicitly "
-            "used as training targets. For example, one may predict hessians even "
+            "used as training targets. For example, one may predict hessian even "
             "if the model was trained only on forces, or enable predictions of "
             "atomic_stresses, or properties under external fields...... "
             "If not provided, the original target_property stored in the checkpoint "

@@ -17,69 +17,6 @@ from .quantity import KeySpecification
 from ..utils.utils import log_statistics_to_yaml
 from ..utils.torch_scatter import scatter, scatter_add
 
-class Statistics:
-    """
-    A container class for storing statistical information of physical quantities.
-
-    This class dynamically accepts arbitrary keyword arguments and stores them as attributes.
-    It is typically used to store mean, standard deviation, rms values, or other
-    statistical metadata for normalization or scale-shift operations in the TACE framework.
-
-    Attributes can be accessed directly using dot notation:
-
-    Parameters
-    ----------
-    **kwargs : dict
-        Arbitrary keyword arguments that will be stored as attributes of the instance.
-
-    Examples
-    --------
-    >>> stats = Statistics(mean_energy=-5.2, std_force=0.03)
-    >>> stats.mean_energy
-    -5.2
-    >>> 'std_force' in stats
-    True
-    """
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-    def __contains__(self, key):
-        return hasattr(self, key)
-
-    def __repr__(self):
-        attrs = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        return f"Statistics({attrs})"
-
-    def __getitem__(self, key):
-        return getattr(self, key)
-
-    def __setitem__(self, key, value):
-        setattr(self, key, value)
-
-    def __delitem__(self, key):
-        delattr(self, key)
-
-    def __iter__(self):
-        return iter(self.__dict__)
-
-    def keys(self):
-        return self.__dict__.keys()
-
-    def values(self):
-        return self.__dict__.values()
-
-    def items(self):
-        return self.__dict__.items()
-
-    def __repr__(self):
-        attrs = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        return f"Statistics({attrs})"
-
-
-from torch.serialization import add_safe_globals
-add_safe_globals([Statistics]) # TODO
 
 class OneHotToAtomicEnergy(torch.nn.Module):
     def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:

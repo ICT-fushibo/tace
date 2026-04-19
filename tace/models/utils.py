@@ -18,6 +18,7 @@ to_weight = {
     'direct_virials': [0, 2],
     'direct_dipole': [1],
     'direct_polarizability': [0, 2],
+    'direct_diagonal_hessian': [0, 2],
     'abs_final_collinear_magmoms': [0],
 }
 

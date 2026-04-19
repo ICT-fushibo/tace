@@ -92,7 +92,7 @@ class TACETorchSimCalc(ModelInterface):
             fidelity_idx : int
                 Specify which fidelity fidelity_idx to use. 
             target_property: list(str)
-                Extra caculate hessians, atomic_virials, Conservative polarizability, etc,
+                Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
                 If you want to use this parameter, you must provide all the required physical quantities.
             enable_oeq (bool): Whether to enable Oeq acceleration. Defaults to False.
             enable_eqt (bool): Whether to enable Eqt acceleration. Defaults to False.

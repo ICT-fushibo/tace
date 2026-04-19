@@ -83,6 +83,17 @@ def mae_direct_forces(
     ].unsqueeze(-1)
     return torch.mean(torch.abs(pred["direct_forces"] - label["direct_forces"]) * total_weight)
 
+@register_loss
+def mae_direct_diagonal_hessian(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = 'direct_diagonal_hessian'
+    batch = label['batch']
+    total_weight = (label['entropy'] * label[key+'_weight'])[batch]
+    return torch.mean(
+        torch.abs((pred[key] - label[key]))
+        * total_weight.unsqueeze(-1).unsqueeze(-1)
+    )
 
 @register_loss
 def mae_direct_stress(

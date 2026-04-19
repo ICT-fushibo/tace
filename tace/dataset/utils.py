@@ -22,6 +22,7 @@ def default_value_for_rank2_atom(num_atoms: int, class_: str,  **kwargs):
 def default_value_for_rank3_atom(num_atoms: int, class_: str,  **kwargs):
     return np.zeros((num_atoms, 3, 3, 3))
 
+
 def default_value_for_rank4_atom(num_atoms: int, class_: str,  **kwargs):
     return np.zeros((num_atoms, 3, 3, 3, 3))
 
@@ -45,18 +46,47 @@ def default_value_for_rank4_graph(num_atoms: int,  class_: str, **kwargs):
     return np.zeros((3, 3, 3, 3))
 
 
-def default_value_for_hessians(num_atoms: int, class_: str, **kwargs):
+def default_value_for_hessian(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms * 3 * num_atoms * 3))
 
-
-def shape_fn_for_hessians(t: Tensor, num_atoms: int, **kwargs):
+def shape_fn_for_hessian(t: Tensor, num_atoms: int, **kwargs):
     # assert np.allclose(t, t.T, atol=1e-6)
     shape1 = (num_atoms * 3 , num_atoms * 3)
     shape2 = (num_atoms * 3 * num_atoms * 3)
     assert t.shape == shape1 or t.shape == shape2, (
-        f"hessians shape mismatch: got {tuple(t.shape)}, expected {shape1} or {shape2}"
+        f"hessian shape mismatch: got {tuple(t.shape)}, expected {shape1} or {shape2}"
     )
     return t.view(-1)
+
+
+def shape_fn_for_direct_diagonal_hessian(t: Tensor, num_atoms: int, **kwargs):
+    shape1 = (num_atoms * 3 , num_atoms * 3)    # [3N, 3N]
+    shape2 = (num_atoms * 3 * num_atoms * 3,)   # [flat]
+    shape3 = (num_atoms, num_atoms, 3, 3)       # [N, N, 3, 3]
+    shape4 = (num_atoms, 3, num_atoms, 3)       # [N, 3, N, 3]
+    shape5 = (num_atoms, 3, 3)                  # already diagonal
+
+    # to (N,3,N,3)
+    if t.shape == shape1:
+        H = t.view(num_atoms, 3, num_atoms, 3)
+    elif t.shape == shape2:
+        H = t.view(num_atoms * 3, num_atoms * 3)
+        H = H.view(num_atoms, 3, num_atoms, 3)
+    elif t.shape == shape3:
+        H = t.permute(0, 2, 1, 3)
+    elif t.shape == shape4:
+        H = t
+    elif t.shape == shape5:
+        return t
+    else:
+        raise ValueError(
+            f"hessian shape mismatch: got {tuple(t.shape)}, "
+            f"expected one of {shape1}, {shape2}, {shape3}, {shape4}, {shape5}"
+        )
+    idx = torch.arange(num_atoms, device=t.device)
+    H_diag = H[idx, :, idx, :]
+
+    return H_diag
 
 
 def shape_fn_for_abs_fc_mag(t: Tensor, num_atoms: int, **kwargs):
