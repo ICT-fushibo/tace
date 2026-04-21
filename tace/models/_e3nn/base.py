@@ -29,6 +29,8 @@ class NodeEmbedding(torch.nn.Module):
         num_radial_basis: int,
         num_channel: int,
         Lmax: int,
+        lmax: int,
+        avg_num_neighbors: float,
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -38,6 +40,8 @@ class NodeEmbedding(torch.nn.Module):
         self.num_channel = num_channel
         self.bias = bias
         self.Lmax = Lmax
+        self.lmax = lmax
+        self.avg_num_neighbors = avg_num_neighbors
 
         self._setup()
     
@@ -77,7 +81,7 @@ class EdgeUpdate(torch.nn.Module):
         num_radial_basis: int,
         num_channel: int,
         edge_embedding_channel: int,
-        Lmax: List[int],
+        Lmax: int,
         tensor_dot_channel: int | None,
         bias: bool = False,
     ) -> None:
@@ -92,9 +96,9 @@ class EdgeUpdate(torch.nn.Module):
         self.num_channel = num_channel
         self.edge_embedding_channel=edge_embedding_channel
         self.use_bias = bias
-        self.Lmax = Lmax[layer]
+        self.Lmax = Lmax
         self.irreps_node = _to_full_so3_irreps(self.Lmax, self.num_channel)
-        self.tensor_dot_channel = tensor_dot_channel or 8
+        self.tensor_dot_channel = tensor_dot_channel or 1
 
         self._setup()
     
@@ -115,7 +119,6 @@ class Residual(torch.nn.Module):
         liner_type: str | List[int],
         bias: bool = True,
         window: int | None = None,
-
     ) -> None:
         super().__init__()
 
@@ -149,7 +152,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_layers: int,
         num_elements: int,
         avg_num_neighbors: float,
-        Lmax: List[int],
+        Lmax: int,
         lmax: int,
         correlation: List[int],
         num_channel: int,
@@ -170,10 +173,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         resnet_linear_type: str = 'aware',
         resnet_window: int | None = None,
         use_first_resnet: bool = False,
-        # num_experts: int | None = None,
-        # top_k: int | None = None,
-        # num_shared_experts: int | None = None,
-        num_hidden_channel: int | None = None,
         pre_norm_type: str | None = None,
         use_first_pre_norm: bool = False,
     ) -> None:
@@ -181,7 +180,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
 
         self.layer = layer
         self.num_layers = num_layers
-        self.Lmax = Lmax[layer]
+        self.Lmax = Lmax
         self.lmax = lmax
         self.correlation = correlation[layer]
         self.num_radial_basis = num_radial_basis
@@ -214,14 +213,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'sigmoid'
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
-        # self.num_experts = num_experts
-        # self.top_k = top_k
-        # self.num_shared_experts = num_shared_experts or 0
+
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
-        if num_hidden_channel is not None:
-            assert nonlinear is not None
-        self.num_hidden_channel = num_hidden_channel or num_channel
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
@@ -229,10 +223,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:
             self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
-            self.irreps_hidden = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
         else:
             self.irreps_out = _to_full_so3_irreps(self.lmax, self.num_channel)
-            self.irreps_hidden = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
         if layer == 0:
             self.irreps_in = irreps_node_embedding
         else:
@@ -256,13 +248,14 @@ class Product(torch.nn.Module):
         layer: int,
         num_layers: int,
         num_elements: int,
-        Lmax: List[int],
+        Lmax: int,
         lmax: int,
         num_channel: int,
         num_hidden_channel: int,
         target_weight: List[int],
         correlation: List[int],
         l1l2: str | None,
+        l3s: List[int] | None,
         ictp_ictc_like: bool,
         bias: bool,
         num_latitude: int,
@@ -270,26 +263,25 @@ class Product(torch.nn.Module):
         truncation: int,
         trainable_scale: bool,
         nonlinear: str | None,
+        agnostic: bool,
     ) -> None:
         super().__init__()
 
         self.layer = layer
         self.num_layers = num_layers
-        self.Lmax = Lmax[layer]
+        self.Lmax = Lmax
         self.lmax = lmax
         self.correlation = correlation[layer]
         self.num_channel = num_channel
         self.target_weight = target_weight
         self.num_elements = num_elements
         self.l1l2 = l1l2
+        self.l3s = l3s
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
         self.truncation = truncation
         self.trainable_scale = trainable_scale
-        if num_hidden_channel is None:
-            self.num_hidden_channel = self.num_channel
-        else:
-            self.num_hidden_channel = num_hidden_channel
+        self.num_hidden_channel = num_hidden_channel or num_channel
         if self.truncation is None:
             self.truncation = self.correlation * self.lmax
         assert self.truncation >= self.lmax
@@ -307,18 +299,32 @@ class Product(torch.nn.Module):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
+        self.agnostic = agnostic
 
         if self.correlation == 1:
-            self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
+            self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
+            self.irreps_hidden1 = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
         else:
-            self.irreps_in = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
+            self.irreps_in = _to_full_so3_irreps(self.lmax, self.num_channel)
+            self.irreps_hidden1 = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
+
         if layer == num_layers-1:
-            self.irreps_hidden = _to_full_so3_irreps(target_weight, self.num_hidden_channel)
-            self.irreps_out = _to_full_so3_irreps(target_weight, self.num_channel)
+            self.irreps_hidden2 = _to_full_so3_irreps(self.target_weight, self.num_hidden_channel)
+            self.irreps_out = _to_full_so3_irreps(self.target_weight, self.num_channel)
         else:
-            self.irreps_hidden = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
+            self.irreps_hidden2 = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
             self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
 
+        if self.nonlinear_type == 'gate':
+            self.irreps_nonlinear =(
+                self.irreps_hidden2 + o3.Irreps(f"{len(self.irreps_hidden2)*self.num_hidden_channel}x0e")
+            ).regroup()
+        elif self.nonlinear_type == 'e3nngate':
+            self.irreps_nonlinear =(
+                self.irreps_hidden2 + o3.Irreps(f"{(len(self.irreps_hidden2)-1)*self.num_hidden_channel}x0e")
+            ).regroup()
+        else:
+            self.irreps_nonlinear = self.irreps_hidden2
 
         self._setup()
     
@@ -332,7 +338,7 @@ class ReadOut(torch.nn.Module):
         self,
         layer: int,
         num_layers: int,
-        Lmax: List[int],
+        Lmax: int,
         lmax: int,
         num_channel: int,
         hidden_channel: List[int], 
@@ -346,16 +352,16 @@ class ReadOut(torch.nn.Module):
         self.layer = layer
         self.num_layers = num_layers
         self.num_channel = num_channel
-        self.Lmax = Lmax[layer]
+        self.Lmax = Lmax
         self.lmax = lmax
         self.use_bias = bias
         self.num_fidelities = num_fidelities
-        self.l = l
+        self.target_weight = target_weight
         self.scalar_act = 'silu'
         self.tensor_act = 'sigmoid'
-
+  
         if layer == num_layers-1:
-            self.irreps_in = _to_full_so3_irreps(target_weight, self.num_channel)
+            self.irreps_in = _to_full_so3_irreps(self.target_weight, self.num_channel)
         else:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
         self.irreps_out = _to_full_so3_irreps([l], num_fidelities)

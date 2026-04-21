@@ -3,6 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+from typing import List
+
+
 import torch
 from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
@@ -38,6 +41,10 @@ class O3ScatterTensorProduct(torch.nn.Module):
         ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
+
+        irreps_in1 = o3.Irreps(irreps_in1)
+        irreps_in2 = o3.Irreps(irreps_in2)
+        irreps_out = o3.Irreps(irreps_out)
 
         instructions, actual_irreps_out = generate_paths(
             irreps_out=irreps_out,
@@ -179,6 +186,7 @@ class uuuTensorProduct(torch.nn.Module):
         l1l2: str | None = None,
         l2l3: str | None = None,
         l3l1: str | None = None,
+        l3s: List[int] | None = None,
         ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
@@ -190,6 +198,7 @@ class uuuTensorProduct(torch.nn.Module):
             l1l2=l1l2,
             l2l3=l2l3,
             l3l1=l3l1,
+            l3s=l3s,
             ictp_ictc_like=ictp_ictc_like,
             e3nn_mode='uuu',
         )

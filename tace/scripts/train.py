@@ -132,6 +132,17 @@ def build(cfg: DictConfig):
     else: # From scratch
         model = select_model(cfg, statistics, target_property, embedding_property)
 
+    # import torch
+    # torch.save(
+    #     {
+    #         "state_dict": model.state_dict(),
+    #         "cfg": model.readout_fn.model_config,
+    #         "target_property": model.get_target_property(),
+    #         "embedding_property": model.get_embedding_property(),
+    #         "statistics": model.readout_fn.statistics,
+    #     }, 
+    #     "init.pt"
+    # )
     datamodule = build_datamodule(
         cfg, 
         atomic_numbers, #

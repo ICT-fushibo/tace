@@ -36,9 +36,24 @@ class TensorModel(torch.nn.Module):
         RESULTS = self.readout_fn(data, graph)
         FIRST = self.first_derivative_fn(data, graph, RESULTS)
         SECOND = self.second_derivative_fn(data, graph, RESULTS, FIRST)
-
-        return {**RESULTS, **FIRST, **SECOND}
+        OUT = {**RESULTS, **FIRST, **SECOND}
+        # return self.denorm(OUT)
+        return OUT
     
+    def denorm(self, out: Dict[str, torch.Tensor | None]) -> Dict[str, torch.Tensor | None]:
+        """
+        We always return:
+        -  normalized value in train
+        -  unnormalized value in val/test
+        """
+        if self.training:
+            return out
+        for k, v in self.readout_fn.normalizers.items():
+            out[k] = v.denorm(out[k])
+        if out['e_base_graph'] is not None:
+            out['energy'] = out['energy'] + out['e_base_graph']
+        return out
+
     def first_derivative_fn(
         self, data: Dict[str, Tensor], graph: Graph, results: Dict[str, Tensor]
     ) -> Dict[str, Optional[Tensor]]:
@@ -293,11 +308,10 @@ class TensorModel(torch.nn.Module):
             device =  data["node_attrs"].device 
             positions = data["positions"]
             num_graphs = data["ptr"].numel() - 1
-            displacement = torch.zeros(
-                (num_graphs, 3, 3), dtype=dtype, device=device
-            )
             if self.flags.compute_virials or self.flags.compute_stress:
                 displacement = compute_symmetric_displacement(data, num_graphs)
+            else:
+                displacement = None
             source = data["edge_index"][0]
             target = data["edge_index"][1]
             edge_batch = data["batch"][source]

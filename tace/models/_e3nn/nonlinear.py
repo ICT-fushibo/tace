@@ -49,8 +49,11 @@ class GatedLinearUnit(torch.nn.Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} ({self.irreps_in} -> {self.irreps_out})"
 
-    def forward(self, features):
-        gates, gated = self.sc(features)
+    def forward(self, features, gates: torch.Tensor | None = None):
+        if gates is None:
+            gates, gated = self.sc(features)
+        else:
+            gated = features
 
         gates = self.act_gates(gates)
         gated = self.mul(gated, gates)

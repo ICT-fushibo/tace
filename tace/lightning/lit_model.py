@@ -3,6 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+
+import os
+import copy
 import logging
 from pathlib import Path
 from collections import Counter
@@ -49,7 +52,7 @@ def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module
 
     return model
 
-import os
+
 TACE_APPLY_U_SHIFT = os.environ.get('TACE_APPLY_U_SHIFT', '0') 
 
 
@@ -142,6 +145,8 @@ class LightningWrapperModel(L.LightningModule):
         self.cfg = cfg
         self.statistics = statistics 
         self.model = self.model = to_lora_model(cfg.get('finetune', {}), model)
+        # self.normalizers = copy.deepcopy(self.model.readout_fn.normalizers)
+
 
         # === Loss === 
         loss_cls, loss_cfg = get_class_from_cfg(cfg["loss"])
@@ -196,7 +201,17 @@ class LightningWrapperModel(L.LightningModule):
         setattr(self, f"{prefix}_metrics", metric_collection)
 
     def _process_batch(self, batch):
-        output = self.model(batch)
+        output = self.model(batch) # normalized predict value
+
+        # # # normalize label value
+        # with torch.no_grad():
+        #     normalizerd_batch = copy.copy(batch) 
+        #     for k, v in self.normalizers.items():
+        #         if k == 'energy':
+        #             normalizerd_batch[k] = v.norm(normalizerd_batch[k] - output['e_base_graph'].detach())
+        #         else:
+        #             normalizerd_batch[k] = v.norm(normalizerd_batch[k])      
+        # loss = self.loss_fn(output, normalizerd_batch)
         loss = self.loss_fn(output, batch)
         return output, loss
 
@@ -207,22 +222,18 @@ class LightningWrapperModel(L.LightningModule):
     #                 logging.warning("Non-finite grad detected, zeroing.")
     #                 p.grad.zero_()
 
+
     def _shared_step(self, batch, batch_idx, prefix):
 
         if TACE_APPLY_U_SHIFT == '1':
             batch['energy'] = apply_u_shift(batch, batch['energy'])
-
-        # batch['direct_forces'] = batch['forces']
-        # batch['direct_stress'] = batch['stress']
-        # batch['direct_forces_weight'] = batch['forces_weight']
-        # batch['direct_stress_weight'] = batch['stress_weight']
-
 
         if self.force_dtype is not None:
             batch = batch.apply(
                 lambda x: x.to(self.force_dtype) if x.is_floating_point() else x
             )
 
+        # always use normalized value to caculate loss
         output, loss = self._process_batch(batch)
 
         if prefix == "train" and self.skip_controller is not None:
@@ -286,8 +297,17 @@ class LightningWrapperModel(L.LightningModule):
             )
 
         metrics = getattr(self, f"{prefix}_metrics")
+        # with torch.no_grad():
+        #     unnormalizerd_output = copy.copy(output)
+        #     if self.model.training:
+        #         for k, v in self.normalizers.items():
+        #             unnormalizerd_output[k] = v.denorm(unnormalizerd_output[k])
+        #         if unnormalizerd_output['e_base_graph'] is not None:
+        #             unnormalizerd_output['energy'] += unnormalizerd_output['e_base_graph']
+        #         update_metrics(metrics, prefix, unnormalizerd_output, batch, self.loss_property)
+        #     else:
+        #         update_metrics(metrics, prefix, output, batch, self.loss_property)
         update_metrics(metrics, prefix, output, batch, self.loss_property)
-
         return loss
 
 
@@ -301,10 +321,12 @@ class LightningWrapperModel(L.LightningModule):
             output = self._shared_step(batch, batch_idx, "val")
         return output
 
+
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         with torch.enable_grad():
             output = self._shared_step(batch, batch_idx, f"test_{dataloader_idx}")
         return output
+
 
     def on_epoch_end(self, prefix):
         metrics = getattr(self, f"{prefix}_metrics").compute()
@@ -330,7 +352,8 @@ class LightningWrapperModel(L.LightningModule):
                     add_dataloader_idx=True,
                 )
         getattr(self, f"{prefix}_metrics").reset()
-        
+
+
     def on_train_epoch_end(self):
         self.on_epoch_end("train")        
         if isinstance(self.loss_fn, UncertaintyLoss):
@@ -340,6 +363,7 @@ class LightningWrapperModel(L.LightningModule):
                     logging.info(
                         f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
                     )
+
 
     def on_train_epoch_start(self):
         dataloader = self.trainer.train_dataloader

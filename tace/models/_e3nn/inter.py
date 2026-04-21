@@ -86,20 +86,12 @@ class CGTP_Interaction(Interaction):
                     irreps_gated=irreps_gated,
                 )
                 linear_down_irreps_out = self.nonlinearity.irreps_in
-            # else:
-            #     irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_out)
-            #     self.nonlinearity = MixtralExpertsGatedLinearUnit(
-            #         self.irreps_out,
-            #         self.irreps_out,
-            #         act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-            #         bias=self.use_bias,
-            #         num_experts=self.num_experts,
-            #         num_shared_experts=self.num_shared_experts,
-            #         top_k=self.top_k,
-            #     )
+            else:
+                assert False, "Unknown Nonlinear"
+
             self.linear_nonlinearity = Linear(
                 self.irreps_out, 
-                self.irreps_hidden,  
+                self.irreps_out,  
                 bias=self.use_bias,
             )
 
@@ -116,7 +108,6 @@ class CGTP_Interaction(Interaction):
             act=self.radial_act,
         )
 
-
         if self.scatter_norm == 'density' or self.scatter_norm == 'no_cutoff_density': 
             self.edge_density = FFN[self.edge_info_type](
                 [self.edge_feats_channel, 64, 1],
@@ -127,29 +118,51 @@ class CGTP_Interaction(Interaction):
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
+
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-            self.resnetBB = ElementLinear(
-                irreps_in = self.irreps_in,
-                irreps_out = self.irreps_sc,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-            )
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetBB = ElementLinear(
+                    irreps_in=self.irreps_in,
+                    irreps_out=self.irreps_sc,
+                    bias=self.use_bias,
+                )
+            else:
+                self.resnetBB = ElementLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            self.resnetBA = ElementLinear(
-                irreps_in = self.irreps_in,
-                irreps_out = self.irreps_hidden,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-            )
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetBA = Linear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                )
+            else:
+                self.resnetBA = ElementLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            self.resnetAB = ElementLinear(
-                irreps_in = self.irreps_hidden,
-                irreps_out = self.irreps_sc,
-                bias=self.use_bias,
-                num_elements=self.num_elements,
-            ) 
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetAB = Linear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
+            else:
+                self.resnetAB = ElementLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                ) 
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
             if self.resnet_type in ['BB', "BAB"]:
@@ -162,10 +175,10 @@ class CGTP_Interaction(Interaction):
             if self.resnet_type in ['AB', "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_hidden.lmax,
-                    num_channels=self.num_hidden_channel,
+                    lmax=self.irreps_out.lmax,
+                    num_channels=self.num_channel,
                 )
-                self.reshape2 = LayoutTransform(self.irreps_hidden)
+                self.reshape2 = LayoutTransform(self.irreps_out)
 
 
     def forward(
@@ -191,10 +204,16 @@ class CGTP_Interaction(Interaction):
         resAB = None
 
         if hasattr(self, 'resnetBB'):
-            resBB = self.resnetBB(node_feats, node_attrs_slice)
+            if self.resnet_linear_type == 'aware':
+                resBB = self.resnetBB(node_feats, node_attrs_slice)
+            else:
+                resBB = self.resnetBB(node_feats) 
 
         if hasattr(self, 'resnetBA'):
-            resBA = self.resnetBA(node_feats, node_attrs_slice)
+            if self.resnet_linear_type == 'aware':
+                resBA = self.resnetBA(node_feats, node_attrs_slice)
+            else:
+                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -225,10 +244,12 @@ class CGTP_Interaction(Interaction):
             density = density * self.beta + self.alpha
             density = density.masked_fill(density == 0, 1e-9)
 
-        if density is not None:
-            m_i = m_i / density
-        else:
+        if self.scatter_norm is None:
+            m_i = m_i
+        elif self.scatter_norm == 'avg_num_neighbors':
             m_i = m_i / self.avg_num_neighbors
+        else:
+            m_i = m_i / density
 
         if hasattr(self, "nonlinearity"):
             m_i = self.nonlinearity(m_i)
@@ -238,7 +259,11 @@ class CGTP_Interaction(Interaction):
             m_i = m_i + resBA
 
         if hasattr(self, 'resnetAB'):
-            resAB = self.resnetAB(m_i, node_attrs_slice)
+            if self.resnet_linear_type == 'aware':
+                resAB = self.resnetAB(m_i, node_attrs_slice)
+            else:
+                resAB = self.resnetAB(m_i)
+
 
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
@@ -249,7 +274,8 @@ class CGTP_Interaction(Interaction):
             sc = resAB
         else:
             sc = None
-        
+
+
         return m_i, self.truncate_ghosts(sc, nlocal)
     
 
@@ -335,7 +361,7 @@ class SO2_Interaction(Interaction):
             #     )
             self.linear_nonlinearity = Linear(
                 self.irreps_out, 
-                self.irreps_hidden,  
+                self.irreps_out,  
                 bias=self.use_bias,
             )
 
@@ -373,16 +399,16 @@ class SO2_Interaction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
             self.resnetBA = ElementLinear(
-                irreps_in = self.irreps_in,
-                irreps_out = self.irreps_hidden,
+                irreps_in=self.irreps_in,
+                irreps_out=self.irreps_out,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
             )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             self.resnetAB = ElementLinear(
-                irreps_in = self.irreps_hidden,
-                irreps_out = self.irreps_sc,
+                irreps_in=self.irreps_out,
+                irreps_out=self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
             ) 
@@ -398,10 +424,10 @@ class SO2_Interaction(Interaction):
             if self.resnet_type in ['AB', "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_hidden.lmax,
-                    num_channels=self.num_hidden_channel,
+                    lmax=self.irreps_out.lmax,
+                    num_channels=self.num_channel,
                 )
-                self.reshape2 = LayoutTransform(self.irreps_hidden)
+                self.reshape2 = LayoutTransform(self.irreps_out)
 
 
     def forward(

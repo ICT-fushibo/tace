@@ -52,13 +52,9 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
-        "edge_nonlinear": "sep-merge_gates2_swiglu",
+        "edge_nonlinear": None, # not support now
         "l1l2": None,
         "ictp_ictc_like": True,
-        # "num_experts": None,
-        # "num_shared_experts": None,
-        # "top_k": None,
-        # "moe_channel": None,
     },
     "resnet": {
         "type": "BB",
@@ -72,8 +68,9 @@ DEFAULT_MODEL_CONFIG = {
         "use_first_pre_norm": False,
     },
     "product_basis": {
-        "type": "coupled",
+        "type": "cgtp",
         "l1l2": None,
+        "l3s": None,
         "correlation": 3,
         "ictp_ictc_like": True,
         "num_latitude": None,
@@ -82,6 +79,8 @@ DEFAULT_MODEL_CONFIG = {
         "trainable_scale": True,
         "num_channel": None,
         "nonlinear": None,
+        "return_all_components": False,
+        "agnostic": False,
     },
     "readout_emlp": {
         "bias": False,
@@ -91,6 +90,7 @@ DEFAULT_MODEL_CONFIG = {
         "use_uie": False,
     },
     "scale_shift": {
+        'enable': True,
         "scale_type": "rms_forces",
         "shift_type": None,
         "scale_trainable": False,
@@ -238,7 +238,7 @@ def check_model_config(cfg: Dict[str, Any]):
         assert isinstance(x, list)
         return x
 
-    cfg['Lmax'] = _to_list(cfg['Lmax'])
+    # cfg['Lmax'] = _to_list(cfg['Lmax'])
     cfg['product_basis']['correlation'] = _to_list(cfg['product_basis']['correlation'])
     cfg['atomic_basis']['type'] = _to_list(cfg['atomic_basis']['type'])
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])

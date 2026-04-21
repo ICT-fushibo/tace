@@ -9,8 +9,10 @@ from e3nn.nn import Activation
 from e3nn import o3
 
 
+from ..mlp import MLP
 from .base import NodeEmbedding
 from .linear import Linear
+from .fused import O3ScatterTensorProduct
 
 
 class LinearNodeEmbedding(NodeEmbedding):
@@ -37,7 +39,7 @@ class LinearNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_vector: torch.Tensor,
+        edge_attrs: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
@@ -68,7 +70,7 @@ class NonLinearNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_vector: torch.Tensor,
+        edge_attrs: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
@@ -118,7 +120,7 @@ class GroupNodeEmbedding(NodeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_vector: torch.Tensor,
+        edge_attrs: torch.Tensor,
         cutoff: torch.Tensor
     ) -> torch.Tensor:
          
@@ -131,8 +133,77 @@ class GroupNodeEmbedding(NodeEmbedding):
 
         return elem_emb + group_emb
     
+
+class TensorNodeEmbedding(NodeEmbedding):
+
+    def _setup(self) -> None:
+        
+        self.node_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.source_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.target_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
+        torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
+
+        self.rejector = O3ScatterTensorProduct(
+            [(self.num_channel, (0, 1))],
+            [(1, (l, (-1)**l)) for l in range(self.lmax+1)],
+            [(1, (l, (-1)**l)) for l in range(self.Lmax+1)],
+        )
+
+        self.irreps_out = self.rejector.irreps_out
+
+        self.edge_info = MLP(
+            channels=[
+                self.num_radial_basis + self.num_channel * 2, 
+                self.num_channel,
+                self.num_channel,
+                self.rejector.weight_numel,                
+            ],
+            bias=True,
+            layer_norm=True,
+        )
+
+    def forward(
+        self,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attrs: torch.Tensor,
+        cutoff: torch.Tensor
+    ) -> torch.Tensor:
+        
+        assert cutoff is not None
+         
+        base_node_feats = self.node_embedding(node_attrs) 
+        source_feats = self.source_embedding(node_attrs[edge_index[0]]) 
+        target_feats = self.target_embedding(node_attrs[edge_index[1]]) 
+        node_feats = self.rejector(
+            torch.ones_like(base_node_feats),
+            edge_attrs,
+            self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1)) * cutoff,
+            edge_index,
+        ) / self.avg_num_neighbors
+
+        node_feats[:, :self.num_channel] = node_feats.narrow(1, 0, self.num_channel) + base_node_feats
+
+        return node_feats
+    
+
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonLinearNodeEmbedding,
     "group": GroupNodeEmbedding,
+    "tensor": TensorNodeEmbedding,
 }

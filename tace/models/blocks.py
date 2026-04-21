@@ -210,7 +210,7 @@ def has_no_isolated_atoms(edge_index: torch.Tensor, num_atoms: int):
         return True
     else:
         return False
-    
+       
 # class kSphericalHarmonics(torch.nn.Module):
 #     def __init__(
 #         self,

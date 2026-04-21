@@ -22,22 +22,41 @@ class LayoutTransform2(torch.nn.Module):
         start = 0
         out = []
         batch = x.size(0)
-        for mul, d in zip(self.muls, self.dims):
-            field = x[:, start:start+mul*d]  
-            start += mul * d
-            field = field.reshape(batch, mul, d)
-            out.append(field)
+        dim = x.dim()
+        if dim == 2:
+            for mul, d in zip(self.muls, self.dims):
+                field = x[:, start:start+mul*d]  
+                start += mul * d
+                field = field.reshape(batch, mul, d)
+                out.append(field)
+        else:
+            head = x.size(1)
+            for mul, d in zip(self.muls, self.dims):
+                field = x[:, :, start:start+mul*d]  
+                start += mul * d
+                field = field.reshape(batch,  head, mul, d)
+                out.append(field)
         return torch.cat(out, dim=-1)
     
     def inverse(self, x: torch.Tensor) -> torch.Tensor:
         start = 0
         out = []
         batch = x.size(0)
-        for _, d in zip(self.muls, self.dims):
-            field = x[:, :, start:start+d]  
-            start += d
-            field = field.reshape(batch, -1)
-            out.append(field)
+        dim = x.dim()
+        if dim == 4:
+            head = x.size(1)
+            for _, d in zip(self.muls, self.dims):
+                field = x[:, :, start:start+d]  
+                start += d
+                field = field.reshape(batch, head, -1)
+                out.append(field)
+        else: # dim = 3
+            for _, d in zip(self.muls, self.dims):
+                field = x[:, :, start:start+d]  
+                start += d
+                field = field.reshape(batch, -1)
+                out.append(field)
+
         return torch.cat(out, dim=-1)
 
     def __repr__(self) -> str:

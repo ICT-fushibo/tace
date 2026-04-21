@@ -875,12 +875,14 @@ MAE_PROPERTY = [
         if p != "polarization" 
         and p != "hessian"
         and p != "abs_final_collinear_magmoms"
+        and p != "direct_diagonal_hessian"
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
         if p != "polarization" 
         and p != "hessian"
         and p != "abs_final_collinear_magmoms"
+        and p != "direct_diagonal_hessian"
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
@@ -890,6 +892,7 @@ MAE_PER_ATOM_PROPERTY = [
     and p != "direct_stress"  
     and p != "hessian"
     and p != "abs_final_collinear_magmoms"
+    and p != "direct_diagonal_hessian"
 ]
 RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
@@ -899,6 +902,7 @@ RMSE_PER_ATOM_PROPERTY = [
     and p != "direct_stress"   
     and p != "hessian" 
     and p != "abs_final_collinear_magmoms"
+    and p != "direct_diagonal_hessian"
 ]
 
 

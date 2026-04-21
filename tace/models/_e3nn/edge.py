@@ -320,8 +320,49 @@ class TensorDotEdgeUpdate(EdgeUpdate):
                 self.dot(Q[edge_index[1]], K[edge_index[0]])
             )
         return torch.cat(edge_feats_list, dim=-1)
-        
 
+
+class TensorDotElement2EdgeUpdate(TensorDotEdgeUpdate, ElementEdgeUpdate):
+
+    def _setup(self) -> None:
+
+        TensorDotEdgeUpdate._setup(self)
+        ElementEdgeUpdate._setup(self)
+
+
+        if self.layer == 0:
+            self.out_dim = self.edge_embedding_channel + 2 * self.num_channel     
+        else:
+            self.out_dim = self.edge_embedding_channel + self.tensor_dot_channel * len(self.irreps_node) + 2 * self.num_channel  
+
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+        cutoff: torch.Tensor | None,
+    ) -> torch.Tensor:
+        
+        assert cutoff is not None
+        
+        edge_feats_list = [edge_feats]
+        if self.layer > 0:
+            Q = self.linear_q(node_feats)
+            K = self.linear_k(node_feats)
+            edge_feats_list.append(
+                self.dot(Q[edge_index[1]], K[edge_index[0]])
+            )
+        edge_feats_list.append(
+            self.target_embedding(node_attrs[edge_index[1]])
+        )
+
+        edge_feats_list.append(
+            self.source_embedding(node_attrs[edge_index[0]])
+        )
+
+        return torch.cat(edge_feats_list, dim=-1)
 
 EDGE_EMBEDDING = {
     "identity": IdentityEdgeEmbedding,
@@ -335,6 +376,7 @@ EDGE_UPDATE = {
     "element": ElementEdgeUpdate,
     "element2": Element2EdgeUpdate,
     "tensor_dot": TensorDotEdgeUpdate,
+    "tensor_dot_element2": TensorDotElement2EdgeUpdate,
 }
 
 

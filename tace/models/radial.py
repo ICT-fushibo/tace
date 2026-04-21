@@ -115,10 +115,6 @@ class j0ElementSphericalBesselBasis(torch.nn.Module):
 
     def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
         source_k = torch.einsum("bz, zi -> bi", node_attrs, self.source_k)
-        # print("C", source_k[0])
-        # print("H", source_k[3])
-        # print("O", source_k[5])
-        # print("N", source_k[6])
         target_k = torch.einsum("bz, zi -> bi", node_attrs, self.target_k)
         k = (source_k[edge_index[0]] + target_k[edge_index[1]]) * 0.5
         numerator = torch.sin(k * r)  # [..., num_basis]
@@ -353,17 +349,15 @@ class jnSphericalBesselBasis(torch.nn.Module):
 class GaussianBasis(torch.nn.Module):
     def __init__(
         self,
-        start: float = -5.0,
-        stop: float = 5.0,
-        num_basis: int = 50,
-        width: float = 1.0,
+        cutoff: float = 6.0,
+        num_basis: int = 64,
+        width: float = 2.0,
     ) -> None:
-        """
-        From fairchem
-        """
         super().__init__()
+        self.cutoff = cutoff
         self.num_basis = num_basis
-        offset = torch.linspace(start, stop, num_basis)
+        self.width = width
+        offset = torch.linspace(0.0, cutoff, num_basis)
         self.coeff = -0.5 / (width * (offset[1] - offset[0])).item() ** 2
         self.register_buffer("offset", offset, persistent=False)
 
@@ -371,7 +365,10 @@ class GaussianBasis(torch.nn.Module):
         r = r - self.offset.view(1, -1)
         return torch.exp(self.coeff * torch.pow(r, 2))
     
-
+    def __repr__(self):
+        return f"{self.__class__.__name__}(cutoff={self.cutoff}, width={self.width})"
+    
+    
 class CosineCutoff(torch.nn.Module):
     """
     The fourth derivative and above are discontinuous
@@ -868,6 +865,7 @@ class RadialBasis(torch.nn.Module):
         #     )
         elif radial_basis == "gaussian":
             self.radial_fn = GaussianBasis(
+                cutoff=cutoff,
                 num_basis=num_basis,
                 width=gaussian_width,
             )

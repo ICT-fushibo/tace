@@ -12,11 +12,13 @@ from e3nn import o3
 
 from ..radial import RadialBasis
 from ..angular import SphericalHarmonics
+from ..layout import LayoutTransform
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
+from .layer_norm import get_normalization_layer
 
 
 class Representation(torch.nn.Module):
@@ -76,7 +78,9 @@ class Representation(torch.nn.Module):
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
-            Lmax=Lmax[0],
+            Lmax=Lmax,
+            lmax=lmax,
+            avg_num_neighbors=avg_num_neighbors,
             bias=False,
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
@@ -157,10 +161,6 @@ class Representation(torch.nn.Module):
                     resnet_linear_type=resnet['linear_type'],
                     use_first_resnet=resnet['use_first_resnet'],
                     resnet_window=resnet['window'],
-                    # num_experts=atomic_basis['num_experts'],
-                    # top_k=atomic_basis['top_k'],
-                    # num_shared_experts=atomic_basis['num_shared_experts'],
-                    num_hidden_channel=product_basis['num_channel'],
                     irreps_node_embedding=self.node_embedding.irreps_out,
                     pre_norm_type=layer_norm['pre_norm_type'],
                     use_first_pre_norm=layer_norm['use_first_pre_norm'],
@@ -184,12 +184,14 @@ class Representation(torch.nn.Module):
                     target_weight=target_weight,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
+                    l3s=product_basis['l3s'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
                     num_latitude=product_basis['num_latitude'],
                     num_longitude=product_basis['num_longitude'],
                     truncation=product_basis['truncation'],
                     trainable_scale=product_basis['trainable_scale'],
                     nonlinear=product_basis['nonlinear'],
+                    agnostic=product_basis['agnostic'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -211,6 +213,12 @@ class Representation(torch.nn.Module):
                 normalization="component",
             )
 
+        if layer_norm['final_norm_type'] is not None: # TODO, support l_list instead lmax
+            # self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=Lmax, num_channels=num_channel)
+            # self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in range(Lmax+1)])
+            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=0, num_channels=num_channel)
+            self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in range(0+1)])
+
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
         # === edge initialize (radial) ===
@@ -222,12 +230,15 @@ class Representation(torch.nn.Module):
             graph.dcutoff,
         )
 
+        # === angular basis ===
+        edge_attrs = self.angular_basis(graph.edge_vector / graph.edge_length)
+
         # === node initialize ===
         node_feats = self.node_embedding(
             data['node_attrs'],
             edge_feats,
             data['edge_index'],
-            graph.edge_vector,
+            edge_attrs,
             cutoff,
         )
         if hasattr(self, "uie_embedding"):
@@ -251,9 +262,6 @@ class Representation(torch.nn.Module):
             cutoff,
         )
 
-        # === angular basis ===
-        edge_attrs = self.angular_basis(graph.edge_vector / graph.edge_length)
-        
         # === representation Learning ===
         prev_feats = []
         for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):
@@ -284,6 +292,8 @@ class Representation(torch.nn.Module):
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
             node_feats = prod(node_feats, node_attrs_slice, sc)
+            if idx == self.num_layers -1 and hasattr(self, "final_norm"):
+                node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             prev_feats.append(node_feats)
 
         return {

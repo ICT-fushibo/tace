@@ -327,9 +327,9 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
         if property_name == "abs_final_collinear_magmoms":
             metrics[f"{prefix}/{property_name}_mae"] = AbsFinalCollinearMagmomsMetric("mae")
             metrics[f"{prefix}/{property_name}_rmse"] = AbsFinalCollinearMagmomsMetric("rmse")
-        # if property_name == "hessian":
-        #     metrics[f"{prefix}/{property_name}_mae"] = PartialHessiansMetric("mae")
-        #     metrics[f"{prefix}/{property_name}_rmse"] = PartialHessiansMetric("rmse")
+        if property_name == "direct_diagonal_hessian":
+            metrics[f"{prefix}/{property_name}_mae"] = DirectDiagonalHessianMetric("mae")
+            metrics[f"{prefix}/{property_name}_rmse"] = DirectDiagonalHessianMetric("rmse")
 
     for p in loss_property:
         add_metrics(p)
@@ -362,6 +362,6 @@ def update_metrics(metrics, prefix, pred, label, loss_property):
         if p == "abs_final_collinear_magmoms":
             metrics[f"{prefix}/{p}_mae"](pred, label)
             metrics[f"{prefix}/{p}_rmse"](pred, label)
-        # if p == "hessian":
-        #     metrics[f"{prefix}/{p}_mae"](pred, label)
-        #     metrics[f"{prefix}/{p}_rmse"](pred, label)
+        if p == "direct_diagonal_hessian":
+            metrics[f"{prefix}/{p}_mae"](pred, label)
+            metrics[f"{prefix}/{p}_rmse"](pred, label)

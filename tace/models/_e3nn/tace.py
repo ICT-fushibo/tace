@@ -11,6 +11,7 @@ from tace.utils.torch_scatter import scatter_sum
 
 
 from ..radial import ZBLBasis
+from ..normalizer import Normalizer
 from ..blocks import OneHotToAtomicEnergy, ScaleShift
 from ..utils import get_target_weight, compute_fixed_charge_dipole
 from .readout import build_scalar_readout, build_tensor_readout
@@ -43,9 +44,10 @@ class e3nnTACE(torch.nn.Module):
         short_range: Dict,
         long_range: Dict,
         universal_embedding: Dict,
-        special: Dict,
+        special: Dict = {},
         resnet: Dict = {},
         layer_norm: Dict = {},
+        normalizer: Dict = {},
         **kwargs,
     ):
         cfg = {
@@ -73,8 +75,12 @@ class e3nnTACE(torch.nn.Module):
         self.use_alllayer = cfg['readout_emlp']['use_alllayer']
         self.num_channel = cfg['num_channel']
 
-        # === Will be used in __ini__ ===
-        self.target_weight = get_target_weight(self.target_property)
+        # === Will be used in __init__ ===
+        if cfg['product_basis']['return_all_components']:
+            self.target_weight = [l for l in range(cfg['Lmax']+1)]
+        else:
+            self.target_weight = get_target_weight(self.target_property)
+
 
         # === Representation/Descriptor ===
         self.representation = Representation(
@@ -127,7 +133,8 @@ class e3nnTACE(torch.nn.Module):
         if "energy" in self.target_property:
             self.energy_readouts = build_scalar_readout(l=0,**for_scalar_readout)
             self.atomic_energy_layer = OneHotToAtomicEnergy(cfg['atomic_energies'])
-            self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
+            if cfg['scale_shift']['enable']:
+                self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
             # uie base
             if cfg['readout_emlp']['use_uie'] and len(cfg['invariant_property']) > 0:
                 self.uie_readout = Linear(
@@ -205,9 +212,14 @@ class e3nnTACE(torch.nn.Module):
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
             self.abs_final_collinear_magmoms_readouts = build_scalar_readout(l=0, **for_scalar_readout)
-            
 
-
+        # self.normalizers = torch.nn.ModuleDict()
+        # for p in self.target_property:
+        #     self.normalizers[p] = Normalizer(
+        #         cfg['normalizer'][p].get('mean', 0.0),
+        #         cfg['normalizer'][p].get('rmsd', 1.0),
+        #     )
+    
     def readout_fn(
         self,
         data: Dict[str, torch.Tensor],
@@ -228,6 +240,7 @@ class e3nnTACE(torch.nn.Module):
         # === Energy ===
         E = None
         e_node = None
+        e_base_graph = None
         if "energy" in self.target_property:
             e_base_node = self.atomic_energy_layer(data['node_attrs'])[num_atoms_arange, node_fidelity]
             e_base_graph = scatter_sum(e_base_node, batch, dim=-1, dim_size=num_graphs)
@@ -250,14 +263,15 @@ class e3nnTACE(torch.nn.Module):
                 )[num_atoms_arange]
                 e_node = e_node + e_zbl_node
             # === scale and shift ===
-            e_node = self.scale_shift(
-                e_node, 
-                data['node_attrs'][num_atoms_arange], 
-                data['ptr'], 
-                data['edge_index'], 
-                data['batch'],
-                node_fidelity,
-            )    
+            if hasattr(self, 'scale_shift'):
+                e_node = self.scale_shift(
+                    e_node, 
+                    data['node_attrs'][num_atoms_arange], 
+                    data['ptr'], 
+                    data['edge_index'], 
+                    data['batch'],
+                    node_fidelity,
+                )    
             # === uie ===
             if hasattr(self, "uie_readout"):
                 e_uie_node = self.uie_readout(from_representation['uie_feats'])
@@ -265,7 +279,7 @@ class e3nnTACE(torch.nn.Module):
             e_graph = scatter_sum(e_node, batch, dim=-1, dim_size=num_graphs)
             e_node = e_base_node + e_node
             E = e_base_graph + e_graph
-
+            # E = e_graph
         # === Direct Forces ===
         D_F = None
         if 'direct_forces' in self.target_property:
@@ -467,6 +481,7 @@ class e3nnTACE(torch.nn.Module):
         return {
             "energy": E,
             "node_energy": e_node, # not include les
+            # "e_base_graph": e_base_graph,
             "direct_dipole": D,
             "direct_polarizability": ALPHA,
             "direct_forces": D_F,

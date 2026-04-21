@@ -64,7 +64,7 @@ def shape_fn_for_direct_diagonal_hessian(t: Tensor, num_atoms: int, **kwargs):
     shape2 = (num_atoms * 3 * num_atoms * 3,)   # [flat]
     shape3 = (num_atoms, num_atoms, 3, 3)       # [N, N, 3, 3]
     shape4 = (num_atoms, 3, num_atoms, 3)       # [N, 3, N, 3]
-    shape5 = (num_atoms, 3, 3)                  # already diagonal
+    shape5 = (num_atoms, 9)                  # already diagonal
 
     # to (N,3,N,3)
     if t.shape == shape1:
@@ -77,7 +77,7 @@ def shape_fn_for_direct_diagonal_hessian(t: Tensor, num_atoms: int, **kwargs):
     elif t.shape == shape4:
         H = t
     elif t.shape == shape5:
-        return t
+        return t.view(-1, 3, 3)
     else:
         raise ValueError(
             f"hessian shape mismatch: got {tuple(t.shape)}, "

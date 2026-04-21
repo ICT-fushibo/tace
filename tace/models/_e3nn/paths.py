@@ -33,15 +33,17 @@ def generate_paths(
     irreps_in1: o3.Irreps, 
     irreps_in2: o3.Irreps,  
     *,
-    l1l2: Optional[str] = None,
-    l2l3: Optional[str] = None,
-    l3l1: Optional[str] = None,
+    l1l2: str | None = None,
+    l2l3: str | None = None,
+    l3l1: str | None = None,
+    l3s: List[int] | None = None,
     ictp_ictc_like: bool = True,
     e3nn_mode = 'uvu',
 ):
 
     e3nn_paths: List[Tuple[int, int, int, str, bool]] = []
     e3nn_out_irreps: List[Tuple[int, o3.Irrep]] = [] 
+
 
     for _, (_, ir_out) in enumerate(irreps_out):
         for i, (mul, ir1) in enumerate(irreps_in1):
@@ -56,6 +58,7 @@ def generate_paths(
                     if ictp_ictc_like
                     else True
                 )
+                l3_ok = l3 in l3s if l3s else True
 
                 if (
                     triangle_ok
@@ -63,7 +66,9 @@ def generate_paths(
                     and satisfy(l2, l3, l2l3)
                     and satisfy(l3, l1, l3l1)
                     and ir_out in ir1 * ir2
+                    and l3_ok
                 ):
+
                     k = len(e3nn_out_irreps)
                     e3nn_out_irreps.append((mul, (ir_out.l, ir_out.p)))
                     e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode=='uvu'))

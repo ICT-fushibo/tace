@@ -57,6 +57,20 @@ def merge_state_dict(src_model, dst_model):
             else:
                 print(f"[Skip] shape mismatch: {k} {v.shape} -> {dst_sd[k].shape}")
                 skipped += 1
+                # k: str
+                # if k.endswith('mask'):
+                #     continue
+
+                # if all(s <= d for s, d in zip(v.shape, dst_sd[k].shape)):
+                #     new_tensor = dst_sd[k].clone()
+                #     slices = tuple(slice(0, s) for s in v.shape)
+                #     new_tensor[slices] = v
+                #     merged_sd[k] = new_tensor
+                #     print(f"[Partial] {k}: {v.shape} -> {dst_sd[k].shape}")
+                #     copied += 1
+                # else:
+                #     print(f"[Skip] shape mismatch: {k} {v.shape} -> {dst_sd[k].shape}")
+                #     skipped += 1
 
         else:
             print(f"{k} not in dst model")
