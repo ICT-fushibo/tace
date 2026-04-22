@@ -16,7 +16,7 @@ from e3nn.nn import Activation
 from ..layout import LayoutTransform, LayoutTransform2
 from .base import Product
 from .linear import Linear, ElementLinear
-from .fused import uuuTensorProduct
+from .fused import uuuTensorProduct, uuuTrainableTensorProduct
 from .matrix import MatrixTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
@@ -55,7 +55,7 @@ class CgtpACE(Product):
             
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
-        self.coefs.append(coefs_cls(self.linear_up.irreps_out, **for_coefs))
+        self.coefs.append(coefs_cls(self.irreps_hidden1, **for_coefs))
 
         product_in1 = self.irreps_hidden1
 
@@ -162,7 +162,7 @@ class CgtpACE(Product):
 
         return outs
 
-
+# TODO, refactor
 class MtpACE(Product):
     """
     An ACE implementation based on matrix tensor products.
@@ -486,55 +486,203 @@ class GtpACE(Product):
         return f"{self.__class__.__name__}(nlon={self.num_longitude}, nlat={self.num_latitude}, truncation={self.truncation})"
     
 
-def swiglu_torch(gate, up_states):
-    gate = torch.nn.functional.silu(gate)
-    outputs = gate * up_states
-    return outputs
 
-class SwiGLU(torch.nn.Module):
-    def __init__(self):
-        super(SwiGLU, self).__init__()
+# class OamACE(Product):
 
-        self.func = swiglu_torch
+#     def _setup(self):
 
-    def forward(self, inputs):
-        x_1, x_2 = torch.chunk(inputs, chunks=2, dim=-1)
-        outputs = self.func(x_1, x_2)
-        return outputs
+#         self.sigmoid = torch.nn.Sigmoid()
+#         self.silu = Activation(self.irreps_hidden1[:1], [torch.nn.SiLU()])
 
-class ScalarACE(torch.nn.Module):
-    def __init__(self, in_channels, out_channels, bias=True):
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.linear = torch.nn.Linear(in_channels, 2 * out_channels, bias=bias)
-        self.act = SwiGLU()
+#         self.scalar_linear_up = Linear(
+#             self.irreps_in[:1],
+#             (self.irreps_hidden1[:1] * 2).regroup(),
+#             bias=self.use_bias,
+#         )
+#         self.tensor_linear_up = Linear(
+#             self.irreps_in,
+#             (self.irreps_hidden1 * 2).regroup(),
+#             bias=self.use_bias,
+#         )
 
-    def forward(self, inputs):
-        outputs = self.linear(inputs)
-        outputs = self.act(outputs)
-        return outputs
+#         self.reshape = LayoutTransform2(self.tensor_linear_up.irreps_out)
+#         self.tensor_ace  = uuuTensorProduct(
+#             irreps_in1=self.irreps_hidden1,
+#             irreps_in2=self.irreps_hidden1,
+#             irreps_out=self.irreps_hidden2,
+#             l1l2=self.l1l2,
+#             l3s=self.l3s,
+#             ictp_ictc_like=self.ictp_ictc_like,
+#         )
+#         self.coefs = Linear(
+#             self.tensor_ace.irreps_out.simplify(),
+#             self.irreps_hidden2,
+#             bias=self.use_bias,
+#         )
+
+#         self.linear_gate = Linear(
+#             self.irreps_in[:1],
+#             f"{len(self.irreps_hidden2) * self.num_hidden_channel}x0e",
+#         )
+
+#         irreps_gated = self.irreps_hidden2
+#         irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_hidden2)
+#         self.nonlinearity = GatedLinearUnit(
+#             irreps_gates=irreps_gates,
+#             act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
+#             irreps_gated=irreps_gated,
+#         )
+
+#         self.linear = Linear(
+#             self.irreps_hidden2,
+#             self.irreps_out,
+#             bias=self.use_bias
+#         )    
+        
+#     def forward(
+#             self, 
+#             node_feats: torch.Tensor, 
+#             node_attrs: torch.Tensor,
+#             sc: torch.Tensor,
+#         ) -> torch.Tensor:
+
+#         N = node_feats.size(0)
+#         C1 = self.num_channel
+#         C2 = self.num_hidden_channel
+
+#         salar = self.scalar_linear_up(node_feats.narrow(1, 0, C1))
+#         salar1, salar2 = torch.split(salar, C2, dim=1)
+#         scalar_corr_feats2 = self.silu(salar1) * salar2
+
+#         tensor = self.reshape(self.tensor_linear_up(node_feats))
+#         tensor1, tensor2 = torch.split(tensor, C2, dim=1)
+#         tensor_corr_feats2 = self.tensor_ace(tensor1.view(N, -1), tensor2.view(N, -1))
+#         tensor_corr_feats2 = self.coefs(tensor_corr_feats2)
+#         tensor_corr_feats2 = self.nonlinearity(tensor_corr_feats2, self.linear_gate(node_feats.narrow(1, 0, C1)))
+
+
+#         tensor_corr_feats2[:, :C2] = tensor_corr_feats2[:, :C2] + scalar_corr_feats2
+#         outs = self.linear(tensor_corr_feats2)
+
+#         if sc is not None:
+#             outs = outs + sc
+
+#         return outs
     
+
 class OamACE(Product):
+    def _setup(self):
+
+        self.linear_up = Linear(
+            self.irreps_in,
+            self.irreps_hidden1,
+            bias=self.use_bias,
+        ) # if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+        self.aces = torch.nn.ModuleList()
+        self.coefs = torch.nn.ParameterList()
+
+        self.aces.append(
+            uuuTrainableTensorProduct(
+                irreps_in1=self.irreps_hidden1,
+                irreps_in2=self.irreps_hidden1[:1],
+                irreps_out=self.irreps_hidden2,
+                l1l2=self.l1l2,
+                l3s=self.l3s,
+                ictp_ictc_like=self.ictp_ictc_like,
+            ) 
+        )
+        self.coefs.append(torch.randn(self.num_elements, self.aces[-1].weight_numel))
+        self.aces.append(
+            uuuTrainableTensorProduct(
+                irreps_in1=self.irreps_hidden1,
+                irreps_in2=self.irreps_hidden1,
+                irreps_out=self.irreps_hidden2,
+                l1l2=self.l1l2,
+                l3s=self.l3s,
+                ictp_ictc_like=self.ictp_ictc_like,
+            ) 
+        )
+        self.coefs.append(torch.randn(self.num_elements, self.aces[-1].weight_numel))
+
+        irreps_gated = self.irreps_hidden2
+        irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_hidden2)
+        self.nonlinearity = GatedLinearUnit(
+            irreps_gates=irreps_gates,
+            act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
+            irreps_gated=irreps_gated,
+        )
+
+        self.linear_g1 = Linear(
+            self.aces[0].irreps_out.simplify(),
+            self.nonlinearity.irreps_in,
+            bias=self.use_bias,
+        )
+
+        self.linear_g2 = Linear(
+            self.aces[1].irreps_out.simplify(),
+            self.nonlinearity.irreps_in,
+            bias=self.use_bias,
+        )
+
+        self.linear_down = Linear(
+            self.irreps_hidden2,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+        
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
+
+        node_feats = self.linear_up(node_feats)
+
+        corr_feats_1 = self.aces[0](
+            node_feats, 
+            torch.ones_like(node_feats.narrow(1, 0, self.num_hidden_channel)), 
+            torch.einsum('bz, zi -> bi', node_attrs, self.coefs[0]),
+        )
+
+        corr_feats_2 = self.aces[1](
+            node_feats, 
+            node_feats, 
+            torch.einsum('bz, zi -> bi', node_attrs, self.coefs[1]),
+        )
+
+        outs = self.linear_down(self.nonlinearity(
+                self.linear_g1(corr_feats_1)
+                + self.linear_g2(corr_feats_2)
+            )
+        )
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+class Oam2ACE(Product):
 
     def _setup(self):
 
         self.sigmoid = torch.nn.Sigmoid()
-        self.silu = Activation(self.irreps_hidden1[:1], [torch.nn.SiLU()])
 
-        self.scalar_linear_up = Linear(
-            self.irreps_in[:1],
-            (self.irreps_hidden1[:1] * 2).regroup(),
+        self.coef1 = ElementLinear(
+            self.irreps_in,
+            self.irreps_hidden2,
             bias=self.use_bias,
+            num_elements=self.num_elements,
         )
-        self.tensor_linear_up = Linear(
+
+        self.linear_up2 = Linear(
             self.irreps_in,
             (self.irreps_hidden1 * 2).regroup(),
             bias=self.use_bias,
         )
-
-        self.reshape = LayoutTransform2(self.tensor_linear_up.irreps_out)
-        self.tensor_ace  = uuuTensorProduct(
+        self.reshape = LayoutTransform2(self.linear_up2.irreps_out)
+        self.ace2  = uuuTensorProduct(
             irreps_in1=self.irreps_hidden1,
             irreps_in2=self.irreps_hidden1,
             irreps_out=self.irreps_hidden2,
@@ -542,8 +690,8 @@ class OamACE(Product):
             l3s=self.l3s,
             ictp_ictc_like=self.ictp_ictc_like,
         )
-        self.coefs = Linear(
-            self.tensor_ace.irreps_out.simplify(),
+        self.coefs2 = Linear(
+            self.ace2.irreps_out.simplify(),
             self.irreps_hidden2,
             bias=self.use_bias,
         )
@@ -578,26 +726,23 @@ class OamACE(Product):
         C1 = self.num_channel
         C2 = self.num_hidden_channel
 
-        salar = self.scalar_linear_up(node_feats.narrow(1, 0, C1))
-        salar1, salar2 = torch.split(salar, C2, dim=1)
-        scalar_corr_feats2 = self.silu(salar1) * salar2
+        # nu = 1
+        corr1_feats = self.coef1(node_feats, node_attrs)
 
-        tensor = self.reshape(self.tensor_linear_up(node_feats))
-        tensor1, tensor2 = torch.split(tensor, C2, dim=1)
-        tensor_corr_feats2 = self.tensor_ace(tensor1.view(N, -1), tensor2.view(N, -1))
-        tensor_corr_feats2 = self.coefs(tensor_corr_feats2)
-        tensor_corr_feats2 = self.nonlinearity(tensor_corr_feats2, self.linear_gate(node_feats.narrow(1, 0, C1)))
+        # nu = 2
+        corr2_feats = self.reshape(self.linear_up2(node_feats))
+        f1, f2 = torch.split(corr2_feats, C2, dim=1)
+        corr2_feats = self.ace2(f1.view(N, -1), f2.view(N, -1))
+        corr2_feats = self.coefs2(corr2_feats)
+        corr2_feats = self.nonlinearity(corr2_feats, self.linear_gate(node_feats.narrow(1, 0, C1)))
 
-
-        tensor_corr_feats2[:, :C2] = tensor_corr_feats2[:, :C2] + scalar_corr_feats2
-        outs = self.linear(tensor_corr_feats2)
+        outs = self.linear(corr1_feats + corr2_feats)
 
         if sc is not None:
             outs = outs + sc
 
         return outs
     
-
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": CgtpACE,
     "spatial": CgtpACE,
@@ -612,5 +757,6 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "matrix": MtpACE,
     "mtp": MtpACE,
 
-    "oam": OamACE
+    "oam": OamACE,
+    "oam2": Oam2ACE,
 }

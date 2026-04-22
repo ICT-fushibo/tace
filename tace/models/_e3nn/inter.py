@@ -121,7 +121,7 @@ class CGTP_Interaction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = ElementLinear(
+                self.resnetBB = Linear(
                     irreps_in=self.irreps_in,
                     irreps_out=self.irreps_sc,
                     bias=self.use_bias,

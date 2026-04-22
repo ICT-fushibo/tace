@@ -234,3 +234,63 @@ class uuuTensorProduct(torch.nn.Module):
             return self.fused_tp(x, y)
         return self.tp(x, y)
 
+
+
+class uuuTrainableTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in1: o3.Irreps,
+        irreps_in2: o3.Irreps,
+        irreps_out: o3.Irreps,
+        l1l2: str | None = None,
+        l2l3: str | None = None,
+        l3l1: str | None = None,
+        l3s: List[int] | None = None,
+        ictp_ictc_like: bool = True,
+    ) -> None:
+        super().__init__()
+
+        instructions, actual_irreps_out = generate_paths(
+            irreps_out=irreps_out,
+            irreps_in1=irreps_in1,
+            irreps_in2=irreps_in2,
+            l1l2=l1l2,
+            l2l3=l2l3,
+            l3l1=l3l1,
+            l3s=l3s,
+            ictp_ictc_like=ictp_ictc_like,
+            e3nn_mode='uuu',
+            trainable=True,
+        )
+
+        self.tp = o3.TensorProduct(
+            irreps_in1,
+            irreps_in2,
+            actual_irreps_out,
+            instructions,
+            shared_weights=False,
+            internal_weights=False,
+        )
+        self.weight_numel = self.tp.weight_numel
+
+        self.irreps_in1 = irreps_in1
+        self.irreps_in2 = irreps_in2
+        self.irreps_out = actual_irreps_out
+        self.instructions = instructions
+        self.use_eqt = TACE_USE_EQT == '1'
+    
+        # if self.use_eqt:
+        #     self.fused_tp = e3nnEqtTensorProduct(
+        #         irreps_in1=irreps_in1,
+        #         irreps_in2=irreps_in2,
+        #         irreps_out=actual_irreps_out,
+        #         num_channel=irreps_in2.count("0e"),
+        #         path=instructions,
+        #     )
+        # else:
+        #     pass
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        # if hasattr(self, "fused_tp"):
+        #     return self.fused_tp(x, y)
+        return self.tp(x, y, w)
