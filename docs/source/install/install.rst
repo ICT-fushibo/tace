@@ -6,7 +6,7 @@ Installation
 
     .. code-block:: bash
         
-        # python < 3.14
+        # python 3.12 or 3.13, linux
         micromamba create -n tace python=3.13.11 -y 
         micromamba activate tace 
 
