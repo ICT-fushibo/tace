@@ -22,6 +22,7 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         irreps_out: o3.Irreps,
         num_channel: int,
         path: List[Tuple[int, int, int]],
+        trainable: bool,
     ):
         super().__init__()
 
@@ -36,15 +37,16 @@ class e3nnEqtTensorProduct(torch.nn.Module):
             channels_in1=num_channel,
             channels_in2=num_channel,
             channels_out=num_channel,
-            internal_weights=True,
+            internal_weights=False if trainable else True,
             feature_mode='uuu',
             path_norm=True,
             channel_norm=False,
-            trainable=False,
+            trainable=trainable,
             path=[(k, i, j) for (i, j, k, _, _) in path],
         )
-        
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        return self.reshap3.inverse(self.eqt_tp(self.reshap1(x), self.reshap2(y)))
+    def forward(
+            self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor | None = None
+        ) -> torch.Tensor:
+        return self.reshap3.inverse(self.eqt_tp(self.reshap1(x), self.reshap2(y), w))
 

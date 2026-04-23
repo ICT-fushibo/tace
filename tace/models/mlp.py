@@ -199,7 +199,7 @@ class GLU(torch.nn.Module):
         self,
         channels: List[int],
         bias: bool = False,
-        act: Optional[str] | torch.nn.Module = "sigmoid",
+        act: str | None | torch.nn.Module = "sigmoid",
         forward_weight_init: bool = True,
         layer_norm: bool = False,
         rms_norm: bool = False,

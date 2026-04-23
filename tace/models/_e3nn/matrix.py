@@ -52,15 +52,22 @@ class MatrixTensorProduct(torch.nn.Module):
         self.alpha = (1.0 / math.sqrt(2*self.Lmat) + 1) 
 
     def _build_cg(self) -> torch.Tensor:
-        cg = e3nn_cg(
-            self.Lmat,
-            self.Lmat,
-            self.maxL,   
-        )
-        i = self.Lmat ** 2
-        j = (self.Lmat + 1) ** 2
-        return cg[i:j, i:j, :]
+        # cg = e3nn_cg(
+        #     self.Lmat,
+        #     self.Lmat,
+        #     self.maxL,   
+        # )
+        # i = self.Lmat ** 2
+        # j = (self.Lmat + 1) ** 2
+        # return cg[i:j, i:j, :]
 
+        cg = e3nn_cg(
+            self.L1,
+            self.L2,
+            self.L3, 
+        )
+        return cg
+    
     def _build_mask(self, L: int):
         degrees = torch.arange(L + 1)
         repeats = 2 * degrees + 1
@@ -79,53 +86,172 @@ class MatrixTensorProduct(torch.nn.Module):
         )
 
     def _to_matrix(self, x, L):
+        '''
+            "a, b, ija, jnb, inm ->  m"
+        
+        '''
         return torch.einsum(
-            "...nf,lmn->...lmf",
+            "...kc, ijk->...ijc",
             x,
             self.cg[..., :L],
         )
 
     def _to_vector(self, x, L):
         return torch.einsum(
-            "...lmf,lmn->...nf",
+            "...ijc, ijk->...kc",
             x,
             self.cg[..., :L],
         )
 
     def _couple(self, x, y):
-        return torch.einsum("...lmf,...mnf->...lnf", x, y) * self.alpha
+        return torch.einsum("...ikc,...kjc->...ijc", x, y) * self.alpha
+    
+    # def forward(self, x: torch.Tensor, y: torch.Tensor):
+
+    #     l1 = (self.L1 + 1) ** 2
+    #     l2 = (self.L2 + 1) ** 2
+    #     l3 = (self.L3 + 1) ** 2
+
+    #     e1, o1 = self._split_parity(x, self.L1)
+    #     e2, o2 = self._split_parity(y, self.L2)
+
+    #     e1 = self._to_matrix(e1, l1)
+    #     o1 = self._to_matrix(o1, l1)
+    #     e2 = self._to_matrix(e2, l2)
+    #     o2 = self._to_matrix(o2, l2)
+
+    #     eee = self._couple(e1, e2)
+    #     ooe = self._couple(o1, o2)
+    #     eoo = self._couple(e1, o2)
+    #     oeo = self._couple(o1, e2)
+
+    #     eee = self._to_vector(eee, l3)
+    #     ooe = self._to_vector(ooe, l3)
+    #     eoo = self._to_vector(eoo, l3)
+    #     oeo = self._to_vector(oeo, l3)
+
+    #     e3 = eee + ooe
+    #     o3 = eoo + oeo
+
+    #     return e3 * self.even_mask[:, :l3, :] + o3 * self.odd_mask[:, :l3, :]
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
-
-        l1 = (self.L1 + 1) ** 2
-        l2 = (self.L2 + 1) ** 2
-        l3 = (self.L3 + 1) ** 2
-
-        e1, o1 = self._split_parity(x, self.L1)
-        e2, o2 = self._split_parity(y, self.L2)
-
-        e1 = self._to_matrix(e1, l1)
-        o1 = self._to_matrix(o1, l1)
-        e2 = self._to_matrix(e2, l2)
-        o2 = self._to_matrix(o2, l2)
-
-        eee = self._couple(e1, e2)
-        ooe = self._couple(o1, o2)
-        eoo = self._couple(e1, o2)
-        oeo = self._couple(o1, e2)
-
-        eee = self._to_vector(eee, l3)
-        ooe = self._to_vector(ooe, l3)
-        eoo = self._to_vector(eoo, l3)
-        oeo = self._to_vector(oeo, l3)
-
-        e3 = eee + ooe
-        o3 = eoo + oeo
-
-        return e3 * self.even_mask[:, :l3, :] + o3 * self.odd_mask[:, :l3, :]
-
+        return torch.einsum('bic, bjc, ijk -> bkc', x, y, self.cg)
+    
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} ({self.C})"
+    
+
+# class MatrixTensorProduct(torch.nn.Module):
+#     """
+#     Based on https://github.com/google-research/e3x/blob/main/e3x/nn/modules.py
+#     """
+#     def __init__(
+#         self,
+#         L1: int,
+#         L2: int,
+#         C: int,
+#         L3: int | None = None,
+#     ):
+#         super().__init__()
+
+#         self.L1 = L1
+#         self.L2 = L2
+#         self.L3 = max(L1, L2) if L3 is None else L3
+#         self.C = C
+
+#         self.maxL = max(self.L1, self.L2, self.L3)
+#         self.Lmat = math.ceil(self.maxL / 2)
+
+#         even_mask, odd_mask = self._build_mask(self.maxL)
+#         self.register_buffer("even_mask", even_mask, persistent=False)
+#         self.register_buffer("odd_mask", odd_mask, persistent=False)
+#         self.register_buffer("cg", self._build_cg().to(torch.get_default_dtype()))
+#         self.alpha = (1.0 / math.sqrt(2*self.Lmat) + 1) 
+
+#     def _build_cg(self) -> torch.Tensor:
+#         cg = e3nn_cg(
+#             self.Lmat,
+#             self.Lmat,
+#             self.maxL,   
+#         )
+#         i = self.Lmat ** 2
+#         j = (self.Lmat + 1) ** 2
+#         return cg[i:j, i:j, :]
+
+#     def _build_mask(self, L: int):
+#         degrees = torch.arange(L + 1)
+#         repeats = 2 * degrees + 1
+#         even = (degrees + 1) % 2
+#         odd = degrees % 2
+#         total = (L + 1) ** 2
+#         even_mask = torch.repeat_interleave(even, repeats)[:total]
+#         odd_mask = torch.repeat_interleave(odd, repeats)[:total]
+#         return even_mask.view(1, -1, 1), odd_mask.view(1, -1, 1)
+
+#     def _split_parity(self, x, L):
+#         l = (L + 1) ** 2
+#         return (
+#             x * self.even_mask[:, :l, :],
+#             x * self.odd_mask[:, :l, :],
+#         )
+
+#     def _to_matrix(self, x, L):
+#         return torch.einsum(
+#             "...nf,lmn->...lmf",
+#             x,
+#             self.cg[..., :L],
+#         )
+
+#     def _to_vector(self, x, L):
+#         return torch.einsum(
+#             "...lmf,lmn->...nf",
+#             x,
+#             self.cg[..., :L],
+#         )
+
+#     def _couple(self, x, y):
+#         return torch.einsum("...lmf,...mnf->...lnf", x, y) * self.alpha
+    
+#     def forward(self, x: torch.Tensor, y: torch.Tensor):
+
+#         l1 = (self.L1 + 1) ** 2
+#         l2 = (self.L2 + 1) ** 2
+#         l3 = (self.L3 + 1) ** 2
+
+#         e1, o1 = self._split_parity(x, self.L1)
+#         e2, o2 = self._split_parity(y, self.L2)
+
+#         e1, o1, e2, o2 = torch.unbind(
+#                 self._to_matrix(
+#                 torch.stack([e1, o1, e2, o2], dim=0), l1
+#             ),
+#             dim=0,
+#         )
+
+#         eee, ooe, eoo, oeo = torch.unbind(
+#                 self._couple(
+#                 torch.stack([e1, o1, e1, o1], dim=0),
+#                 torch.stack([e2, o2, e2, o2], dim=0),
+#             ),
+#             dim=0,
+#         )
+
+
+#         eee, ooe, eoo, oeo = torch.unbind(
+#                 self._to_vector(
+#                 torch.stack([eee, ooe, eoo, oeo], dim=0), l3
+#             ),
+#             dim=0,
+#         )
+
+#         e3 = eee + ooe
+#         o3 = eoo + oeo
+
+#         return e3 * self.even_mask[:, :l3, :] + o3 * self.odd_mask[:, :l3, :]
+
+#     def __repr__(self) -> str:
+#         return f"{self.__class__.__name__} ({self.C})"
     
 
 # class MatrixTensorProduct(torch.nn.Module):

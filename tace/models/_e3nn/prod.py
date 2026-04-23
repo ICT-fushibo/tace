@@ -16,7 +16,7 @@ from e3nn import o3
 from ..layout import LayoutTransform
 from .base import Product
 from .linear import Linear, ElementLinear
-from .fused import uuuTensorProduct, uuuTrainableTensorProduct
+from .fused import uuuTensorProduct
 from .matrix import MatrixTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
@@ -503,13 +503,14 @@ class OamACE(Product):
             bias=self.use_bias,
         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
 
-        self.ace = uuuTrainableTensorProduct(
+        self.ace = uuuTensorProduct(
             irreps_in1=self.irreps_hidden1,
             irreps_in2=self.irreps_hidden1[:1] + self.irreps_hidden1,
             irreps_out=self.irreps_hidden2,
             l1l2=self.l1l2,
             l3s=self.l3s,
             ictp_ictc_like=self.ictp_ictc_like,
+            trainable=True,
         ) 
         self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
 
