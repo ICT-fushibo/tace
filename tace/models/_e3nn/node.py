@@ -9,6 +9,8 @@ from e3nn.nn import Activation
 from e3nn import o3
 
 
+from tace.utils.torch_scatter import scatter_sum
+from ..layout import LayoutTransform
 from ..mlp import MLP
 from .base import NodeEmbedding
 from .linear import Linear
@@ -201,9 +203,90 @@ class TensorNodeEmbedding(NodeEmbedding):
         return node_feats
     
 
+class SO2TensorNodeEmbedding(NodeEmbedding):
+
+    def _setup(self) -> None:
+
+        self.node_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.source_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.target_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
+        torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
+        self.edge_info = MLP(
+            channels=[
+                self.num_radial_basis + self.num_channel * 2, 
+                self.num_channel,
+                self.num_channel,
+                (self.Lmax + 1) * self.num_channel,                
+            ],
+            bias=True,
+            layer_norm=True,
+        )
+        self.irreps_out = o3.Irreps([(self.num_channel, (l, (-1)**l)) for l in range(self.Lmax + 1)])
+        self.reshape = LayoutTransform(self.irreps_out)
+
+    def forward(
+        self,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attrs: torch.Tensor,
+        cutoff: torch.Tensor
+    ) -> torch.Tensor:
+        
+        assert cutoff is not None
+
+        base_node_feats = self.node_embedding(node_attrs) 
+        source_feats = self.source_embedding(node_attrs[edge_index[0]]) 
+        target_feats = self.target_embedding(node_attrs[edge_index[1]]) 
+
+        edge_feats = self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1)) * cutoff
+        edge_feats = edge_feats.view(edge_feats.size(0), (self.Lmax + 1), self.num_channel)
+        edge_feats = torch.bmm(
+            self.angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)), 
+            edge_feats
+        )  # (edge, dim, C)
+
+        node_feats = scatter_sum(
+            edge_feats, 
+            edge_index[1], 
+            dim=0, 
+            dim_size=base_node_feats.size(0)
+        ) / self.avg_num_neighbors
+
+        node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
+
+        # node_feats = torch.zeros(
+        #     (
+        #         node_attrs.size(0),
+        #         ((self.lmax + 1) ** 2),
+        #         self.num_channel
+        #     ),
+        #     device=node_attrs.device,
+        #     dtype=node_attrs.dtype
+        # )
+        # base_node_feats = self.node_embedding(node_attrs) 
+        # node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
+
+        return self.reshape.inverse(node_feats)
+    
+
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonLinearNodeEmbedding,
     "group": GroupNodeEmbedding,
     "tensor": TensorNodeEmbedding,
+    "so2_tensor": SO2TensorNodeEmbedding,
 }

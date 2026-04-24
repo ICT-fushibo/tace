@@ -1,6 +1,6 @@
 from typing import Optional
 
-
+import torch
 from torch import Tensor
 from torch.autograd import Function
 
@@ -20,8 +20,15 @@ from ..structs import SparseProductInfo
 class SparseMul(Function):
 
     @staticmethod
-    def forward(ctx, input1: Tensor, input2: Tensor, info_fwd: SparseProductInfo, 
-                info_bwd1: Optional[SparseProductInfo] = None, info_bwd2: Optional[SparseProductInfo] = None, out_accumulated: bool = False) -> Tensor:
+    def forward(
+        ctx, 
+        input1: torch.Tensor, 
+        input2: torch.Tensor,  
+        info_fwd: SparseProductInfo, 
+        info_bwd1: SparseProductInfo | None = None, 
+        info_bwd2: SparseProductInfo | None  = None, 
+        out_accumulated: bool = False
+    ) -> torch.Tensor:
         ret = indexed_mul_scale_gather(
             input1, input2,
             info_fwd.scale,

@@ -8,6 +8,7 @@ from .kernel_utils import (
 )
 
 
+
 @triton.jit
 def kernel_mul(input1_bases, input2_bases,
                n_mask,

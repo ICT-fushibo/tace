@@ -4,7 +4,7 @@
 ################################################################################
 
 from math import sqrt
-from typing import List, Optional
+from typing import List
 
 
 import torch
@@ -140,7 +140,7 @@ class MLP(torch.nn.Module):
 
         self.mlp = torch.nn.Sequential(*mlp)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.mlp(x)
 
 
@@ -259,10 +259,11 @@ class GLU(torch.nn.Module):
 
         self.glu = torch.nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.glu(x)
     
 FFN = {
     'mlp': MLP,
     'glu': GLU,
 }
+

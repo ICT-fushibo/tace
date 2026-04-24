@@ -24,6 +24,7 @@ from .linear import Linear
 class e3nnTACE(torch.nn.Module):
     def __init__(
         self,
+        mmax: int,
         Lmax: int,
         lmax: int,
         num_layers: int,
@@ -81,13 +82,13 @@ class e3nnTACE(torch.nn.Module):
         else:
             self.target_weight = get_target_weight(self.target_property)
 
-
         # === Representation/Descriptor ===
         self.representation = Representation(
             num_layers=cfg['num_layers'],
             atomic_numbers=cfg['atomic_numbers'],
             cutoff=cfg['cutoff'],
             avg_num_neighbors=cfg['avg_num_neighbors'],
+            mmax=cfg['mmax'],
             Lmax=cfg['Lmax'],
             lmax=cfg['lmax'],
             num_channel=cfg['num_channel'],
@@ -495,6 +496,7 @@ class e3nnTACE(torch.nn.Module):
             "scalar_descriptor": scalar_descriptor,
             "abs_final_collinear_magmoms": ABS_F_C_MAG,
         }
+    
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)
         return self.readout_fn(data, graph, rep)

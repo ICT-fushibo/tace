@@ -1128,7 +1128,14 @@ def irreps_blocks_infos(irreps: Irreps) -> SparseProductInfo:
     return sparse_product_infos(index_mat, index_in, index_out)
 
 
-def prepare_so2_linear(irreps_out, irreps_in, path=None, path_norm=True, channel_norm=False, channel_scale=1.0):
+def prepare_so2_linear(
+        irreps_out, 
+        irreps_in, 
+        path=None, 
+        path_norm=True, 
+        channel_norm=False, 
+        channel_scale=1.0
+    ):
     if path is None:
         path = [(k, i) for k in range(len(irreps_out)) for i in range(len(irreps_in))]
     # 1. Create mapping from M -> (irrep_idx, l, m) and (irrep_idx, l, m) -> M
@@ -1239,5 +1246,12 @@ def so2_linear_info(irreps_out, irreps_in, path=None, path_norm=True, channel_no
     return sparse_product_info(indices1, indices2, indices_out, scales, irreps_out.dim), num_weights
 
 def so2_linear_infos(irreps_out, irreps_in, path=None, path_norm=True, channel_norm=False, channel_scale=1.0):
-    indices1, indices2, indices_out, scales, num_weights = prepare_so2_linear(irreps_out, irreps_in, path=path, path_norm=path_norm, channel_norm=channel_norm, channel_scale=channel_scale)
+    indices1, indices2, indices_out, scales, num_weights = prepare_so2_linear(
+        irreps_out, 
+        irreps_in, 
+        path=path, 
+        path_norm=path_norm, 
+        channel_norm=channel_norm, 
+        channel_scale=channel_scale
+    )
     return *sparse_product_infos(indices1, indices2, indices_out, scales, irreps_out.dim, irreps_in.dim, num_weights), num_weights

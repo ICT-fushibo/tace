@@ -10,6 +10,7 @@ from ...dataset.quantity import PROPERTY
 
 
 DEFAULT_MODEL_CONFIG = {
+    "mmax": 2,
     "Lmax": 2,
     "lmax": 3,
     "num_channel": 64,
@@ -55,6 +56,7 @@ DEFAULT_MODEL_CONFIG = {
         "edge_nonlinear": None, # not support now
         "l1l2": None,
         "ictp_ictc_like": True,
+        "is_so2_layout": False,
     },
     "resnet": {
         "type": "BB",

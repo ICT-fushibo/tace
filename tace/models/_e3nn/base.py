@@ -13,7 +13,7 @@ from e3nn import o3
 
 
 from ..lammps import e3nnGhostExchangeMixin
-
+from .._so2 import SO3Rotation
 
 def _to_full_so3_irreps(lmax: int | List[int], num_channel: int) -> o3.Irreps:
     if isinstance(lmax, int):
@@ -32,6 +32,7 @@ class NodeEmbedding(torch.nn.Module):
         lmax: int,
         avg_num_neighbors: float,
         bias: bool = False,
+        angular_basis: SO3Rotation | None = None,
     ) -> None:
         super().__init__()
 
@@ -42,6 +43,7 @@ class NodeEmbedding(torch.nn.Module):
         self.Lmax = Lmax
         self.lmax = lmax
         self.avg_num_neighbors = avg_num_neighbors
+        self.angular_basis = angular_basis
 
         self._setup()
     
@@ -152,6 +154,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_layers: int,
         num_elements: int,
         avg_num_neighbors: float,
+        mmax: int,
         Lmax: int,
         lmax: int,
         correlation: List[int],
@@ -175,11 +178,14 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_resnet: bool = False,
         pre_norm_type: str | None = None,
         use_first_pre_norm: bool = False,
+        angular_basis: SO3Rotation | None = None,
+        is_so2_layout: bool = False,
     ) -> None:
         super().__init__()
 
         self.layer = layer
         self.num_layers = num_layers
+        self.mmax = mmax
         self.Lmax = Lmax
         self.lmax = lmax
         self.correlation = correlation[layer]
@@ -213,12 +219,14 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'sigmoid'
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
+        self.is_so2_layout = is_so2_layout
 
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
+        self.angular_basis = angular_basis
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:

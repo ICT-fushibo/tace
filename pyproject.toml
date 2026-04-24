@@ -101,4 +101,4 @@ include = [
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]
-
+"tace.models._so2" = ["Jd.pt"]
