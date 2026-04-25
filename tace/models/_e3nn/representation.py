@@ -96,7 +96,7 @@ class Representation(torch.nn.Module):
             )
 
         # === node/edge embedding ===
-        node_embedding['type'] = node_embedding['type'] if not self.use_so2 else 'so2_tensor'
+        # node_embedding['type'] = node_embedding['type'] if not self.use_so2 else 'so2_tensor'
         self.node_embedding = NODE_EMBEDDING[node_embedding['type']](
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
@@ -191,6 +191,9 @@ class Representation(torch.nn.Module):
                     use_first_pre_norm=layer_norm['use_first_pre_norm'],
                     angular_basis=self.angular_basis if self.use_so2 else None,
                     is_so2_layout=atomic_basis['is_so2_layout'],
+                    resolution=atomic_basis['resolution'],
+                    edge_ace_coefs_type=atomic_basis['edge_ace_coefs_type'],
+                    so2_hidden_channel=atomic_basis['so2_hidden_channel'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -213,12 +216,8 @@ class Representation(torch.nn.Module):
                     l1l2=product_basis['l1l2'],     
                     l3s=product_basis['l3s'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
-                    num_latitude=product_basis['num_latitude'],
-                    num_longitude=product_basis['num_longitude'],
-                    truncation=product_basis['truncation'],
-                    trainable_scale=product_basis['trainable_scale'],
                     nonlinear=product_basis['nonlinear'],
-                    agnostic=product_basis['agnostic'],
+                    resolution=atomic_basis['resolution'],
                     bias=True,
                 )
                 for layer in range(num_layers)

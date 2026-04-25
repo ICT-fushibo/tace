@@ -309,9 +309,14 @@ class SO2_Interaction(Interaction):
             lmax=self.lmax,
             num_channel_in=self.num_channel,
             num_channel_out=self.num_channel,
-            num_channel_hidden=None,
+            num_channel_hidden=self.so2_hidden_channel,
             is_so2_layout=self.is_so2_layout,
-            edge_nonlinear=None,
+            edge_nonlinear=self.edge_nonlinear,
+            num_elements=self.num_elements,
+            resolution=self.resolution,
+            edge_ace_coefs_type=self.edge_ace_coefs_type,
+            lmax_node_embedding=self.irreps_node_embedding.lmax,
+            layer=self.layer,
         )
 
         linear_down_irreps_out = self.irreps_out
@@ -494,9 +499,9 @@ class SO2_Interaction(Interaction):
 
         m_i = self.linear_down(
             self.truncate_ghosts(
-                self.rejector(node_feats, edge_attrs, conv_weights, edge_index), 
+                self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index), 
                 nlocal
-            )
+            ) # check   node_attrs_slice TODO
         )
 
         if hasattr(self, "edge_density"):

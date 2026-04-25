@@ -24,7 +24,6 @@ from .linear import Linear
 class e3nnTACE(torch.nn.Module):
     def __init__(
         self,
-        mmax: int,
         Lmax: int,
         lmax: int,
         num_layers: int,
@@ -49,6 +48,7 @@ class e3nnTACE(torch.nn.Module):
         resnet: Dict = {},
         layer_norm: Dict = {},
         normalizer: Dict = {},
+        mmax: int = 2,
         **kwargs,
     ):
         cfg = {

@@ -165,6 +165,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         radial_mlp: List[int],
         radial_bias: bool,
         irreps_node_embedding: o3.Irreps,
+        resolution: List[int],
         l1l2: Optional[str] = None,
         scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
@@ -180,6 +181,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_pre_norm: bool = False,
         angular_basis: SO3Rotation | None = None,
         is_so2_layout: bool = False,
+        edge_ace_coefs_type: str | None = None,
+        so2_hidden_channel: int | None = None,
+
     ) -> None:
         super().__init__()
 
@@ -219,7 +223,12 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'sigmoid'
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
+
         self.is_so2_layout = is_so2_layout
+        self.resolution = resolution
+        self.edge_ace_coefs_type = edge_ace_coefs_type
+        self.irreps_node_embedding = irreps_node_embedding
+        self.so2_hidden_channel = so2_hidden_channel
 
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
@@ -250,7 +259,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
 
 
 class Product(torch.nn.Module):
-
     def __init__(
         self,
         layer: int,
@@ -266,12 +274,8 @@ class Product(torch.nn.Module):
         l3s: List[int] | None,
         ictp_ictc_like: bool,
         bias: bool,
-        num_latitude: int,
-        num_longitude: int,
-        truncation: int,
-        trainable_scale: bool,
+        resolution: List[int],
         nonlinear: str | None,
-        agnostic: bool,
     ) -> None:
         super().__init__()
 
@@ -287,27 +291,13 @@ class Product(torch.nn.Module):
         self.l3s = l3s
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
-        self.truncation = truncation
-        self.trainable_scale = trainable_scale
         self.num_hidden_channel = num_hidden_channel or num_channel
-        if self.truncation is None:
-            self.truncation = self.correlation * self.lmax
-        assert self.truncation >= self.lmax
-        assert self.truncation <= self.correlation * self.lmax
-        if num_latitude is None and num_longitude is None:
-            self.num_latitude = 2 * (self.truncation + 1)
-            self.num_longitude = 2 * (self.truncation+ 1) + 1
-        else:
-            self.num_latitude = num_latitude
-            self.num_longitude = num_longitude  
-        assert isinstance(self.num_latitude, int)    
-        assert isinstance(self.num_longitude, int) 
         self.nonlinear = nonlinear
         self.nonlinear_type = None
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
-        self.agnostic = agnostic
+        self.resolution = resolution
 
         if self.correlation == 1:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)

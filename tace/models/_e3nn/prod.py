@@ -17,9 +17,10 @@ from ..layout import LayoutTransform
 from .base import Product
 from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
-from .matrix import MatrixTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
+from .._so2 import SO3Grid
+
 
 
 class CgtpACE(Product):
@@ -46,12 +47,9 @@ class CgtpACE(Product):
         for_coefs = {
             "irreps_out": self.irreps_nonlinear,
             "bias": self.use_bias,
+            "num_elements": self.num_elements,
         }
-        if self.agnostic:
-            coefs_cls = Linear
-        else:
-            for_coefs['num_elements'] = self.num_elements
-            coefs_cls = ElementLinear
+        coefs_cls = ElementLinear
             
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -141,19 +139,12 @@ class CgtpACE(Product):
         corr_feats = {
             1: node_feats,
         }
-        if self.agnostic:
-            outs = self.coefs[0](corr_feats[1])
-        else:
-            outs = self.coefs[0](corr_feats[1], node_attrs)
 
-        if self.agnostic:
-            for nu in range(2, self.correlation+1):
-                corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-                outs = outs + self.coefs[nu-1](corr_feats[nu])
-        else:
-            for nu in range(2, self.correlation+1):
-                corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-                outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+        outs = self.coefs[0](corr_feats[1], node_attrs)
+
+        for nu in range(2, self.correlation+1):
+            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 
         outs = self.linear(self.nonlinearity(outs))
 
@@ -162,133 +153,7 @@ class CgtpACE(Product):
 
         return outs
 
-# TODO, refactor
-class MtpACE(Product):
-    """
-    An ACE implementation based on matrix tensor products.
-
-    This module performs many-body expansion using matrix tensor products.
-    This approach is inspired by the FusedTensor in e3x, and the idea was
-    motivated by a reviewer's suggestion in one of my papers.
-
-    Similar to GTP-based methods, it averages over paths.
-    However, it includes antisymmetric interactions, and its computational
-    scaling at higher correlation orders is significantly more efficient
-    than CGTP_ACE.
-    """
-
-    def _setup(self):
-
-        self.linear_up = Linear(
-            self.irreps_in,
-            self.irreps_hidden1,
-            bias=self.use_bias,
-        ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
-
-        for_coefs = {
-            "irreps_in": self.irreps_in,
-            "irreps_out": self.irreps_nonlinear,
-            "bias": self.use_bias,
-        }
-        if self.agnostic:
-            coefs_cls = Linear
-        else:
-            for_coefs['num_elements'] = self.num_elements
-            coefs_cls = ElementLinear
-
-        self.reshape = LayoutTransform(self.irreps_in)
-
-        self.aces = torch.nn.ModuleList(
-            MatrixTensorProduct(
-                L1=self.irreps_in.lmax,
-                L2=self.irreps_in.lmax,
-                C=self.num_hidden_channel,
-            ) for _ in range(self.correlation-1)
-        )
-        self.coefs = torch.nn.ModuleList(
-            coefs_cls(**for_coefs) for _ in range(self.correlation)
-        )
-
-        if self.nonlinear_type is not None:
-            if self.nonlinear_type == 'norm':
-                self.nonlinearity = NormLinearUnit(
-                    self.irreps_hidden2,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                )
-            elif self.nonlinear_type == 'grid':
-                self.nonlinearity = GridMLPUnit(
-                    self.irreps_hidden2,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                    bias=False,
-                ) # will introduct higher freq
-            elif self.nonlinear_type == 'e3nngate':
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in self.irreps_hidden2 if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_hidden2 if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = e3nn.nn.Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-            elif self.nonlinear_type == 'gate':
-                irreps_gated = self.irreps_hidden2
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_hidden2)
-                self.nonlinearity = GatedLinearUnit(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-            else:
-                raise
-            
-        self.linear = Linear(
-            self.irreps_hidden2,
-            self.irreps_out,
-            bias=self.use_bias
-        )    
-
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-        ) -> torch.Tensor:
-
-        node_feats = self.linear_up(node_feats)
-        
-        node_feats = self.reshape(node_feats)
-
-        corr_feats = {
-            1: node_feats,
-        }
-        if self.agnostic:
-            outs = self.coefs[0](self.reshape.inverse(corr_feats[1]))
-        else:
-            outs = self.coefs[0](self.reshape.inverse(corr_feats[1]), node_attrs)
-
-        for nu in range(2, self.correlation+1):
-            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            if self.agnostic:
-                outs = outs + self.coefs[nu-1](self.reshape.inverse(corr_feats[nu]))
-            else:
-                outs = outs + self.coefs[nu-1](self.reshape.inverse(corr_feats[nu]), node_attrs)    
-
-        if hasattr(self, 'nonlinearity'):
-            outs = self.nonlinearity(outs)
-            
-        outs = self.linear(outs)
-
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-      
+  
 # TODO, refactor
 class GtpACE(Product):
     """
@@ -492,7 +357,8 @@ class GtpACE(Product):
     
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(nlon={self.num_longitude}, nlat={self.num_latitude}, truncation={self.truncation})"
-    
+
+
 
 class OamACE(Product):
     def _setup(self):
@@ -568,15 +434,10 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": CgtpACE,
     "spatial": CgtpACE,
     "cgtp": CgtpACE,
-    "nonlinear": CgtpACE,
-    "glu": CgtpACE,
 
     "spectral": GtpACE,
     "grid": GtpACE,
     "gtp": GtpACE,
-
-    "matrix": MtpACE,
-    "mtp": MtpACE,
 
     "oam": OamACE,
 }

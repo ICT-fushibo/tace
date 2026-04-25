@@ -53,10 +53,14 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
-        "edge_nonlinear": None, # not support now
+        "edge_nonlinear": None,
+        "edge_ace_coefs_type": None,
         "l1l2": None,
         "ictp_ictc_like": True,
         "is_so2_layout": False,
+        "resolution": None,
+        "so2_hidden_channel": None,
+
     },
     "resnet": {
         "type": "BB",
@@ -75,14 +79,10 @@ DEFAULT_MODEL_CONFIG = {
         "l3s": None,
         "correlation": 3,
         "ictp_ictc_like": True,
-        "num_latitude": None,
-        "num_longitude": None,
-        "truncation": None,
-        "trainable_scale": True,
+        "resolution": None,
         "num_channel": None,
         "nonlinear": None,
         "return_all_components": False,
-        "agnostic": False,
     },
     "readout_emlp": {
         "bias": False,
