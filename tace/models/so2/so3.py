@@ -410,33 +410,27 @@ class SO3Rotation(torch.nn.Module):
     def set_wigner(self, edge_vector):
         rot_mat3x3 = self.init_edge_rot_mat(edge_vector, use_rotation_mask=True)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
-        #wigner = torch.matmul(self.wigner_index_to_m_array, wigner)
         wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner)
-        if torch.is_autocast_enabled():
-            wigner = wigner.to(torch.float16)
+        # if torch.is_autocast_enabled():
+        #     wigner = wigner.to(torch.float16)
         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
         wigner_inv = wigner_inv * self.wigner_inv_rescale
-        if torch.is_autocast_enabled():
-            wigner_inv = wigner_inv.to(torch.float16)
+        # if torch.is_autocast_enabled():
+        #     wigner_inv = wigner_inv.to(torch.float16)
         self.wigner = wigner            #.detach()
         self.wigner_inv = wigner_inv    #.detach()
 
 
-    # Rotate the embedding
     def rotate(self, inputs):
-        #outputs = torch.einsum('bji, bic -> bjc', self.wigner, inputs)
         outputs = torch.bmm(self.wigner, inputs)
         return outputs
 
 
-    # Rotate the embedding by the inverse of the rotation matrix
     def rotate_inv(self, inputs):
-        #outputs = torch.einsum('bij, bjc -> bic', self.wigner_inv, inputs)
         outputs = torch.bmm(self.wigner_inv, inputs)
         return outputs
     
 
-    # Compute Wigner matrices from rotation matrix
     def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
         #x = edge_rot_mat @ edge_rot_mat.new_tensor([0.0, 1.0, 0.0])
         #x = torch.einsum(
@@ -577,8 +571,9 @@ class SO3Rotation(torch.nn.Module):
         else:
             return edge_rot_mat.detach()
 
+
     def extra_repr(self):
-        return 'lmax={}, mmax={}'.format(self.lmax, self.mmax)
+        return 'mmax={}, lmax={}'.format(self.mmax, self.lmax)
 
 
 class SO3Grid(torch.nn.Module):

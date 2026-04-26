@@ -256,9 +256,9 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         edge_feats = edge_feats.view(edge_feats.size(0), (self.Lmax + 1), self.num_channel)
 
         edge_feats = torch.bmm(
-            self.angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)), 
+            self.so2_angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)), 
             edge_feats
-        )  # (edge, dim, C)
+        )  # (edge, so3_m, C)
 
         node_feats = scatter_sum(
             edge_feats, 
@@ -282,6 +282,7 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         # node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
 
         return self.reshape.inverse(node_feats)
+
 
 class SO2LinearNodeEmbedding(NodeEmbedding):
 

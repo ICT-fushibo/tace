@@ -32,7 +32,7 @@ class NodeEmbedding(torch.nn.Module):
         lmax: int,
         avg_num_neighbors: float,
         bias: bool = False,
-        angular_basis: SO3Rotation | None = None,
+        so2_angular_basis: SO3Rotation | None = None,
     ) -> None:
         super().__init__()
 
@@ -43,7 +43,7 @@ class NodeEmbedding(torch.nn.Module):
         self.Lmax = Lmax
         self.lmax = lmax
         self.avg_num_neighbors = avg_num_neighbors
-        self.angular_basis = angular_basis
+        self.so2_angular_basis = so2_angular_basis
 
         self._setup()
     
@@ -109,6 +109,7 @@ class EdgeUpdate(torch.nn.Module):
         raise NotImplementedError
 
 
+# TODO
 class Residual(torch.nn.Module):
     def __init__(
         self,
@@ -179,7 +180,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_resnet: bool = False,
         pre_norm_type: str | None = None,
         use_first_pre_norm: bool = False,
-        angular_basis: SO3Rotation | None = None,
+        so2_angular_basis: SO3Rotation | None = None,
         is_so2_layout: bool = False,
         edge_ace_coefs_type: str | None = None,
         so2_hidden_channel: int | None = None,
@@ -235,7 +236,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
-        self.angular_basis = angular_basis
+        self.so2_angular_basis = so2_angular_basis
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:

@@ -12,6 +12,7 @@ from e3nn import o3
 
 from ..radial import RadialBasis
 from ..angular import SphericalHarmonics
+from ..so2 import SO3Rotation
 from ..layout import LayoutTransform
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
@@ -56,20 +57,13 @@ class Representation(torch.nn.Module):
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
 
-
-        has_so2 = any(t == 'so2' for t in atomic_basis['type'])
-        all_so2 = all(t == 'so2' for t in atomic_basis['type'])
-        if has_so2 and not all_so2:
-            raise ValueError("If any type is 'so2', then all types must be 'so2'")
-        self.use_so2 = all_so2
-
-
-        has_eqt_so2 = any(t == 'eqt_so2' for t in atomic_basis['type'])
-        all_eqt_so2 = all(t == 'eqt_so2' for t in atomic_basis['type'])
-        if has_eqt_so2 and not all_eqt_so2:
-            raise ValueError("If any type is 'eqt_so2', then all types must be 'eqt_so2'")
-        self.use_eqt_so2 = all_eqt_so2
-
+        # has_so2 = any(t == 'so2' for t in atomic_basis['type'])
+        # all_so2 = all(t == 'so2' for t in atomic_basis['type'])
+        # if has_so2 and not all_so2:
+        #     raise ValueError("If any type is 'so2', then all types must be 'so2'")
+        # self.use_so2 = all_so2
+        self.use_so2 = 'so2' in atomic_basis['type']
+        self.use_o3 = any(t != 'so2' for t in atomic_basis['type'])
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -88,21 +82,18 @@ class Representation(torch.nn.Module):
             num_elements=len(atomic_numbers),
         )
 
-
         # === angular basis ===
         if self.use_so2:
-            assert Lmax == lmax, "SO2 Tensor Product need Lmax == lmax in TACE"
-            from ..so2 import SO3Rotation
-            self.angular_basis = SO3Rotation(lmax, mmax, use_rotation_mask=True)
-        else:
-            self.angular_basis = SphericalHarmonics(
+            assert Lmax == lmax, "SO2 Interaciton require Lmax == lmax in TACE"
+            self.so2_angular_basis = SO3Rotation(lmax, mmax, use_rotation_mask=True)
+        if self.use_o3:
+            self.o3_angular_basis = SphericalHarmonics(
                 o3.Irreps.spherical_harmonics(lmax, p=-1),
                 normalize=False,
                 normalization="component",
             )
 
         # === node/edge embedding ===
-        # node_embedding['type'] = node_embedding['type'] if not self.use_so2 else 'so2_tensor'
         self.node_embedding = NODE_EMBEDDING[node_embedding['type']](
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
@@ -111,7 +102,7 @@ class Representation(torch.nn.Module):
             lmax=lmax,
             avg_num_neighbors=avg_num_neighbors,
             bias=False,
-            angular_basis=self.angular_basis if self.use_so2 else None
+            so2_angular_basis=self.so2_angular_basis if self.use_so2 else None
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
             num_elements=self.num_elements,
@@ -184,7 +175,7 @@ class Representation(torch.nn.Module):
                     l1l2=atomic_basis['l1l2'],
                     scatter_norm=atomic_basis['scatter_norm'],
                     ictp_ictc_like=atomic_basis['ictp_ictc_like'],
-                    nonlinear=atomic_basis['nonlinear'],
+                    nonlinear=atomic_basis['nonlinear'][layer],
                     edge_nonlinear=atomic_basis['edge_nonlinear'],
                     correlation=product_basis['correlation'],
                     edge_info_type=atomic_basis['edge_info_type'],
@@ -195,7 +186,7 @@ class Representation(torch.nn.Module):
                     irreps_node_embedding=self.node_embedding.irreps_out,
                     pre_norm_type=layer_norm['pre_norm_type'],
                     use_first_pre_norm=layer_norm['use_first_pre_norm'],
-                    angular_basis=self.angular_basis if self.use_so2 else None,
+                    so2_angular_basis=self.so2_angular_basis if self.use_so2 else None,
                     is_so2_layout=atomic_basis['is_so2_layout'],
                     resolution=atomic_basis['resolution'],
                     edge_ace_coefs_type=atomic_basis['edge_ace_coefs_type'],
@@ -230,16 +221,6 @@ class Representation(torch.nn.Module):
             ]
         )
 
-        # === angular basis ===
-        if self.use_eqt_so2:
-            assert Lmax == lmax, "Equitorch SO2 Tensor Product need Lmax == lmax in TACE"
-            from .._eqt.equitorch.nn import AlignToZWignerD
-            self.angular_basis = AlignToZWignerD(
-                irreps="+".join(str(ir) for _, ir in self.interactions[-1].irreps_out),  
-                normalized=False,
-            )  
-
-
         if layer_norm['final_norm_type'] is not None: # TODO, support l_list instead lmax
             # self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=Lmax, num_channels=num_channel)
             # self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in range(Lmax+1)])
@@ -259,10 +240,10 @@ class Representation(torch.nn.Module):
 
         # === angular basis ===
         if self.use_so2:
-            self.angular_basis.set_wigner(graph.edge_vector)
-            edge_attrs = None
-        else:
-            edge_attrs = self.angular_basis(graph.edge_vector / graph.edge_length)
+            self.so2_angular_basis.set_wigner(graph.edge_vector)
+            edge_attrs = None # wignerD here
+        if self.use_o3:
+            edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length)
 
         # === node initialize ===
         node_feats = self.node_embedding(

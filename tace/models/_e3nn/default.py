@@ -233,9 +233,9 @@ def check_model_config(cfg: Dict[str, Any]):
     cfg['invariant_property'] = get_invariant_property(cfg['universal_embedding'])
     cfg['equivariant_property'] = get_equivariant_property(cfg['universal_embedding'])
 
-    # Update str | int to list use `num_layers`
-    def _to_list(x: int | str | List[int | str]):
-        if isinstance(x, int) or isinstance(x, str):
+    # Update None | str | int to list use `num_layers`
+    def _to_list(x: None| int | str | List[None | int | str]):
+        if isinstance(x, int) or isinstance(x, str) or x is None:
             return [x for _ in range(cfg['num_layers'])]
         assert isinstance(x, list)
         return x
@@ -244,5 +244,7 @@ def check_model_config(cfg: Dict[str, Any]):
     cfg['product_basis']['correlation'] = _to_list(cfg['product_basis']['correlation'])
     cfg['atomic_basis']['type'] = _to_list(cfg['atomic_basis']['type'])
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
+    cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
+
 
     return cfg
