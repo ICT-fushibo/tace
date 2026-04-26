@@ -13,7 +13,7 @@ from e3nn import o3
 
 
 from ..lammps import e3nnGhostExchangeMixin
-from .._so2 import SO3Rotation
+from ..so2 import SO3Rotation
 
 def _to_full_so3_irreps(lmax: int | List[int], num_channel: int) -> o3.Irreps:
     if isinstance(lmax, int):

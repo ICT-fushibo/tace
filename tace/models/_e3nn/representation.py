@@ -55,11 +55,21 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
+
+
         has_so2 = any(t == 'so2' for t in atomic_basis['type'])
         all_so2 = all(t == 'so2' for t in atomic_basis['type'])
         if has_so2 and not all_so2:
             raise ValueError("If any type is 'so2', then all types must be 'so2'")
         self.use_so2 = all_so2
+
+
+        has_eqt_so2 = any(t == 'eqt_so2' for t in atomic_basis['type'])
+        all_eqt_so2 = all(t == 'eqt_so2' for t in atomic_basis['type'])
+        if has_eqt_so2 and not all_eqt_so2:
+            raise ValueError("If any type is 'eqt_so2', then all types must be 'eqt_so2'")
+        self.use_eqt_so2 = all_eqt_so2
+
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -78,15 +88,11 @@ class Representation(torch.nn.Module):
             num_elements=len(atomic_numbers),
         )
 
+
         # === angular basis ===
         if self.use_so2:
             assert Lmax == lmax, "SO2 Tensor Product need Lmax == lmax in TACE"
-            # from .._eqt.equitorch.nn import AlignToZWignerD
-            # self.angular_basis = AlignToZWignerD(
-            #     irreps="+".join(str(ir) for _, ir in self.interactions[-1].irreps_out),  
-            #     normalized=False,
-            # )  
-            from .._so2.so3 import SO3Rotation
+            from ..so2 import SO3Rotation
             self.angular_basis = SO3Rotation(lmax, mmax, use_rotation_mask=True)
         else:
             self.angular_basis = SphericalHarmonics(
@@ -223,6 +229,16 @@ class Representation(torch.nn.Module):
                 for layer in range(num_layers)
             ]
         )
+
+        # === angular basis ===
+        if self.use_eqt_so2:
+            assert Lmax == lmax, "Equitorch SO2 Tensor Product need Lmax == lmax in TACE"
+            from .._eqt.equitorch.nn import AlignToZWignerD
+            self.angular_basis = AlignToZWignerD(
+                irreps="+".join(str(ir) for _, ir in self.interactions[-1].irreps_out),  
+                normalized=False,
+            )  
+
 
         if layer_norm['final_norm_type'] is not None: # TODO, support l_list instead lmax
             # self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=Lmax, num_channels=num_channel)

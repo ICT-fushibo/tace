@@ -293,6 +293,10 @@ def indexed_mul_scale_gather(
             seg, gather_index, index_out, out,
             out_accumulated, out_size,
             block_size_n, block_size_c, num_stages)
+        # return indexed_mul_scale_gather_cpu(
+        #     input1, input2, scale, index1, index2,
+        #     seg, gather_index, index_out, out,
+        #     out_accumulated, out_size)
     else:
         return indexed_mul_scale_gather_cpu(
             input1, input2, scale, index1, index2,

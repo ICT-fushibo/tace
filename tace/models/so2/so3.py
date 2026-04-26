@@ -1,5 +1,5 @@
 ''''
-Borrowed from EquiformerV3 with some modifications.
+Copy from EquiformerV3.
 
 MIT License
 

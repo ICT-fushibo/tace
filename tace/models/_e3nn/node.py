@@ -283,10 +283,72 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
 
         return self.reshape.inverse(node_feats)
 
+class SO2LinearNodeEmbedding(NodeEmbedding):
+
+    def _setup(self) -> None:
+
+        self.node_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.source_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        self.target_embedding = Linear(
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
+            bias=self.bias
+        )
+        torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
+        torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
+        self.edge_info = MLP(
+            channels=[
+                self.num_radial_basis + self.num_channel * 2, 
+                self.num_channel,
+                self.num_channel,
+                (self.Lmax + 1) * self.num_channel,                
+            ],
+            bias=True,
+            layer_norm=True,
+        )
+        self.irreps_out = o3.Irreps([(self.num_channel, (l, (-1)**l)) for l in range(self.Lmax + 1)])
+        self.reshape = LayoutTransform(self.irreps_out)
+
+    def forward(
+        self,
+        node_attrs: torch.Tensor,
+        edge_feats: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attrs: torch.Tensor,
+        cutoff: torch.Tensor
+    ) -> torch.Tensor:
+        
+
+        base_node_feats = self.node_embedding(node_attrs) 
+
+        node_feats = torch.zeros(
+            (
+                node_attrs.size(0),
+                ((self.lmax + 1) ** 2),
+                self.num_channel
+            ),
+            device=node_attrs.device,
+            dtype=node_attrs.dtype
+        )
+        base_node_feats = self.node_embedding(node_attrs) 
+        node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
+
+        return self.reshape.inverse(node_feats)
+
+
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonLinearNodeEmbedding,
     "group": GroupNodeEmbedding,
     "tensor": TensorNodeEmbedding,
     "so2_tensor": SO2TensorNodeEmbedding,
+    "so2_linear": SO2LinearNodeEmbedding,
 }

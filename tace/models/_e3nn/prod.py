@@ -19,7 +19,7 @@ from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
-from .._so2 import SO3Grid
+from ..so2 import SO3Grid
 
 
 

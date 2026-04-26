@@ -15,7 +15,8 @@ from e3nn import o3
 from ..layout import LayoutTransform
 from ..env import TACE_USE_OEQ, TACE_USE_CUE, TACE_USE_EQT
 from .paths import generate_paths
-from .._so2 import SO3Rotation, SO2Linear, SO3Grid
+from ..so2 import SO3Rotation, SO2Linear, SO3Grid
+from ..so2.so2 import SO2TensorProduct, SO2Gate
 try:
     from .._oeq import e3nnOeqScatterTensorProduct
 except Exception:
@@ -26,7 +27,6 @@ except Exception:
     pass
 try:
     from .._eqt import e3nnEqtTensorProduct
-    from .._eqt.equitorch.nn import SO2TensorProduct
 except Exception:
     pass
 
@@ -115,66 +115,65 @@ class O3ScatterTensorProduct(torch.nn.Module):
         )
 
     
-# class SO2ScatterTensorProduct(torch.nn.Module):
-#     def __init__(
-#         self,
-#         irreps_in1: o3.Irreps,
-#         irreps_in2: o3.Irreps,
-#         irreps_out: o3.Irreps,
-#         l1l2: str | None = None,
-#         l2l3: str | None = None,
-#         l3l1: str | None = None,
-#         ictp_ictc_like: bool = True,
-#         edge_nonlinear: str | None = None,
-#     ) -> None:
-#         super().__init__()
+class SO2EqtScatterTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in1: o3.Irreps,
+        irreps_in2: o3.Irreps,
+        irreps_out: o3.Irreps,
+        l1l2: str | None = None,
+        l2l3: str | None = None,
+        l3l1: str | None = None,
+        ictp_ictc_like: bool = True,
+        edge_nonlinear: str | None = None,
+    ) -> None:
+        super().__init__()
 
-#         self.irreps_in1 = irreps_in1
-#         self.irreps_in2 = irreps_in2
-#         self.irreps_out = irreps_out
+        self.irreps_in1 = irreps_in1
+        self.irreps_in2 = irreps_in2
+        self.irreps_out = irreps_out
 
-#         from ..so2_kernel import SO2TensorProduct
+        # from .so2_kernel import SO2TensorProduct
+        from .._eqt.equitorch.nn import SO2TensorProduct as SO2TensorProduct
+        self.tp = SO2TensorProduct(
+            irreps_in="+".join(str(ir) for _, ir in self.irreps_in1), 
+            irreps_out="+".join(str(ir) for _, ir in self.irreps_out), 
+            channels_in=irreps_in1.count("0e"), 
+            channels_out=irreps_out.count("0e"), 
+            internal_weights=False,
+            # feature_mode='uu',
+            path_norm=True,
+            channel_norm=False, 
+            path=None,
+        )
+        self.weight_numel = self.tp.weight_numel
 
-#         self.tp = SO2TensorProduct(
-#             irreps_in="+".join(str(ir) for _, ir in self.irreps_in1), 
-#             irreps_out="+".join(str(ir) for _, ir in self.irreps_out), 
-#             channels_in=irreps_in1.count("0e"), 
-#             channels_out=irreps_out.count("0e"), 
-#             internal_weights=False,
-#             # feature_mode='uu',
-#             path_norm=True,
-#             channel_norm=False, 
-#             path=None,
-#         )
-#         self.weight_numel = self.tp.weight_numel
+        self.resahpe_in1 = LayoutTransform(self.irreps_in1)
+        self.resahpe_out = LayoutTransform(self.irreps_out)
 
-#         self.resahpe_in1 = LayoutTransform(self.irreps_in1)
-#         self.resahpe_out = LayoutTransform(self.irreps_out)
-
-#     def forward(
-#             self, 
-#             x: torch.Tensor, 
-#             y: torch.Tensor, 
-#             w: torch.Tensor, 
-#             edge_index: torch.Tensor
-#         ) -> torch.Tensor:
-
-#         x = self.resahpe_in1(x)
-#         num_nodes = x.size(0)
-#         is_0e_only = x.size(1) == 1
-#         x = x[edge_index[0]]
-#         if not is_0e_only:
-#             x = torch.einsum('bnm, bmc -> bnc', y, x)
-#         out = self.tp(x, weight=w)
-#         out = torch.einsum('bmn, bmc -> bnc', y, out)
-#         out = scatter_sum(
-#                 out, 
-#                 edge_index[1], 
-#                 dim=0, 
-#                 dim_size=num_nodes,
-#         )
-#         out = self.resahpe_out.inverse(out)
-#         return out
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            y: torch.Tensor, 
+            w: torch.Tensor, 
+            edge_index: torch.Tensor
+        ) -> torch.Tensor:
+        x = self.resahpe_in1(x)
+        num_nodes = x.size(0)
+        is_0e_only = x.size(1) == 1
+        x = x[edge_index[0]]
+        if not is_0e_only:
+            x = torch.bmm(y, x)
+        out = self.tp(x, weight=w)
+        out =  torch.bmm(y.transpose(-1, -2), out)
+        out = scatter_sum(
+                out, 
+                edge_index[1], 
+                dim=0, 
+                dim_size=num_nodes,
+        )
+        out = self.resahpe_out.inverse(out)
+        return out
 
 
 class EdgeGtpACE(torch.nn.Module):
@@ -247,21 +246,17 @@ class EdgeGtpACE(torch.nn.Module):
 class SO2ScatterTensorProduct(torch.nn.Module):
     def __init__(
         self,
+        mmax: int,
+        lmax: int,
+        num_channel: int,
+        is_so2_layout: bool,
+        num_elements: int,
+        edge_nonlinear: str | None,
         layer,
         lmax_node_embedding,
         angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
-        mmax: int,
-        lmax: int,
-        num_channel_in: int,
-        num_channel_out: int,
-        num_channel_hidden: int | None = None,
-        is_so2_layout: bool = False,
-        edge_nonlinear: str | None = None,
-        num_elements: int | None = None,
-        resolution: List[int] | None = None,
-        edge_ace_coefs_type: str | None = None,
     ) -> None:
         super().__init__()
 
@@ -269,27 +264,105 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
         self.edge_nonlinear = edge_nonlinear
-        self.edge_ace_coefs_type = edge_ace_coefs_type
 
         self.mmax = mmax
         self.lmax = lmax
-        self.num_channel_in = num_channel_in
-        self.num_channel_hidden = num_channel_hidden
-        self.num_channel_out = num_channel_out
+        self.num_channel = num_channel
+
         self.is_so2_layout = is_so2_layout
         self.num_elements = num_elements
         self.lmax_node_embedding = lmax_node_embedding
         self.layer = layer
 
+        self._set_weight_numel()
 
+        if self.is_salar_tp:
+            self.so2_linear1 = SO2Linear(
+                mmax,
+                lmax,
+                num_channel,
+                num_channel,
+            )
+        else:
+            num_gates = 0
+            for m in range(mmax + 1):
+                num_gates += lmax + 1 -m
+            num_gates = num_gates * self.num_channel
+            self.so2_linear1 = SO2Linear(
+                mmax,
+                lmax,
+                num_channel,
+                num_channel,
+                extra_m0_out_channels=num_gates,
+            )
+            self.nonlinearity = SO2Gate(
+                mmax,
+                lmax,
+                num_channel,        
+            )
+            self.so2_linear2 = SO2Linear(
+                mmax,
+                lmax,
+                num_channel,
+                num_channel,
+            )
+
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            y: torch.Tensor,  # node_attrs here
+            w: torch.Tensor, 
+            edge_index: torch.Tensor
+        ) -> torch.Tensor:
+
+        num_nodes = x.size(0)
+        num_edges = w.size(0)
+        x = self.reshape_in(x) 
+
+        if self.is_salar_tp:
+            w = w.view(num_edges, (self.lmax + 1), -1)
+            m_ij = torch.einsum(
+                'bij, bjc -> bic', 
+                    self.angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)),
+                    x[edge_index[0]] * w
+                ) 
+            m_ij = self.angular_basis.rotate(m_ij)
+            m_ij = self.so2_linear1(m_ij)
+            m_ij = self.angular_basis.rotate_inv(m_ij)
+        else:
+            if self.is_so2_layout:
+                w = w.view(num_edges, self.num_m_components, -1)
+                w = torch.index_select(w, dim=1, index=self.expand_index)
+                m_ij = self.angular_basis.rotate(x[edge_index[0]])
+                m_ij = m_ij * w
+            else:
+                w = w.view(num_edges, (self.lmax + 1), -1)
+                w = torch.index_select(w, dim=1, index=self.expand_index)
+                m_ij =  x[edge_index[0]] * w
+                m_ij = self.angular_basis.rotate(m_ij)
+                
+            m_ij, gate = self.so2_linear1(m_ij) # m_ij: [edge, so2_m, C]
+            m_ij = self.nonlinearity(m_ij, gate)      
+            m_ij = self.so2_linear2(m_ij)
+            m_ij = self.angular_basis.rotate_inv(m_ij)
+
+        m_i = scatter_sum(
+                m_ij, 
+                edge_index[1], 
+                dim=0, 
+                dim_size=num_nodes,
+        )
+        return self.reshape_out.inverse(m_i)
+    
+
+    def _set_weight_numel(self):
         self.is_salar_tp = self.lmax_node_embedding == 0 and self.layer == 0
 
         if self.is_so2_layout and not self.is_salar_tp:
             self.weight_numel = 0
             for m in range(self.mmax + 1):
                 self.weight_numel += (self.lmax + 1 - m)
-            self.weight_numel *= self.num_channel_in
-
+            self.weight_numel *= self.num_channel
             expand_index = []
             offset = 0
             for m in range(self.mmax + 1):
@@ -305,8 +378,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.num_m_components = offset
             assert self.weight_numel % self.num_m_components == 0
         else:
-            self.weight_numel = self.num_channel_in * (self.lmax + 1)
-
+            self.weight_numel = self.num_channel * (self.lmax + 1)
             self.mmax = self.lmax
             assert self.lmax == self.mmax
             expand_index = torch.zeros([((self.lmax + 1) ** 2)]).long()
@@ -318,95 +390,6 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.register_buffer('expand_index', expand_index, persistent=False,)
             assert self.weight_numel % (self.lmax + 1) == 0
 
-
-        if (
-            (self.num_channel_hidden is not None)  
-            and (lmax_node_embedding > 0 or layer > 0)
-        ):
-            self.linear1 = SO2Linear(
-                num_channel_in,
-                num_channel_hidden,
-                lmax,
-                mmax,
-                extra_m0_out_channels=None,
-            )
-            self.linear2 = SO2Linear(
-                num_channel_hidden,
-                num_channel_out,
-                lmax,
-                mmax,
-                extra_m0_out_channels=None,
-            )
-        else:
-            if self.lmax_node_embedding > 0 or self.layer > 0:
-                self.linear1 = SO2Linear(
-                    num_channel_in,
-                    num_channel_out,
-                    lmax,
-                    mmax,
-                    extra_m0_out_channels=None,
-                )
-
-        if (lmax_node_embedding > 0 or layer > 0) and self.edge_ace_coefs_type is not None:
-            self.ace =  EdgeGtpACE(
-                lmax=lmax,
-                mmax=mmax,
-                resolution=resolution,
-                num_channel=num_channel_out,
-                num_elements=self.num_elements,
-                edge_ace_coefs_type=edge_ace_coefs_type,
-            )
-
-
-
-    def forward(
-            self, 
-            x: torch.Tensor, 
-            y: torch.Tensor,  # node_attrs here
-            w: torch.Tensor, 
-            edge_index: torch.Tensor
-        ) -> torch.Tensor:
-
-        num_nodes = x.size(0)
-        num_edges = w.size(0)
-        x = self.reshape_in(x) 
-
-
-        if self.is_salar_tp:
-            w = w.view(num_edges, (self.lmax + 1), -1)
-            m_ij = torch.einsum(
-                'bij, bjc -> bic', 
-                    self.angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)),
-                    x[edge_index[0]] * w
-                ) 
-        else:
-            if self.is_so2_layout:
-                w = w.view(num_edges, self.num_m_components, -1)
-                w = torch.index_select(w, dim=1, index=self.expand_index)
-                m_ij = self.angular_basis.rotate(x[edge_index[0]])
-                m_ij = m_ij * w
-            else:
-                w = w.view(num_edges, (self.lmax + 1), -1)
-                w = torch.index_select(w, dim=1, index=self.expand_index)
-                m_ij =  x[edge_index[0]] * w
-                m_ij = self.angular_basis.rotate(m_ij)
-                m_ij = self.linear1(m_ij)
-
-            if hasattr(self, "ace"):
-                m_ij = self.ace(m_ij, y, edge_index)
-            if hasattr(self, "linear2"):
-                m_ij = self.linear2(m_ij)
-            m_ij = self.angular_basis.rotate_inv(m_ij)
-
-
-        m_i = scatter_sum(
-                m_ij, 
-                edge_index[1], 
-                dim=0, 
-                dim_size=num_nodes,
-        )
-        return self.reshape_out.inverse(m_i)
-    
 
 class uuuTensorProduct(torch.nn.Module):
     def __init__(
