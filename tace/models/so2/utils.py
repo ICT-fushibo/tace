@@ -7,10 +7,10 @@
 import torch
 
 
-def so2_expand_index(mmax: int, lmax: int) -> tuple[int, torch.Tensor]:
+def so2_expand_index(mmax: int, lmax: int, start: int = 0) -> tuple[int, torch.Tensor]:
     expand_index = []
     offset = 0
-    for m in range(mmax + 1):
+    for m in range(start, mmax + 1):
         index = torch.arange((lmax + 1 - m))
         index = index + offset
         expand_index.append(index)

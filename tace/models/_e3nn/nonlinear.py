@@ -15,11 +15,9 @@ from e3nn.nn._gate import _Sortcut
 
 from ..mlp import FFN
 from ..layout import LayoutTransform
-from .linear import Linear
 
 
 class GatedLinearUnit(torch.nn.Module):
-    """delete irreps_scalars and act_scalars from e3nn's Gate"""
     def __init__(self, irreps_gates, act_gates, irreps_gated) -> None:
         super().__init__()
 
@@ -68,111 +66,6 @@ class GatedLinearUnit(torch.nn.Module):
     @property
     def irreps_out(self):
         return self._irreps_out
-
-
-class MixtralExpertsGatedLinearUnit(torch.nn.Module):
-    def __init__(
-        self, 
-        irreps_in: o3.Irreps, 
-        irreps_out: o3.Irreps, 
-        bias: bool,
-        act_gates: list[torch.nn.Module],
-        num_experts: int,
-        num_shared_experts: int,
-        top_k: int,
-    ) -> None:
-        super().__init__()
-
-        self.use_bias = bias
-        self.num_experts = num_experts
-        self.num_shared_experts = num_shared_experts
-        self.top_k = top_k    
-        irreps_gated = irreps_out
-        irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_out)
-        self.sc = _Sortcut(irreps_gates, irreps_gated)
-        self.irreps_gates, self.irreps_gated = self.sc.irreps_outs
-        self.act_gates = Activation(irreps_gates, act_gates)
-        self.mul = ElementwiseTensorProduct(irreps_gated, self.act_gates.irreps_out)
-        self.irreps_in = irreps_in
-        self.irreps_out = self.mul.irreps_out
-        self.num_channel = irreps_out.count("0e")
-
-        self.router = Linear(
-            f"{self.num_channel}x0e",
-            f"{self.num_experts}x0e",
-            bias=False,
-        )
-        self.linear = Linear(
-            irreps_in=irreps_in,
-            irreps_out=(irreps_gates + irreps_out).regroup(),
-            bias=self.use_bias,
-            internal_weights=False,
-        )
-
-        if num_shared_experts > 0:
-            self.weight1 = torch.nn.Parameter(
-                torch.empty(num_shared_experts, self.linear.weight_numel)
-            )
-            self.alpha = 1.0 / (sqrt(self.num_shared_experts))
-        self.weight2 = torch.nn.Parameter(
-            torch.empty(num_experts, self.linear.weight_numel)
-        )
-    
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        if hasattr(self, "weight1"):
-            torch.nn.init.normal_(self.weight1)
-        torch.nn.init.normal_(self.weight2)
-
-    def forward(self, node_feats: torch.Tensor) -> torch.Tensor:
-
-        gate_logits = self.router(node_feats[:, :self.num_channel])
-        gate_probs = torch.softmax(gate_logits, dim=-1)
-        topk_probs, topk_idx = torch.topk(gate_probs, k=self.top_k, dim=-1) 
-        gate_probs_sparse = torch.zeros_like(gate_probs)
-        gate_probs_sparse.scatter_(
-            -1, 
-            topk_idx, 
-            topk_probs / (topk_probs.sum(-1, keepdim=True))
-        )
-
-        if self.num_shared_experts > 0:
-            weight1 = self.alpha * self.weight1.sum(dim=0, keepdim=True)
-        else:
-            weight1 = 0.0
-
-        weight2 = torch.einsum("bz, zi -> bi", gate_probs_sparse, self.weight2)
-
-        router_l2 = gate_probs_sparse.pow(2).sum(dim=-1, keepdim=True)  # [B, 1]
-  
-        if self.num_shared_experts > 0:
-            scale = torch.sqrt(1.0 + router_l2 + 1e-8)
-        else:
-            scale = torch.sqrt(router_l2 + 1e-8)
-
-        weight = (weight1 + weight2) / scale
-
-        node_feats = self.linear(
-            node_feats, 
-            weight,
-        )
-      
-        gates, gated = self.sc(node_feats)
-        gates = self.act_gates(gates)
-
-        return self.mul(gated, gates)
-        
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}(\n"
-            f"\trouter={self.router}, \n"
-            f"\tlinear1={self.linear1}, \n"
-            f"\tlinear2={self.linear2}, \n"
-            f"\tnum_shared_experts={self.num_shared_experts}, \n"
-            f"\tnum_experts={self.num_experts}, \n"
-            f")"
-        )
 
 
 class NormLinearUnit(torch.nn.Module):

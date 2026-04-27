@@ -8,6 +8,32 @@ from typing import List
 
 
 import torch
+import torch.nn.functional as F
+
+
+class ScaledSiLU(torch.nn.Module):
+    def __init__(self, inplace: bool = False) -> None:
+        super().__init__()
+        self.inplace = inplace
+        self.scale_factor = 1.6791767923989418 # scale from e3nn Activation
+
+    def forward(self, inputs):
+        return F.silu(inputs, inplace=self.inplace) * self.scale_factor
+
+    def extra_repr(self):
+        str = f"scale_factor={self.scale_factor}"
+        if self.inplace:
+            str = str + ", inplace=True"
+        return str
+    
+class ScaledSigmoid(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.scale_factor = 1.8467055342154763 # scale from e3nn Activation
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.sigmoid(x) * self.scale_factor
+    
     
 ACTIVATION = {
     None: torch.nn.Identity,

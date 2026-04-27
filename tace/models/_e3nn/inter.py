@@ -26,8 +26,6 @@ from .layer_norm import get_normalization_layer
 
 
 from tace.utils.torch_scatter import scatter_sum
-from tace.models.so2 import SO3Linear, SO3Grid, SO2Linear
-from .softmax import GraphSoftmax
 
 
 class CgtpInteraction(Interaction):
@@ -175,14 +173,14 @@ class CgtpInteraction(Interaction):
             if self.resnet_type in ['BB', "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_in.lmax,
+                    ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
             if self.resnet_type in ['AB', "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_out.lmax,
+                    ls=self.irreps_out.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape2 = LayoutTransform(self.irreps_out)
@@ -431,14 +429,14 @@ class SO2Interaction(Interaction):
             if self.resnet_type in ['BB', "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_in.lmax,
+                    ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
             if self.resnet_type in ['AB', "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
-                    lmax=self.irreps_out.lmax,
+                    ls=self.irreps_out.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape2 = LayoutTransform(self.irreps_out)

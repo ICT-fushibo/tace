@@ -176,7 +176,7 @@ class Representation(torch.nn.Module):
                     scatter_norm=atomic_basis['scatter_norm'],
                     ictp_ictc_like=atomic_basis['ictp_ictc_like'],
                     nonlinear=atomic_basis['nonlinear'][layer],
-                    edge_nonlinear=atomic_basis['edge_nonlinear'],
+                    edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
                     correlation=product_basis['correlation'],
                     edge_info_type=atomic_basis['edge_info_type'],
                     resnet_type=resnet['type'],
@@ -188,9 +188,6 @@ class Representation(torch.nn.Module):
                     use_first_pre_norm=layer_norm['use_first_pre_norm'],
                     so2_angular_basis=self.so2_angular_basis if self.use_so2 else None,
                     is_so2_layout=atomic_basis['is_so2_layout'],
-                    resolution=atomic_basis['resolution'],
-                    edge_ace_coefs_type=atomic_basis['edge_ace_coefs_type'],
-                    so2_hidden_channel=atomic_basis['so2_hidden_channel'],
                     bias=True,
                 )
                 for layer in range(num_layers)
@@ -214,18 +211,16 @@ class Representation(torch.nn.Module):
                     l3s=product_basis['l3s'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
                     nonlinear=product_basis['nonlinear'],
-                    resolution=atomic_basis['resolution'],
+                    resolution=product_basis['resolution'],
                     bias=True,
                 )
                 for layer in range(num_layers)
             ]
         )
 
-        if layer_norm['final_norm_type'] is not None: # TODO, support l_list instead lmax
-            # self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=Lmax, num_channels=num_channel)
-            # self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in range(Lmax+1)])
-            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], lmax=0, num_channels=num_channel)
-            self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in range(0+1)])
+        if layer_norm['final_norm_type'] is not None:
+            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_weight, num_channels=num_channel)
+            self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in target_weight])
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   

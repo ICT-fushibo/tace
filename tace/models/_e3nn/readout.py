@@ -78,6 +78,7 @@ class ScalarReadOut(ReadOut):
                 x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
         return self.linear2[-1](x)
 
+
 class TensorReadOut(ReadOut):
     def _setup(self):
 

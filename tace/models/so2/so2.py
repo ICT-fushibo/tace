@@ -28,6 +28,10 @@ import torch
 import math
 
 
+from ..mlp import ScaledSigmoid, ScaledSiLU
+from .utils import so2_expand_index
+
+
 class SO2MLinear(torch.nn.Module):
     """
         Perform an SO(2) linear operation to features corresponding to +- m
@@ -397,8 +401,7 @@ class SO2TensorProduct(torch.nn.Module):
         return out
     
 
-
-class SO2Gate(torch.nn.Module):
+class SO2GatedLinearUnit(torch.nn.Module):
     def __init__(
         self,
         mmax,
@@ -410,25 +413,100 @@ class SO2Gate(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
+        self.num_components, expand_index = so2_expand_index(mmax, lmax)
+        self.register_buffer('expand_index', expand_index, persistent=False)
+
         self.activation = torch.nn.Sigmoid()
 
-        expand_index = []
-        offset = 0
-        for m in range(self.mmax + 1):
-            index = torch.arange((self.lmax + 1 - m))
-            index = index + offset
-            expand_index.append(index)
-            if m > 0:
-                expand_index.append(index)    # +- m
-            offset = offset + len(index)
-        expand_index = torch.cat(expand_index, dim=0)
-        expand_index = expand_index.long()
-        self.register_buffer('expand_index', expand_index, persistent=False)
-        self.num_m_components = offset
-
-    def forward(self, x: torch.Tensor, gate: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
             B = x.size(0)
-            gate = self.activation(gate).view(B, self.num_m_components, -1)
-            gate = torch.index_select(gate, dim=1, index=self.expand_index)
-            return x * gate
+            g = self.activation(g).view(B, self.num_components, -1)
+            g = torch.index_select(g, dim=1, index=self.expand_index)
+            return g * x 
+
+
+class SO2e3nnGatedLinearUnit(torch.nn.Module):
+    def __init__(
+        self,
+        mmax,
+        lmax,
+        num_channel,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+        self.num_components, expand_index = so2_expand_index(mmax, lmax, start=1)
+        self.register_buffer('expand_index', expand_index, persistent=False)
+
+        self.scalar_activation = ScaledSiLU()
+        self.tensor_activation = ScaledSigmoid()
+
+    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
+            # m = 0
+            x_scalar = x[:, :self.lmax+1, :]
+            x_scalar = self.scalar_activation(x_scalar)
+
+            # m > 0
+            B = x.size(0)
+            g = self.tensor_activation(g).view(B, self.num_components, -1)
+            g = torch.index_select(g, dim=1, index=self.expand_index)
+            x_tensor = x[:, self.lmax+1:, :]
+            x_tensor = g * x_tensor
+            return torch.cat([x_scalar, x_tensor], dim=1) 
+    
+class SO2NormLinearUnit(torch.nn.Module):
+    def __init__(
+        self,
+        mmax,
+        lmax,
+        num_channel,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+        self.num_components, expand_index = so2_expand_index(mmax, lmax)
+        self.register_buffer('expand_index', expand_index, persistent=False)
+
+
+        offset = lmax + 1 
+        slices = [slice(0, offset)]
+        for m in range(1, self.mmax + 1):
+            length = (self.lmax + 1 -m) * 2
+            slices.append(slice(offset, offset+length))
+            offset += length
+        self.slices = slices
+        self.activation = torch.nn.Sigmoid()
+        scale = torch.tensor([1] * (lmax+1) + [2] * (self.num_components - (lmax+1)))
+        self.weight = torch.nn.Parameter(
+            torch.randn(self.num_components, self.num_channel) 
+            / scale.unsqueeze(-1)
+        )
+        self.bias = torch.nn.Parameter(
+            torch.zeros(self.num_components, self.num_channel)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+
+        B = x.size(0)   
+        C = x.size(-1)   
+
+        norms = []
+        # m = 0
+        irreps = x[:, self.slices[0], :]
+        norms.append(irreps.pow(2))
+
+        # m > 0
+        for s in self.slices[1:]:
+            irreps = x[:, s, :]
+            irreps = irreps.view(B, 2, -1, C)
+            norms.append(irreps.pow(2).sum(dim=1))
+        g = torch.cat(norms, dim=1)
+        g = g * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
+        g = self.activation(g)
+        g = torch.index_select(g, dim=1, index=self.expand_index)
+        return g * x 
 

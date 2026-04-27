@@ -15,7 +15,12 @@ from e3nn import o3
 from ..layout import LayoutTransform
 from ..env import TACE_USE_OEQ, TACE_USE_CUE, TACE_USE_EQT
 from .paths import generate_paths
-from ..so2 import SO3Rotation, SO2Linear, SO2Gate, so2_expand_index, so3_expand_index
+from ..so2 import (
+    SO3Rotation, SO2Linear, 
+    SO2GatedLinearUnit, SO2NormLinearUnit,
+    so2_expand_index, so3_expand_index,
+)
+from ..so2.so2 import SO2e3nnGatedLinearUnit
 try:
     from .._oeq import e3nnOeqScatterTensorProduct
 except Exception:
@@ -156,10 +161,33 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         if self.is_scalar_tp:
             pass
         else:
-            num_gates = 0
-            for m in range(mmax + 1):
-                num_gates += lmax + 1 -m
-            num_gates = num_gates * self.num_channel
+            if self.edge_nonlinear == 'so2_sigmoid_gate':
+                num_gates = 0
+                for m in range(mmax + 1):
+                    num_gates += lmax + 1 -m
+                num_gates = num_gates * self.num_channel
+                self.nonlinearity = SO2GatedLinearUnit(
+                    mmax,
+                    lmax,
+                    num_channel,        
+                )
+            elif self.edge_nonlinear == 'so2_sigmoid_e3nngate':
+                num_gates = 0
+                for m in range(1, mmax + 1):
+                    num_gates += lmax + 1 -m
+                num_gates = num_gates * self.num_channel
+                self.nonlinearity = SO2e3nnGatedLinearUnit(
+                    mmax,
+                    lmax,
+                    num_channel,        
+                )
+            elif self.edge_nonlinear == 'so2_sigmoid_norm':
+                num_gates = None
+                self.nonlinearity = SO2NormLinearUnit(
+                    mmax,
+                    lmax,
+                    num_channel,        
+                )
             self.linear_up = SO2Linear(
                 mmax,
                 lmax,
@@ -167,11 +195,8 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 num_channel,
                 extra_m0_out_channels=num_gates,
             )
-            self.nonlinearity = SO2Gate(
-                mmax,
-                lmax,
-                num_channel,        
-            )
+            assert edge_nonlinear is not None, "We force to use edge nonlinear in TACE"
+
             self.linear_down = SO2Linear(
                 mmax,
                 lmax,
@@ -208,8 +233,13 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 m_ij =  x[edge_index[0]] * w
                 m_ij = self.so2_angular_basis.rotate(m_ij)
   
-            m_ij, gate = self.linear_up(m_ij) # m_ij: [edge, so2_m, C]
-            m_ij = self.nonlinearity(m_ij, gate)      
+            if self.edge_nonlinear == 'so2_sigmoid_norm':
+                m_ij = self.linear_up(m_ij)       # m_ij: [edge, so2_m, C]
+                m_ij = self.nonlinearity(m_ij)    
+            else:
+                m_ij, gate = self.linear_up(m_ij) # m_ij: [edge, so2_m, C]
+                m_ij = self.nonlinearity(m_ij, gate) 
+
             m_ij = self.linear_down(m_ij)
             m_ij = self.so2_angular_basis.rotate_inv(m_ij)
 

@@ -53,14 +53,12 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
-        "edge_nonlinear": None,
+        # "edge_nonlinear": None,
+        "edge_nonlinear": 'so2_sigmoid_gate',
         "edge_ace_coefs_type": None,
         "l1l2": None,
         "ictp_ictc_like": True,
-        "is_so2_layout": False,
-        "resolution": None,
-        "so2_hidden_channel": None,
-
+        "is_so2_layout": True,
     },
     "resnet": {
         "type": "BB",
@@ -245,6 +243,6 @@ def check_model_config(cfg: Dict[str, Any]):
     cfg['atomic_basis']['type'] = _to_list(cfg['atomic_basis']['type'])
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
-
+    cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
 
     return cfg

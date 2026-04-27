@@ -20,15 +20,16 @@ config:
     }
 
   node_embedding: 
-    type: linear    # [linear, nonlinear, surrounding, group], linear is safer
+    type: linear    # [linear, nonlinear, group, tensor, so2_tensor], linear is safer
 
   edge_embedding: 
-    type: nonlinear # identity  # [identity, linear, nonlinear, element, group], identity is safer
+    type: nonlinear # identity  # [identity, linear, nonlinear, element2], identity is safer
 
   edge_update:
     type: element  # [identity, element, tensor_dot], identity is safer
     tensor_dot_channel: null # [null, int] null=8
 
+  mmax: 2 # Truncation for SO2 irreps, 2 is recommended.
   Lmax: 2 # Truncation for node, 2 is recommended.
   lmax: 3 # Truncation for edge, 3 is recommended.
   num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
@@ -60,21 +61,17 @@ config:
     ictp_ictc_like: true # always true (cueq not support true, need modify source code)
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
     nonlinear: sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
+    edge_nonlinear: null # [null, so2_sigmoid_gate]
     edge_info_type: mlp # [mlp, glu]
       
   product_basis:
-    type: cgtp  # [cgtp, mtp, gtp, nonlinear, identity, agnostic]
+    type: cgtp  # [cgtp, gtp, oam]
     l1l2: null  # [null, <=]
+    l3s: null
     ictp_ictc_like: true
     correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
     num_channel: null # (int)
-    # below only useful for type=gtp
-    num_latitude: null
-    num_longitude: null
-    truncation: ${model.config.lmax}
-    trainable_scale: false
-    # below only useful for type=nonlinear
-    nonlinear: sigmoid_gate # [null, sigmoid_gate, sigmoid_norm]
+    nonlinear: null # [null, sigmoid_gate, sigmoid_norm]
 
   readout_emlp:
     bias: false

@@ -166,7 +166,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         radial_mlp: List[int],
         radial_bias: bool,
         irreps_node_embedding: o3.Irreps,
-        resolution: List[int],
         l1l2: Optional[str] = None,
         scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
@@ -182,9 +181,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_pre_norm: bool = False,
         so2_angular_basis: SO3Rotation | None = None,
         is_so2_layout: bool = False,
-        edge_ace_coefs_type: str | None = None,
-        so2_hidden_channel: int | None = None,
-
     ) -> None:
         super().__init__()
 
@@ -226,10 +222,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.resnet_type = resnet_type
 
         self.is_so2_layout = is_so2_layout
-        self.resolution = resolution
-        self.edge_ace_coefs_type = edge_ace_coefs_type
         self.irreps_node_embedding = irreps_node_embedding
-        self.so2_hidden_channel = so2_hidden_channel
+
 
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
