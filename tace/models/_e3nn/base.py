@@ -181,6 +181,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_pre_norm: bool = False,
         so2_angular_basis: SO3Rotation | None = None,
         is_so2_layout: bool = False,
+        num_head: int | None = None,
+        num_channel_per_head: int | None = None,
+        use_so2_edge_ace: bool = False,
     ) -> None:
         super().__init__()
 
@@ -196,6 +199,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.l1l2 = l1l2
         self.num_elements = num_elements
         self.num_channel = num_channel
+        self.num_channel_per_head = num_channel_per_head
         self.target_weight = target_weight
         self.radial_mlp = radial_mlp
         self.radial_bias = radial_bias
@@ -220,10 +224,10 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'sigmoid'
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
-
         self.is_so2_layout = is_so2_layout
         self.irreps_node_embedding = irreps_node_embedding
-
+        self.num_head = num_head
+        self.use_so2_edge_ace = use_so2_edge_ace
 
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window

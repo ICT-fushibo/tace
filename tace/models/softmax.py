@@ -1,21 +1,43 @@
+# ################################################################################
+# # Authors: Zemin Xu
+# # License: MIT, see LICENSE.md
+# ################################################################################
+'''
+Not use in TACE now
+Copy from
+https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/softmax.py
+https://pytorch-geometric.readthedocs.io/en/2.3.1/_modules/torch_geometric/utils/softmax.html
+'''
+
 import torch
 from torch_geometric.utils import scatter, segment
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
 
+class SoftCap(torch.nn.Module):
+    def __init__(self, cap):
+        super().__init__()
+        self.cap = cap
+
+
+    def forward(self, inputs):
+        outputs = inputs / self.cap
+        outputs = torch.nn.functional.tanh(outputs)
+        outputs = outputs * self.cap
+        return outputs
+
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(cap={self.cap})"
+        
 
 class GraphSoftmax(torch.nn.Module):
-    """
-        1.  Reference: https://pytorch-geometric.readthedocs.io/en/2.3.1/_modules/torch_geometric/utils/softmax.html
-        3.  Add `exp_rescale` to rescale the outputs of the exponentation function so that we can downscale the 
-            contributions of some neighbors with an envelope function.
-        4.  Add `softcap` to limit input logits to the range [- `softcap`, + `softcap`].
-        5.  Add `eps` for numerical stability.
-    """
-    def __init__(self, eps=1e-16):
+    def __init__(self, eps=1e-16, softcap=None):
         super().__init__()
         self.eps = eps
-      
+        self.softcap = SoftCap(cap=softcap) if softcap is not None else torch.nn.Identity()
+
+
     def forward(
         self, 
         src, 
@@ -25,6 +47,7 @@ class GraphSoftmax(torch.nn.Module):
         dim=0,
         exp_rescale=None
     ):
+        src = self.softcap(src)
         if ptr is not None:
             dim = dim + src.dim() if dim < 0 else dim
             size = ([1] * dim) + [-1]

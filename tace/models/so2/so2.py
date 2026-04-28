@@ -1,47 +1,58 @@
-''''
-Copy from EquiformerV3.
+################################################################################
+# Authors: Zemin Xu
+# License: MIT, see LICENSE.md
+################################################################################
 
-MIT License
-
-Copyright (c) 2026 The Atomic Architects
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-'''
-
-import torch
 import math
 
 
-from ..mlp import ScaledSigmoid, ScaledSiLU
+import torch
+import torch.nn.functional as F
+
+from ..mlp import ScaledSigmoid
 from .utils import so2_expand_index
+
+# torch.set_printoptions(sci_mode=False, precision=4)
+
+class Linear(torch.nn.Module):
+
+    __constants__ = ["in_features", "out_features"]
+    in_features: int
+    out_features: int
+    weight: torch.Tensor
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        device=None,
+        dtype=None,
+    ) -> None:
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = torch.nn.Parameter(
+            torch.randn((out_features, in_features), **factory_kwargs)
+        )
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(out_features, **factory_kwargs))
+        else:
+            self.register_parameter("bias", None)
+        self.alpha = 1.0 / math.sqrt(in_features)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return F.linear(input, self.weight * self.alpha, self.bias)
+
+    def extra_repr(self) -> str:
+        return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
 
 class SO2MLinear(torch.nn.Module):
     """
-        Perform an SO(2) linear operation to features corresponding to +- m
-
-        Args:
-            m (int):                    Order of the spherical harmonic coefficients
-            num_in_channels (int):      Number of input channels
-            num_out_channels (int):     Number of output channels
-            lmax (int):                 Maximum degrees (l)
-            mmax (int):                 Maximum order (m)
+    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
+    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
     """
     def __init__(
         self,
@@ -65,19 +76,11 @@ class SO2MLinear(torch.nn.Module):
         self.in_features = num_m_components * self.num_in_channels
         self.out_features = num_m_components * self.num_out_channels
         
-        self.fc = torch.nn.Linear(
+        self.fc = Linear(
             self.in_features,
             (2 * self.out_features),
             bias=False,
         )
-        
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        a = 1.0 / math.sqrt(self.fc.in_features) 
-        torch.nn.init.uniform_(self.fc.weight, -a, a)
-        if self.fc.bias is not None:
-            torch.nn.init.constant_(self.fc.bias, 0)
         self.fc.weight.data.mul_(1 / math.sqrt(2))
 
     def forward(self, x_m, concat_outputs=True):
@@ -94,14 +97,8 @@ class SO2MLinear(torch.nn.Module):
 
 class SO2Linear(torch.nn.Module):
     """
-        Perform SO(2) linear operations to all m (orders) components
-
-        Args:
-            num_in_channels (int):      Number of input channels
-            num_out_channels (int):     Number of output channels
-            lmax (int):                 Maximum degrees (l)
-            mmax (int):                 Maximum order (m)
-            extra_m0_out_channels (int):    If not None, return `outputs` (torch.Tensor) and `extra_m0_features` (torch.Tensor).
+    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
+    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
     """
     def __init__(
         self,
@@ -118,15 +115,16 @@ class SO2Linear(torch.nn.Module):
         self.mmax = mmax
         self.extra_m0_out_channels = extra_m0_out_channels
 
-        # for m = 0
         num_in_channels_m0 = (self.lmax + 1) * self.num_in_channels
         num_out_channels_m0 = (self.lmax + 1) * self.num_out_channels
         if self.extra_m0_out_channels is not None:
             self.num_channels_m0_list = [self.extra_m0_out_channels, num_out_channels_m0]
             num_out_channels_m0 = num_out_channels_m0 + self.extra_m0_out_channels
-        self.fc_m0 = torch.nn.Linear(num_in_channels_m0, num_out_channels_m0)
-
-        # SO(2) linear for non-zero m
+        self.fc_m0 = Linear(
+            num_in_channels_m0, 
+            num_out_channels_m0,
+            bias=True,
+        )
         self.so2_m_linear = torch.nn.ModuleList()
         for m in range(1, self.mmax + 1):
             self.so2_m_linear.append(
@@ -138,14 +136,6 @@ class SO2Linear(torch.nn.Module):
                     self.mmax,
                 )
             )
-
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        a = 1.0 / math.sqrt(self.fc_m0.in_features) 
-        torch.nn.init.uniform_(self.fc_m0.weight, -a, a)
-        if self.fc_m0.bias is not None:
-            torch.nn.init.constant_(self.fc_m0.bias, 0)
 
     def forward(self, x):
         """
@@ -174,16 +164,12 @@ class SO2Linear(torch.nn.Module):
             x_m = x.narrow(1, offset, 2 * (self.lmax + 1 - m))
             offset = offset + 2 * (self.lmax + 1 - m)
             x_m = x_m.reshape(num_edges, 2, -1)
-            """
-            x_m = self.so2_m_linear[m - 1](x_m, concat_outputs=True)
-            x_m = x_m.view(num_edges, -1, self.num_out_channels)
-            out.append(x_m)
-            """
-            # Replace the original one with the followings to prevent one `torch.cat()` for each m > 0
             x_m = self.so2_m_linear[m - 1](x_m, concat_outputs=False)
             x_m_pos, x_m_neg = x_m[0], x_m[1]
             x_m_pos = x_m_pos.view(num_edges, -1, self.num_out_channels)
             x_m_neg = x_m_neg.view(num_edges, -1, self.num_out_channels)
+            # print('+',  x_m_pos[0, :, 0])
+            # print('-',  x_m_neg[0, :, 0])
             outputs.append(x_m_pos)
             outputs.append(x_m_neg)
             
@@ -193,115 +179,35 @@ class SO2Linear(torch.nn.Module):
             return outputs, x_m0_extra
         else:
             return outputs
-  
-
-# class SO2Linear(torch.nn.Module):
-#     def __init__(
-#         self,
-#         mmax,
-#         lmax,
-#         num_channel_in,
-#         num_channel_out,
-#     ):
-#         super().__init__()
-
-#         self.mmax = mmax
-#         self.lmax = lmax
-
-#         if isinstance(num_channel_in, int):
-#             self.in_channels = [num_channel_in * min((lmax+1-m), mmax+1) for m in range(lmax + 1)]
-#         else:
-#             assert len(num_channel_in) == mmax + 1
-#             self.in_channels = num_channel_in
-
-#         if isinstance(num_channel_out, int):
-#             self.out_channels = [num_channel_out * min((lmax+1-m), mmax+1) for m in range(lmax + 1)]
-#         else:
-#             assert len(num_channel_out) == mmax + 1
-#             self.out_channels = num_channel_out
-
-#         self.so2_m_linear = torch.nn.ModuleList()
-
-#         for m in range(0, mmax + 1):
-
-#             Cin = self.in_channels[m]
-#             Cout = self.out_channels[m]
-
-#             if m == 0:
-#                 fc = torch.nn.Linear(Cin, Cout, bias=True)
-#                 a = 1.0 / math.sqrt(fc.in_features)
-#                 torch.nn.init.uniform_(fc.weight, -a, a)
-#                 torch.nn.init.zeros_(fc.bias)
-#             else:
-#                 fc = torch.nn.Linear(Cin, Cout * 2, bias=False)
-#                 a = 1.0 / math.sqrt(fc.in_features)
-#                 torch.nn.init.uniform_(fc.weight, -a, a)
-#                 fc.weight.data.mul_(1 / math.sqrt(2))
-
-#             self.so2_m_linear.append(fc)
+        
+    def __repr__(self) -> str:
+        p = {
+            0: 'e',
+            1: 'o',
+        }
+        ins = []
+        outs = []
+        for m in range(self.mmax + 1):
+            num_components = self.lmax + 1 - m
+            in_mul = self.num_in_channels * num_components
+            out_mul = self.num_out_channels * num_components
+            if m == 0 and self.extra_m0_out_channels is not None:
+                out_mul += self.extra_m0_out_channels
+            ins.append(f"{in_mul}x{m}{p[m % 2]}")
+            outs.append(f"{out_mul}x{m}{p[m % 2]}")
+        num_weights = sum(
+            p.numel() for p in self.parameters() if p.requires_grad
+        )
+        return (
+            f"{self.__class__.__name__}"
+            f"({'+'.join(ins)} -> "
+            f"{'+'.join(outs)} | "
+            f"{num_weights} weights)"
+            f"(bias={True})"
+        )
 
 
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-#         B = x.size(0)
-#         x = x.view(B, -1)
-#         outputs = []
-
-#         offset = 0
-
-#         for m in range(0, self.mmax + 1):
-
-#             n_l = self.lmax - m + 1
-#             Cin = self.in_channels[m]
-#             Cout = self.out_channels[m]
-
-#             fc = self.so2_m_linear[m]
-
-#             if m == 0:
-#                 size = n_l
-#                 x_m = x[:, offset:offset + Cin]
-#                 offset += Cin
-#                 x_m = fc(x_m)
-#                 x_m = x_m.view(B, n_l, -1)
-#                 outputs.append(x_m)
-#             else:
-#                 size = 2 * n_l
-#                 x_m = x[:, offset:offset + 2 * Cin]
-#                 offset += 2 * Cin
-#                 x_m = x_m.reshape(B, 2, Cin)
-#                 x_m = fc(x_m)
-#                 x_r = x_m[:, :, :Cout]
-#                 x_i = x_m[:, :, Cout:]
-#                 # SO(2) equivariant combine
-#                 x_m_r = x_r[:, 0] - x_i[:, 1]
-#                 x_m_i = x_r[:, 1] + x_i[:, 0]
-#                 x_m_r = x_m_r.view(B, n_l, -1)
-#                 x_m_i = x_m_i.view(B, n_l, -1)
-#                 outputs.append(x_m_r)
-#                 outputs.append(x_m_i)
-
-#         outputs = torch.cat(outputs, dim=1)
-
-#         return outputs
-    
-
-class SO2TensorProduct(torch.nn.Module):
-
-    def enumerate_paths(self, m3):
-        paths = []
-        for m1 in range(0, self.mmax + 1):
-            for m2 in range(0, self.mmax + 1):
-                if m1 == 0 and m2 == 0 and m3 == 0:
-                    paths.append((m1, m2, "sum"))
-                else:
-                    if m1 + m2 == m3:
-                        paths.append((m1, m2, "sum"))
-                    elif abs(m1 - m2) == m3:
-                        paths.append((m1, m2, "diff"))
-                    else:
-                        raise
-        return paths
-    
+class SO2Gate(torch.nn.Module):
     def __init__(
         self,
         mmax,
@@ -313,200 +219,306 @@ class SO2TensorProduct(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
+        self.num_components, expand_index = so2_expand_index(mmax, lmax)
+        self.register_buffer('expand_index', expand_index, persistent=False)
 
-        self.m3_instructions = []
-        for m3 in range(0, mmax + 1):
-            instructions = []
-            in_feats = 0
-            for (m1, m2, mode) in self.enumerate_paths(m3):
-                n_l1 = lmax - m1 + 1
-                n_l2 = lmax - m2 + 1
-                in_feats += n_l1 * n_l2 * num_channel
-                instructions.append([m1, m2, mode])
-            self.m3_instructions.append(instructions)
+        self.activation = ScaledSigmoid()
 
-    def split(self, x):
-        B = x.shape[0]
-        offset = 0
-        out = {}
-
-        # m=0
-        size = self.lmax + 1
-        out[0] = x[:, offset:offset + size]
-        offset += size
-
-        # m>0
-        for m in range(1, self.mmax + 1):
-            size = self.lmax + 1 - m
-            xm = x[:, offset:offset + 2 * size]
-            xm = xm.view(B, 2, size, self.num_channel)
-            out[m] = xm
-            offset += 2 * size
-
-        return out
-
-    def couple(self, x1, x2, mode):
-        a1, b1 = x1[:, 0], x1[:, 1]
-        a2, b2 = x2[:, 0], x2[:, 1]
-
-        a1 = a1.unsqueeze(2)
-        b1 = b1.unsqueeze(2)
-        a2 = a2.unsqueeze(1)
-        b2 = b2.unsqueeze(1)
-
-        if mode == "sum":
-            real = a1 * a2 - b1 * b2
-            imag = a1 * b2 + b1 * a2
-        else:
-            real = a1 * a2 + b1 * b2
-            imag = b1 * a2 - a1 * b2
-
-        out = torch.stack([real, imag], dim=1)
-        return out.view(out.size(0), 2, -1, out.size(-1))
-
-    def forward(self, x, y, ws=None):
-
+    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
-        C = self.num_channel
-
-        x1_dict = self.split(x)
-        x2_dict = self.split(y)
-
-        outputs = []
-        z0 = x1_dict[0].unsqueeze(2) * x2_dict[0].unsqueeze(1)  # [B, n_l, C]
-        z0 = z0.view(B, -1, C)  # [B,n_l,C]
-
-        outputs.append(z0)
-
-        instructions0 = self.m3_instructions[m3]
-        for m1, m2, mode in instructions0:
-            z = self.couple(x1_dict[m1], x2_dict[m2], mode) # # [B,2,P,C]
-            pos_list.append(z[:, 0, :, :])
-            neg_list.append(z[:, 1, :, :])  
-
-        for m3 in range(1, self.mmax + 1):
-            instructions = self.m3_instructions[m3]
-            pos_list = []
-            neg_list = []
-            for m1, m2, mode in instructions:
-                z = self.complex_outer(x1_dict[m1], x2_dict[m2], mode) # # [B,2,P,C]
-                pos_list.append(z[:, 0, :, :])
-                neg_list.append(z[:, 1, :, :])
-            pos = torch.cat(pos_list, dim=1)
-            neg = torch.cat(neg_list, dim=1)
-            outputs.append(torch.cat([pos, neg], dim=1))
-
-        out = torch.cat(outputs, dim=1)
-
-        return out
-    
-
-class SO2GatedLinearUnit(torch.nn.Module):
-    def __init__(
-        self,
-        mmax,
-        lmax,
-        num_channel,
-    ):
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.num_components, expand_index = so2_expand_index(mmax, lmax)
-        self.register_buffer('expand_index', expand_index, persistent=False)
-
-        self.activation = torch.nn.Sigmoid()
-
-    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
-            B = x.size(0)
-            g = self.activation(g).view(B, self.num_components, -1)
-            g = torch.index_select(g, dim=1, index=self.expand_index)
-            return g * x 
-
-
-class SO2e3nnGatedLinearUnit(torch.nn.Module):
-    def __init__(
-        self,
-        mmax,
-        lmax,
-        num_channel,
-    ):
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.num_components, expand_index = so2_expand_index(mmax, lmax, start=1)
-        self.register_buffer('expand_index', expand_index, persistent=False)
-
-        self.scalar_activation = ScaledSiLU()
-        self.tensor_activation = ScaledSigmoid()
-
-    def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
-            # m = 0
-            x_scalar = x[:, :self.lmax+1, :]
-            x_scalar = self.scalar_activation(x_scalar)
-
-            # m > 0
-            B = x.size(0)
-            g = self.tensor_activation(g).view(B, self.num_components, -1)
-            g = torch.index_select(g, dim=1, index=self.expand_index)
-            x_tensor = x[:, self.lmax+1:, :]
-            x_tensor = g * x_tensor
-            return torch.cat([x_scalar, x_tensor], dim=1) 
-    
-class SO2NormLinearUnit(torch.nn.Module):
-    def __init__(
-        self,
-        mmax,
-        lmax,
-        num_channel,
-    ):
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.num_components, expand_index = so2_expand_index(mmax, lmax)
-        self.register_buffer('expand_index', expand_index, persistent=False)
-
-
-        offset = lmax + 1 
-        slices = [slice(0, offset)]
-        for m in range(1, self.mmax + 1):
-            length = (self.lmax + 1 -m) * 2
-            slices.append(slice(offset, offset+length))
-            offset += length
-        self.slices = slices
-        self.activation = torch.nn.Sigmoid()
-        scale = torch.tensor([1] * (lmax+1) + [2] * (self.num_components - (lmax+1)))
-        self.weight = torch.nn.Parameter(
-            torch.randn(self.num_components, self.num_channel) 
-            / scale.unsqueeze(-1)
-        )
-        self.bias = torch.nn.Parameter(
-            torch.zeros(self.num_components, self.num_channel)
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        B = x.size(0)   
-        C = x.size(-1)   
-
-        norms = []
-        # m = 0
-        irreps = x[:, self.slices[0], :]
-        norms.append(irreps.pow(2))
-
-        # m > 0
-        for s in self.slices[1:]:
-            irreps = x[:, s, :]
-            irreps = irreps.view(B, 2, -1, C)
-            norms.append(irreps.pow(2).sum(dim=1))
-        g = torch.cat(norms, dim=1)
-        g = g * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
-        g = self.activation(g)
+        g = self.activation(g).view(B, self.num_components, -1)
         g = torch.index_select(g, dim=1, index=self.expand_index)
         return g * x 
 
+
+def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
+    if restriction == None:
+        return True
+    elif restriction == "<":
+        return l1 < l2
+    elif restriction == "<=":
+        return l1 <= l2
+    elif restriction == ">":
+        return l1 > l2
+    elif restriction == ">=":
+        return l1 >= l2
+    elif restriction == "==":
+        return l1 == l2
+    elif restriction == "!=":
+        return l1 != l2
+    else:
+        raise ValueError(f"Unknown restriction: {restriction}")
+    
+
+class ChannelWiseFullyConnectedSO2TensorProduct(torch.nn.Module):
+
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channels: int,
+        m1m2: str | None = None,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channels = num_channels
+        self.m1m2 = m1m2
+        self.cmul = self.cmul2
+        self.instructions = []
+
+        weight_numel = 0
+        for m3 in range(mmax + 1):
+            paths = self.enumerate_paths(m3)
+            self.instructions.append(paths)
+            n3 = lmax + 1 - m3 
+            for m1, m2, mode in paths:
+                n1 = lmax + 1 - m1
+                n2 = lmax + 1 - m2
+                weight_numel += (num_channels * n3 * n1 * n2)
+
+        self.weight_numel = weight_numel
+        self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
+
+        output_scales = []
+        # m = 0
+        n0 = lmax + 1
+        scale0 = torch.full(
+            (n0,),
+            1.0 / math.sqrt(
+                sum(
+                    (lmax + 1 - m1) * (lmax + 1 - m2)
+                    for m1, m2, _ in self.instructions[0]
+                )
+            ),
+        )
+        output_scales.append(scale0)
+        # m > 0
+        for m3 in range(1, mmax + 1):
+            n3 = lmax + 1 - m3
+            num_paths = 0
+            for m1, m2, mode in self.instructions[m3]:
+                n1 = lmax + 1 - m1
+                n2 = lmax + 1 - m2
+                num_paths += n1 * n2
+            scale = 1.0 / math.sqrt(num_paths)
+            output_scales.append(torch.full((2 * n3,), scale))
+        output_scales = torch.cat(output_scales)
+        self.register_buffer( "output_scales", output_scales, persistent=False)
+
+        # for m3, paths in enumerate(self.instructions):
+        #     for m1, m2, mode in paths:
+        #         print(m1, m2, m3, mode)
+        # print()
+
+    def enumerate_paths(self, m3: int) -> list[tuple[int, int, str]]:
+        paths = []
+
+        for m1 in range(self.mmax + 1):
+            for m2 in range(self.mmax + 1):
+                if satisfy(m1, m2, self.m1m2):
+                    # x1 * x2
+                    if m1 + m2 == m3:
+                        paths.append((m1, m2, "sum"))
+                    # x1 * conj(x2)
+                    elif abs(m1 - m2) == m3:
+                        paths.append((m1, m2, "diff"))
+
+        return paths
+
+    def rmul(self, x, y): 
+        # [B, n1, C] * [B, n2, C] =>  [B, n1*n2, C]
+        z = x.unsqueeze(2) * y.unsqueeze(1)
+        B, n1, n2, C = z.shape
+        z = z.reshape(B, n1 * n2, C)
+        return z
+    
+    def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
+        '''Layout damei, should be 2 in last dim'''
+        # [B, 2, n1, C] * [B, 2, n2, C] => [B, 2, n1*n2, C]
+        x = x.permute(0,2,3,1).contiguous()
+        y = y.permute(0,2,3,1).contiguous()
+        x = torch.view_as_complex(x)
+        y = torch.view_as_complex(y)
+        if mode == "diff":
+            y = y.conj()
+
+        z = x.unsqueeze(2) * y.unsqueeze(1)
+        
+        B = z.size(0)
+        C = self.num_channels
+
+        z = z.reshape(B, -1, C)
+        z = torch.view_as_real(z)
+
+        z = z.permute(0,3,1,2)
+
+        return z
+    
+    def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
+        # [B, 2, n1, C] * [B, 2, n2, C] => [B, 2, n1*n2, C]
+        a = x[:, 0]
+        b = x[:, 1]
+        c = y[:, 0]
+        d = y[:, 1]
+        a = a.unsqueeze(2)
+        b = b.unsqueeze(2)
+        c = c.unsqueeze(1)
+        d = d.unsqueeze(1)
+
+        if mode == "sum":
+            real = a * c - b * d
+            imag = a * d + b * c
+        else:
+            real = a * c + b * d
+            imag = b * c - a * d
+
+        B = real.size(0)
+        C = real.size(-1)
+
+        real = real.reshape(B, -1, C)
+        imag = imag.reshape(B, -1, C)
+
+        out = torch.stack([real, imag], dim=1)
+
+        return out
+    
+    def to_list(self, x: torch.Tensor) -> torch.Tensor:
+        B = x.size(0)
+        out = []
+        offset = 0
+        # m = 0
+        n0 = self.lmax + 1
+        out.append(x[:, offset:offset+n0])
+        offset += n0
+        # m > 0
+        for m in range(1, self.mmax + 1):
+            n = self.lmax + 1 - m
+            xm = x[:, offset:offset+2*n]
+            xm = xm.view(B, 2, n, self.num_channels)
+            out.append(xm)
+            offset += 2 * n
+        return out
+
+    def real_channel_wise_fc(self, z: torch.Tensor, w: torch.Tensor):
+        out = torch.einsum("bpc,bcop->boc", z, w)
+        return out
+
+    def complex_channel_wise_fc(self, z: torch.Tensor, w: torch.Tensor):
+        out = torch.einsum("btpc, bcop->btoc", z, w)
+        return out
+    
+    def forward(
+            self, x: torch.Tensor, 
+            y: torch.Tensor, 
+            ws: torch.Tensor | None = None,
+        ) -> torch.Tensor:
+
+        xs = self.to_list(x)
+        ys = self.to_list(y)
+
+        outputs = []
+        w_offset = 0
+        C = self.num_channels
+
+        # m = 0
+        n0 = self.lmax + 1
+        m0 = 0.0
+        for m1, m2, mode in self.instructions[0]:
+            n1 = self.lmax + 1 - m1
+            n2 = self.lmax + 1 - m2
+            w_numel = (C * n0 * n1 * n2)
+            w = self.weight[:, w_offset:w_offset+w_numel]
+            w_offset += w_numel
+            w = w.view(-1, self.num_channels, n0, n1 * n2,)
+
+            # 0 x 0
+            if m1 == 0 and m2 == 0:
+                z = self.rmul(xs[0], ys[0])
+                out = self.real_channel_wise_fc(z, w)
+                
+                m0 = m0 + out
+
+            # m > 0 and m1 -m2 = 0
+            elif m1 > 0 and m2 > 0:
+                z = self.cmul(xs[m1], ys[m2], "diff")
+                out = self.real_channel_wise_fc(z[:, 0], w) # The imaginary part is 0
+                m0 = m0 + out
+
+        outputs.append(m0)
+
+        # m > 0
+        for m3 in range(1, self.mmax + 1):
+            n3 = self.lmax + 1 - m3
+            real = 0.0
+            imag = 0.0
+            for m1, m2, mode in self.instructions[m3]:
+                n1 = self.lmax + 1 - m1
+                n2 = self.lmax + 1 - m2
+                w_numel = (C * n3 * n1 * n2)
+                w = self.weight[:, w_offset:w_offset+w_numel]
+                w_offset += w_numel
+                w = w.view(-1, C, n3, n1 * n2)
+                if m1 == 0 or m2 == 0:
+                    continue
+                
+                if m1 < m2 and mode == 'diff':
+                    z = self.cmul(ys[m2], xs[m1], mode)
+                else:
+                    z = self.cmul(xs[m1], ys[m2], mode)
+                out = self.complex_channel_wise_fc(z, w)
+                real = real + out[:, 0]
+                imag = imag + out[:, 1]
+
+                # z = self.cmul(xs[m1], ys[m2], mode)
+                # out = self.complex_channel_wise_fc(z, w)
+                # real = real + out[:, 0]
+                # if m1 < m2 and mode == 'diff':
+                #     imag = imag - out[:, 1]
+                # else:
+                #     imag = imag + out[:, 1]
+
+                # real = real + self.real_channel_wise_fc(z[:, 0], w)
+                # imag = imag + self.real_channel_wise_fc(z[:, 1], w)
+
+            outputs.append(real)
+            outputs.append(imag)
+
+        out = torch.cat(outputs, dim=1)
+        out = out * self.output_scales.view(1, -1, 1)
+        return out
+        
+    def __repr__(self):
+        lines = []
+        lines.append(
+            f"{self.__class__.__name__}("
+        )
+        lines.append(
+            f"  mmax={self.mmax}, "
+            f"lmax={self.lmax}, "
+            f"channels={self.num_channels}, "
+            f"weights={self.weight_numel}"
+        )
+        lines.append("")
+        lines.append("  instructions:")
+        total_paths = 0
+        for m3, paths in enumerate(self.instructions):
+            total_paths += len(paths)
+            path_strs = []
+            for m1, m2, mode in paths:
+                if mode == "sum":
+                    expr = f"{m1}+{m2}"
+                else:
+                    expr = f"{m1}-{m2}"
+                path_strs.append(expr)
+            joined = ", ".join(path_strs)
+            lines.append(
+                f"    m={m3:<2} : "
+                f"{len(paths):<2} paths | "
+                f"{joined}"
+            )
+        lines.append("")
+        lines.append(f"  total_paths={total_paths}")
+        lines.append(")")
+        return "\n".join(lines)

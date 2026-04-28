@@ -67,13 +67,14 @@ class LinearLayer(torch.nn.Module):
         out_dim: int,
         alpha: float = 1.0,
         bias: bool = False,
+        std: float = sqrt(3),
     ) -> None:
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.alpha = alpha
         self.weight = torch.nn.Parameter(torch.empty((in_dim, out_dim)))
-        torch.nn.init.uniform_(self.weight, -sqrt(3), sqrt(3))
+        torch.nn.init.uniform_(self.weight, -std, std)
         if bias:
             self.bias = torch.nn.Parameter(torch.zeros(out_dim))
         else:

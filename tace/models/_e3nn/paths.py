@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple
 from e3nn import o3
 
 
-def satisfy(l1: int, l2: int, restriction: Optional[str] = None) -> bool:
+def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
     if restriction == None:
         return True
     elif restriction == "<":

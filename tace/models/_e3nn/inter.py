@@ -298,14 +298,17 @@ class SO2Interaction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
+            num_channel_per_head=self.num_channel_per_head,
             is_so2_layout=self.is_so2_layout,
             is_scalar_tp=(self.irreps_node_embedding.lmax == 0) and (self.layer == 0),
+            num_head=self.num_head,
             edge_nonlinear=self.edge_nonlinear,
+            use_so2_edge_ace=self.use_so2_edge_ace,
+            num_elements=self.num_elements,
 
             so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
-
 
         )
 
@@ -357,7 +360,7 @@ class SO2Interaction(Interaction):
             )
 
         self.linear_down = Linear(
-            self.irreps_out,
+            o3.Irreps([(self.rejector.num_out_channel, ir) for _, ir in self.irreps_out]),
             linear_down_irreps_out,
             bias=self.use_bias,
         )
@@ -489,7 +492,7 @@ class SO2Interaction(Interaction):
 
         m_i = self.linear_down(
             self.truncate_ghosts(
-                self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index), 
+                self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index, cutoff), 
                 nlocal
             ) # check   node_attrs_slice TODO
         )
@@ -538,144 +541,6 @@ class SO2Interaction(Interaction):
 
 
         return m_i, self.truncate_ghosts(sc, nlocal)
-    
-
-
-# class EquivariantGraphAttention(Interaction):
-#     def __init__(
-#         self,
-#         num_in_channels,
-#         num_hidden_channels,
-#         num_heads,
-#         attn_alpha_channels,
-#         attn_value_channels,
-#         num_out_channels,
-#     ):
-#         super().__init__()
-
-
-#         self.edge_info = FFN[self.edge_info_type](
-#             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
-#             bias=self.radial_bias,
-#             layer_norm=self.radial_layer_norm,
-#             act=self.radial_act,
-#         )
-
-
-#         self.num_in_channels = num_in_channels
-#         self.num_hidden_channels = num_hidden_channels
-#         self.num_heads = num_heads
-#         self.attn_alpha_channels = attn_alpha_channels
-#         self.attn_value_channels = attn_value_channels
-#         self.num_out_channels = num_out_channels
- 
-        
-  
-
-
-
-#         self.num_hidden_channels = self.num_hidden_channels * 2
-
-#         extra_m0_out_channels = self.num_heads * self.attn_alpha_channels
-#         self.split_m0_channels_list = [extra_m0_out_channels]   # for `torch.split()`
-#         temp = self.num_hidden_channels + (self.num_hidden_channels // 2)
-#         extra_m0_out_channels = extra_m0_out_channels + temp
-#         self.split_m0_channels_list.append(temp)
-
-#         self.so2_linear_1 = SO2Linear(
-#             ((2 * self.num_in_channels)),
-#             self.num_hidden_channels,
-#             self.lmax,
-#             self.mmax,
-#             extra_m0_out_channels=extra_m0_out_channels     # for attention weights and activation
-#         )
-        
-#         # Graph attention
-#         self.alpha_norm = torch.nn.LayerNorm(self.attn_alpha_channels)
-#         self.alpha_act = SmoothLeakyReLU()
-#         self.alpha_dot = torch.nn.Parameter(torch.randn(self.num_heads, self.attn_alpha_channels))
-#         std = 1.0 / math.sqrt(self.attn_alpha_channels)
-#         torch.nn.init.uniform_(self.alpha_dot, -std, std)
-        
-#         # S2/gate activation
-#         self.act = SeparableGateS2Activation_SwiGLU_Merge(
-#             lmax=self.lmax,
-#             mmax=self.mmax,
-#             grid_resolution_list=self.resolution,
-#             use_m_primary=True
-#         )
-
-#         self.so2_linear_2 = SO2Linear(
-#             self.num_hidden_channels // 2,
-#             self.num_heads * self.attn_value_channels,
-#             self.lmax,
-#             self.mmax,
-#             extra_m0_out_channels=None
-#         )
-
-#         # Since we add two type-0 vectors in merge activation, we divide the correpsonding weights by sqrt(2)
-#         temp = self.so2_linear_2.num_in_channels
-#         self.so2_linear_2.fc_m0.weight.data[0:temp, :].mul_(1.0 / math.sqrt(2.0))
-#         self.proj = SO3Linear(self.num_heads * self.attn_value_channels, self.num_out_channels, lmax=self.lmax)
-
-#     def forward(
-#         self,
-#         node_feats: torch.Tensor,
-#         node_attrs_total: torch.Tensor,
-#         node_attrs_slice: torch.Tensor,
-#         edge_feats: torch.Tensor,
-#         edge_attrs: torch.Tensor,
-#         edge_index: torch.Tensor,
-#         cutoff: Optional[torch.Tensor],
-#         graph,
-#         prev_feats: list[torch.Tensor],
-#     ):
-        
-#         num_nodes = node_feats.size(0)
-
-
-#         conv_weights = self.edge_info(edge_feats)
-
-
-#         rotate 
-
-#         x_message, gate,  x_alpha = self.so2_linear_1(x_message)
-#         x_message = self.act(x_message, gate) # nonlinear + ACE
-#         x_message = self.so2_linear_2(x_message)
-
-#         # Graph attention
-#         x_alpha = x_alpha.view(-1, self.num_heads, self.attn_alpha_channels)
-#         x_alpha = self.alpha_norm(x_alpha) # layer norm
-#         x_alpha = self.alpha_act(x_alpha)
-#         alpha = torch.einsum('bik, ik -> bi', x_alpha, self.alpha_dot) # [head, head_dim] => [head, 1]
-#         alpha = self.attn_softmax(alpha, edge_index[1], num_nodes=num_nodes, exp_rescale=cutoff)
-#         if cutoff is not None:
-#             alpha = alpha * cutoff
-#         alpha = alpha.view(alpha.shape[0], 1, self.num_heads, 1)
-
-
-#         attn = x_message
-#         attn = attn.view(attn.shape[0], attn.shape[1], self.num_heads, self.attn_value_channels)
-#         attn = attn * alpha
-#         attn = attn.view(attn.shape[0], attn.shape[1], self.num_heads * self.attn_value_channels)
-#         x_message = attn
-
-#         # Rotate back the irreps
-#         x_message = self.so3_rotation.rotate_inv(x_message)
-        
-#         # Compute the sum of the incoming neighboring messages for each target node
-#         x_message = scatter_sum(
-#             x_message,
-#             edge_index[1], 
-#             dim=0,
-#             dim_size=num_nodes,
-#         )
-
-#         # Project
-#         outputs = self.proj(x_message)
-
-#         return outputs
-
 
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,

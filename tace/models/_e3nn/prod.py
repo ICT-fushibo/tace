@@ -430,6 +430,29 @@ class OamACE(Product):
         return outs
     
 
+class IACE(Product):
+
+    def _setup(self):
+        
+        self.linear = Linear(
+            self.irreps_in,
+            self.irreps_out,
+        )
+
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+        ) -> torch.Tensor:
+
+        outs = self.linear(node_feats)
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+
 PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": CgtpACE,
     "spatial": CgtpACE,
@@ -438,6 +461,8 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "spectral": GtpACE,
     "grid": GtpACE,
     "gtp": GtpACE,
+
+    "I": IACE,
 
     "oam": OamACE,
 }
