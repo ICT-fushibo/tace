@@ -1,23 +1,8 @@
-Jd.pt, so2.py and so3.py are Copy from EquiformerV3.
+The files in this directory originate from the following sources:
 
-MIT License
+- `so2.py`: We implemented `SO2Gate` and `SO2TensorProduct` based on the 
+theories of QHNetV2. We also refactor `SO2Linear` introduced in eSCN
+to satisfy our specific needs. If you use the `so2` code from TACE, you should 
+explicitly indicate that it was obtained from TACE.
 
-Copyright (c) 2026 The Atomic Architects
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+- `Jd.pt` and `so3.py`: copied from EquiformerV3 without modification.

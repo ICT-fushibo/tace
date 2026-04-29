@@ -240,10 +240,9 @@ class CgtpInteraction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            # if cutoff is not None and self.apply_density_cutoff:
-            #     density = density * cutoff
-            if cutoff is not None:
+            if cutoff is not None and self.apply_density_cutoff:
                 density = density * cutoff
+            # density = density * cutoff
             density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
             density  = self.truncate_ghosts(density , nlocal)
             density = density * self.beta + self.alpha
@@ -298,6 +297,7 @@ class SO2Interaction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
+            num_hidden_channel=self.num_hidden_channel,
             num_channel_per_head=self.num_channel_per_head,
             is_so2_layout=self.is_so2_layout,
             is_scalar_tp=(self.irreps_node_embedding.lmax == 0) and (self.layer == 0),
@@ -311,6 +311,9 @@ class SO2Interaction(Interaction):
             reshape_out=LayoutTransform(self.irreps_out),
 
         )
+
+        if self.rejector.use_transformer:
+            self.scatter_norm = None
 
         linear_down_irreps_out = self.irreps_out
         if self.nonlinear_type is not None:
@@ -499,10 +502,10 @@ class SO2Interaction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            # if cutoff is not None and self.apply_density_cutoff:
-            #     density = density * cutoff
-            if cutoff is not None:
+            if cutoff is not None and self.apply_density_cutoff:
                 density = density * cutoff
+            # if cutoff is not None:
+            #     density = density * cutoff
             density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
             density  = self.truncate_ghosts(density , nlocal)
             density = density * self.beta + self.alpha

@@ -160,6 +160,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         lmax: int,
         correlation: List[int],
         num_channel: int,
+        num_hidden_channel: int | None,
         edge_feats_channel: int,
         target_weight: List[int],
         num_radial_basis: int,
@@ -199,6 +200,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.l1l2 = l1l2
         self.num_elements = num_elements
         self.num_channel = num_channel
+        self.num_hidden_channel = num_hidden_channel or num_channel
         self.num_channel_per_head = num_channel_per_head
         self.target_weight = target_weight
         self.radial_mlp = radial_mlp

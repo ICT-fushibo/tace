@@ -167,6 +167,7 @@ class Representation(torch.nn.Module):
                     Lmax=Lmax,
                     lmax=lmax,
                     num_channel=num_channel,
+                    num_hidden_channel=atomic_basis['num_channel'],
                     edge_feats_channel=self.edge_updates[layer].out_dim,
                     target_weight=target_weight,
                     num_radial_basis=radial_basis['num_radial_basis'],
@@ -213,7 +214,7 @@ class Representation(torch.nn.Module):
                     l1l2=product_basis['l1l2'],     
                     l3s=product_basis['l3s'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
-                    nonlinear=product_basis['nonlinear'],
+                    nonlinear=product_basis['nonlinear'][layer],
                     resolution=product_basis['resolution'],
                     bias=True,
                 )

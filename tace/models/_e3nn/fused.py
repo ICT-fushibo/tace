@@ -133,6 +133,101 @@ class SmoothLeakyReLU(torch.nn.Module):
     def extra_repr(self):
         return 'negative_slope={}'.format(self.alpha)
 
+class SO2EdgeProductBasis(torch.nn.Module):
+
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channels: int,
+        num_elements: int,
+        m1m2: str | None = '<=',
+        internal_weights: bool = False,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_components = lmax+1
+        self.num_channel = num_channels
+
+        self.ace = SO2TensorProduct(
+            mmax, 
+            lmax,
+            num_channels, 
+            m1m2=m1m2, 
+            internal_weights=internal_weights
+        )
+        self.weight_numel = self.ace.weight_numel
+
+        self.num_c1_weight = (mmax+1) * (lmax+1) * num_channels
+
+        self.weight_numel += self.num_c1_weight
+
+        self.source_coefs = torch.nn.Parameter(
+            torch.randn(num_elements, self.weight_numel)
+        )
+        self.target_coefs = torch.nn.Parameter(
+            torch.randn(num_elements, self.weight_numel)
+        )
+        self.source_coefs.data.mul_(1 / math.sqrt(2))
+        self.target_coefs.data.mul_(1 / math.sqrt(2))
+
+
+        expand_index = []
+        offset = 0
+        for m in range(mmax + 1):
+            index = torch.arange((lmax + 1))
+            index = index + offset
+            expand_index.append(index)
+            if m > 0:
+                expand_index.append(index)    # +- m
+            offset = offset + len(index)
+        expand_index = torch.cat(expand_index, dim=0)
+        expand_index = expand_index.long()
+        self.num_components = offset
+        self.register_buffer('expand_index', expand_index, persistent=False)
+
+    def forward(self, x, y, edge_index) -> torch.Tensor:
+
+        B = x.size(0)
+        C = self.num_channel
+
+        node_type = y.argmax(dim=-1)
+        src_type = node_type[edge_index[0]]
+        dst_type = node_type[edge_index[1]]
+        ws = (
+            self.source_coefs[src_type]
+            + self.target_coefs[dst_type]
+        )
+        w1 = ws.narrow(1, 0, self.num_c1_weight)
+        w1 = w1.view(B, -1, C)
+        w1 = torch.index_select(w1, dim=1, index=self.expand_index)
+        corr_feats1 = x * w1
+        w2 = ws.narrow(1, self.num_c1_weight, self.weight_numel - self.num_c1_weight)
+        corr_feats2 = self.ace(x, x, w2)
+
+        return corr_feats1 + corr_feats2
+   
+
+    def extra_repr(self) -> str:
+        p = {
+            0: 'e',
+            1: 'o',
+        }
+        irreps = []
+        for m in range(self.mmax + 1):
+            irreps.append(f"{self.num_channel*(self.lmax+1)}x{m}{p[m % 2]}")
+        num_weights = sum(
+            p.numel() for p in self.parameters() if p.requires_grad
+        )
+        return (
+            f"{self.__class__.__name__}"
+            f"({'+'.join(irreps)} x {'+'.join(irreps)} -> "
+            f"{'+'.join(irreps)} | "
+            f"{num_weights} weights)"
+        )
+
 
 class SO2ScatterTensorProduct(torch.nn.Module):
     def __init__(
@@ -140,12 +235,13 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
+        num_hidden_channel: int,
         num_head: int | None,
         num_channel_per_head: int,
         is_scalar_tp: bool,
         is_so2_layout: bool,
-        edge_nonlinear: str | None,
         use_so2_edge_ace: bool,
+        edge_nonlinear: str | None,
         num_elements: int,
         so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
@@ -156,6 +252,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
+        self.num_hidden_channel = num_hidden_channel or self.num_channel
         self.is_so2_layout = is_so2_layout
         self.is_scalar_tp = is_scalar_tp
         self.edge_nonlinear = edge_nonlinear
@@ -168,79 +265,108 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         # Transformer
         self.num_head = num_head or 1
         self.num_channel_per_head = num_channel_per_head or num_channel
+        assert self.num_hidden_channel % self.num_head == 0
         if self.num_head > 1:
             self.use_transformer = True
         else:
             self.use_transformer = False
 
+        Cin = num_channel if not self.use_transformer else num_channel * 2
+        Cout = num_channel
+        self.num_out_channel = Cout
 
-        C_in = num_channel if not self.use_transformer else num_channel * 2
-        C_hidden = self.num_head * self.num_channel_per_head
-        self.num_out_channel = self.num_head * self.num_channel_per_head
-
-        if self.use_transformer: # TODO
-            self.alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
-            self.alpha_act = SmoothLeakyReLU()
-            self.alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
-            std = 1.0 / math.sqrt(self.num_channel_per_head)
-            torch.nn.init.uniform_(self.alpha_dot, -std, std)
-            self.attn_softmax = GraphSoftmax()
         
         if self.is_so2_layout and not self.is_scalar_tp:
             self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
-            self.weight_numel = self.num_components * C_in
+            self.weight_numel = self.num_components * Cin
             self.register_buffer('expand_index', expand_index, persistent=False)
         else:
             self.num_components, expand_index = so3_expand_index(self.mmax, self.lmax)
-            self.weight_numel = self.num_components * C_in
+            self.weight_numel = self.num_components * Cin
             self.register_buffer('expand_index', expand_index, persistent=False)
+
+        self.num_gates = 0
+        for m in range(mmax + 1):
+            if self.use_so2_edge_ace:
+                self.num_gates += lmax + 1
+            else:
+                self.num_gates += lmax + 1 -m
 
         if self.is_scalar_tp:
             pass
         else:
-            if self.edge_nonlinear == 'so2_sigmoid_gate':
-                num_gates = 0
-                for m in range(mmax + 1):
-                    num_gates += lmax + 1 -m
-                num_gates = num_gates * C_hidden
-                if self.use_transformer:
-                    m0_channel = num_gates + C_hidden
-                    self.m0_slices = [slice(0, num_gates), slice(num_gates, m0_channel)]
-                else:
-                    m0_channel = num_gates
-                    self.m0_slices = [slice(0, num_gates)]
+            assert edge_nonlinear is not None, "We force to use SO2 edge nonlinear in TACE"
+
+            if self.use_transformer: # TODO
+                self.linear_alpha = SO2Linear(
+                    0, 
+                    lmax, 
+                    Cin, 
+                    num_head * num_channel_per_head,
+                    num_components_out=[1]
+                )
+                self.alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
+                self.alpha_act = SmoothLeakyReLU()
+                self.alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
+                std = 1.0 / math.sqrt(self.num_channel_per_head)
+                torch.nn.init.uniform_(self.alpha_dot, -std, std)
+                self.attn_softmax = GraphSoftmax()
+
+            if self.use_so2_edge_ace:
+                self.ace = SO2EdgeProductBasis(
+                    mmax, 
+                    lmax, 
+                    self.num_hidden_channel,
+                    num_elements=num_elements,
+                )
+                self.linear_up = SO2Linear(
+                    mmax,
+                    lmax,
+                    Cin,
+                    self.num_hidden_channel,     
+                    num_components_in=None,
+                    num_components_out=[self.num_gates + lmax+1] + [lmax+1] * (lmax),
+                )
                 self.nonlinearity = SO2Gate(
                     mmax,
                     lmax,
-                    C_hidden,        
+                    self.num_hidden_channel,     
+                    channel_wise=True
+                )
+                self.linear_down = SO2Linear(
+                    mmax,
+                    lmax,
+                    self.num_hidden_channel,     
+                    Cout,     
+                    num_components_in=[lmax+1] * (lmax+1),
+                    num_components_out=None,
                 )
             else:
-                assert edge_nonlinear is not None, "We force to use SO2 edge nonlinear in TACE"
+                self.linear_up = SO2Linear(
+                    mmax,
+                    lmax,
+                    Cin,
+                    self.num_hidden_channel,    
+                    num_components_in=None,
+                    num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
+                )
+                self.nonlinearity = SO2Gate(
+                    mmax,
+                    lmax,
+                    self.num_hidden_channel,    
+                    channel_wise=False
+                )
+                self.linear_down = SO2Linear(
+                    mmax,
+                    lmax,
+                    self.num_hidden_channel,    
+                    Cout,     
+                )     
 
-            self.linear_up = SO2Linear(
-                mmax,
-                lmax,
-                C_in,
-                C_hidden,
-                extra_m0_out_channels=m0_channel,
-            )
-            if self.use_so2_edge_ace:
-                self.ace = SO2TensorProduct(mmax, lmax, C_hidden, m1m2='<=')
-            # else:
-            #     self.ace = torch.nn.Identity()          
-            self.linear_down = SO2Linear(
-                mmax,
-                lmax,
-                C_hidden,
-                C_hidden,
-            )
-
-            # with torch.no_grad():
-            #     self.coefs = torch.nn.Parameter(torch.randn(4, self.ace.weight_numel) / math.sqrt(2))
 
     def forward(
             self, 
-            x: torch.Tensor, 
+            x: torch.Tensor, # [B, so_m, C]
             y: torch.Tensor,  # node_attrs here
             w: torch.Tensor, 
             edge_index: torch.Tensor,
@@ -274,20 +400,22 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 m_ij =  x * w
                 m_ij = self.so2_angular_basis.rotate(m_ij)
 
-            m_ij, m0 = self.linear_up(m_ij) # m_ij: [edge, so2_m, C]
-
-            # # ws = torch.einsum('bz, zi -> bi', y[edge_index[0]] + y[edge_index[1]], self.coefs)
-            if hasattr(self, 'ace'):
-                m_ij = m_ij + self.ace(m_ij, m_ij)
-    
-            m_ij = self.nonlinearity(m_ij, m0[:, self.m0_slices[0]]) 
-            m_ij = self.linear_down(m_ij)
-
             if self.use_transformer:
-                # Graph attention
+                alpha = self.linear_alpha(m_ij)
+            m_ij = self.linear_up(m_ij)
 
-                alpha = m0[:, self.m0_slices[1]]
-
+            gate = m_ij.narrow(1, 0, self.num_gates)
+            m_ij = m_ij.narrow(
+                1,
+                self.num_gates,
+                m_ij.size(1) - self.num_gates
+            )
+            if hasattr(self, 'ace'):
+                m_ij = self.ace(m_ij, y, edge_index)
+            m_ij = self.nonlinearity(m_ij, gate) 
+            m_ij = self.linear_down(m_ij)
+            
+            if self.use_transformer:
                 alpha = alpha.reshape(-1, self.num_head, self.num_channel_per_head)
                 alpha = self.alpha_norm(alpha)
                 alpha = self.alpha_act(alpha)
@@ -296,11 +424,10 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 if cutoff is not None:
                     alpha = alpha * cutoff
                 alpha = alpha.view(alpha.size(0), 1, self.num_head, 1)
-                # Attention weights * non-linear messages
                 attn = m_ij
-                attn = attn.view(attn.shape[0], attn.shape[1], self.num_head, self.num_channel_per_head)
+                attn = attn.view(attn.size(0), attn.size(1), self.num_head, -1)
                 attn = attn * alpha
-                attn = attn.view(attn.shape[0], attn.shape[1], -1)
+                attn = attn.view(attn.size(0), attn.size(1), -1)
                 m_ij = attn
 
             m_ij = self.so2_angular_basis.rotate_inv(m_ij)
