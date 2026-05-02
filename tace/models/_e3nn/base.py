@@ -272,7 +272,6 @@ class Product(torch.nn.Module):
         target_weight: List[int],
         correlation: List[int],
         l1l2: str | None,
-        l3s: List[int] | None,
         ictp_ictc_like: bool,
         bias: bool,
         resolution: List[int],
@@ -289,7 +288,6 @@ class Product(torch.nn.Module):
         self.target_weight = target_weight
         self.num_elements = num_elements
         self.l1l2 = l1l2
-        self.l3s = l3s
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
         self.num_hidden_channel = num_hidden_channel or num_channel

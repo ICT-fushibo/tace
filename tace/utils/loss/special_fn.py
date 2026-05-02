@@ -48,3 +48,75 @@ def hessian(
         losses.append(loss_g)
 
     return torch.stack(losses).mean()
+
+
+
+NOISE_MUL = 0.05
+
+
+@register_loss
+def mse_dens_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.forces_weight)[batch].unsqueeze(-1)
+    noise_mask = label['noise_mask'].unsqueeze(-1)
+    forces_error = (pred['forces'] - label['forces'])* (~noise_mask)
+    noise_error = (pred['noise_vec'] - label['noise_vec'])* noise_mask  * NOISE_MUL
+    return torch.mean(torch.square(forces_error + noise_error) * total_weight)
+
+
+@register_loss
+def mse_dens_direct_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.direct_forces_weight)[batch].unsqueeze(-1)
+    noise_mask = label['noise_mask'].unsqueeze(-1)
+    forces_error = (pred['direct_forces'] - label['direct_forces'])* (~noise_mask)
+    noise_error = (pred['noise_vec'] - label['noise_vec'])* noise_mask  * NOISE_MUL
+    return torch.mean(torch.square(forces_error + noise_error) * total_weight)
+
+
+@register_loss
+def l2mae_dens_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.forces_weight)[batch]
+    noise_mask = label['noise_mask'].unsqueeze(-1)
+    forces_error = (pred['forces'] - label['forces'])* (~noise_mask)
+    noise_error = (pred['noise_vec'] - label['noise_vec'])* noise_mask  * NOISE_MUL 
+    return torch.mean(
+        torch.linalg.vector_norm(forces_error + noise_error, ord=2, dim=-1)
+        * total_weight
+    )
+
+@register_loss
+def l2mae_dens_direct_forces(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    batch = label.batch
+    total_weight = (label.entropy * label.direct_forces_weight)[batch]
+    noise_mask = label['noise_mask'].unsqueeze(-1)
+    forces_error = (pred['direct_forces'] - label['direct_forces'])* (~noise_mask)
+    noise_error = (pred['noise_vec'] - label['noise_vec'])* noise_mask * NOISE_MUL
+
+    return torch.mean(
+        torch.linalg.vector_norm(forces_error + noise_error, ord=2, dim=-1)
+        * total_weight
+    )
+
+
+@register_loss
+def mae_dens_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.stress_weight
+    
+    error = (pred["direct_stress"] - label["direct_stress"]) * (~label['dens_batch_mask']).unsqueeze(-1).unsqueeze(-1)
+    
+    return torch.mean(
+        torch.abs(error)
+        * total_weight.unsqueeze(-1).unsqueeze(-1)
+    )

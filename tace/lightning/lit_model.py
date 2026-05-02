@@ -29,6 +29,10 @@ from .. utils._global import DTYPE, DEVICE
 from ..utils.loss.uncertainty import UncertaintyLoss
 from ..models.adapter import TensorModel
 
+
+from ..models._e3nn.dens import add_gaussian_noise_to_position
+
+
 def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module:
     if not finetune_cfg: 
         return model
@@ -54,7 +58,7 @@ def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module
 
 
 TACE_APPLY_U_SHIFT = os.environ.get('TACE_APPLY_U_SHIFT', '0') 
-
+TACE_USE_DENS = os.environ.get('TACE_USE_DENS', '0')
 
 U_SHIFT = {
     23: -2.271,  # V
@@ -227,6 +231,15 @@ class LightningWrapperModel(L.LightningModule):
 
         if TACE_APPLY_U_SHIFT == '1':
             batch['energy'] = apply_u_shift(batch, batch['energy'])
+
+        if TACE_USE_DENS == '1':
+            with torch.no_grad():
+                batch = add_gaussian_noise_to_position(batch)
+
+        # batch['direct_forces'] = batch['forces']
+        # batch['direct_forces_weight'] = batch['forces_weight']
+        # batch['direct_stress'] = batch['stress']
+        # batch['direct_stress_weight'] = batch['stress_weight']
 
         if self.force_dtype is not None:
             batch = batch.apply(

@@ -68,7 +68,6 @@ class CgtpACE(Product):
                 irreps_in2=self.irreps_hidden1,
                 irreps_out=product_out,
                 l1l2=self.l1l2,
-                l3s=self.l3s,
                 ictp_ictc_like=self.ictp_ictc_like,
             )
             self.aces.append(this_ace)

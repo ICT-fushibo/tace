@@ -77,8 +77,11 @@ class e3nnTACE(torch.nn.Module):
         self.num_channel = cfg['num_channel']
 
         # === Will be used in __init__ ===
-        if cfg['product_basis']['return_all_components']:
-            self.target_weight = [l for l in range(cfg['Lmax']+1)]
+        if cfg['product_basis']['return_components']:
+            if isinstance(cfg['product_basis']['return_components'], list):
+                self.target_weight = sorted(cfg['product_basis']['return_components'])
+            else:
+                self.target_weight = [l for l in range(cfg['Lmax']+1)]
         else:
             self.target_weight = get_target_weight(self.target_property)
 
@@ -213,6 +216,10 @@ class e3nnTACE(torch.nn.Module):
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
             self.abs_final_collinear_magmoms_readouts = build_scalar_readout(l=0, **for_scalar_readout)
+
+        # === DeNs noise ===
+        if self.representation.use_dens:
+            self.dens_noise_readouts = build_tensor_readout(l=1, **for_tensor_readout)
 
         # self.normalizers = torch.nn.ModuleDict()
         # for p in self.target_property:
@@ -479,6 +486,21 @@ class e3nnTACE(torch.nn.Module):
                 scalar_descriptor_list.append(descriptor[:, :self.num_channel])
             scalar_descriptor = torch.cat(scalar_descriptor_list, dim=-1)
 
+        # === DeNS noise ===
+        dens_noise = None
+        if hasattr(self, 'dens_noise_readouts'):
+            noise_list = []
+            for ii, dens_noise_readout in enumerate(self.dens_noise_readouts):
+                if not self.use_alllayer:
+                    ii = -1
+                noise_list.append(
+                    dens_noise_readout(
+                        descriptors[ii],
+                        node_fidelity,
+                    ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                )
+            dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
+
         return {
             "energy": E,
             "node_energy": e_node, # not include les
@@ -495,9 +517,11 @@ class e3nnTACE(torch.nn.Module):
             "les_born_effective_charges": LES_BEC,
             "scalar_descriptor": scalar_descriptor,
             "abs_final_collinear_magmoms": ABS_F_C_MAG,
+            "noise_vec": dens_noise
         }
     
+
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)
-        return self.readout_fn(data, graph, rep)
+        return self.readout_fn(data, graph, rep) | rep
 

@@ -36,7 +36,6 @@ def generate_paths(
     l1l2: str | None = None,
     l2l3: str | None = None,
     l3l1: str | None = None,
-    l3s: List[int] | None = None,
     ictp_ictc_like: bool = True,
     e3nn_mode = 'uvu',
     trainable: bool = False,
@@ -59,7 +58,6 @@ def generate_paths(
                     if ictp_ictc_like
                     else True
                 )
-                l3_ok = l3 in l3s if l3s else True
 
                 if (
                     triangle_ok
@@ -67,7 +65,6 @@ def generate_paths(
                     and satisfy(l2, l3, l2l3)
                     and satisfy(l3, l1, l3l1)
                     and ir_out in ir1 * ir2
-                    and l3_ok
                 ):
 
                     k = len(e3nn_out_irreps)

@@ -3,6 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import os
+import math
 from typing import Dict, List
 
 
@@ -20,6 +22,10 @@ from .inter import INTERACTION
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .layer_norm import get_normalization_layer
+from .linear import Linear
+
+
+TACE_USE_DENS = os.environ.get('TACE_USE_DENS', '0')
 
 
 class Representation(torch.nn.Module):
@@ -56,6 +62,7 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
+        self.use_dens = TACE_USE_DENS == '1'
 
         # has_so2 = any(t == 'so2' for t in atomic_basis['type'])
         # all_so2 = all(t == 'so2' for t in atomic_basis['type'])
@@ -212,7 +219,6 @@ class Representation(torch.nn.Module):
                     target_weight=target_weight,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
-                    l3s=product_basis['l3s'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
                     nonlinear=product_basis['nonlinear'][layer],
                     resolution=product_basis['resolution'],
@@ -225,6 +231,15 @@ class Representation(torch.nn.Module):
         if layer_norm['final_norm_type'] is not None:
             self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_weight, num_channels=num_channel)
             self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in target_weight])
+
+
+        if self.use_dens:
+            self.irreps_forces_sh = o3.Irreps.spherical_harmonics(lmax=Lmax)
+            self.forces_embedding = Linear(
+                self.irreps_forces_sh,
+                (self.irreps_forces_sh * num_channel).regroup(),
+                bias=True
+            )
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
@@ -273,6 +288,13 @@ class Representation(torch.nn.Module):
             cutoff,
         )
 
+        forces_embedding = None
+        noise_mask_tensor = None
+        dens_batch_mask_tensor = None
+        if self.training and self.use_dens:
+            forces_embedding, noise_mask_tensor, dens_batch_mask_tensor = self._forward_dens_forces_encoding(data)
+        
+
         # === representation Learning ===
         prev_feats = []
         for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):
@@ -302,6 +324,8 @@ class Representation(torch.nn.Module):
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
+            if forces_embedding is not None:
+                node_feats = node_feats + forces_embedding
             node_feats = prod(node_feats, node_attrs_slice, sc)
             if idx == self.num_layers -1 and hasattr(self, "final_norm"):
                 node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
@@ -310,7 +334,46 @@ class Representation(torch.nn.Module):
         return {
             "descriptors": prev_feats,
             "uie_feats": uie_feats,
+            "noise_mask_tensor": noise_mask_tensor,
+            "dens_batch_mask_tensor": dens_batch_mask_tensor,
         }
 
+
+    def _generate_dens_data(self, data: Dict[str, torch.Tensor]):
+        num_atoms = data['node_attrs'].size(0)
+        num_graphs = len(data['ptr']) - 1
+        # dtype = data['node_attrs'].dtype
+        device = data['node_attrs'].device
+
+        if 'direct_forces' in data:
+            forces_data = data['direct_forces']
+        else:
+            forces_data = data['forces']
+        if 'noise_mask' in data:
+            noise_mask = data['noise_mask'].view(-1, 1)
+        else:
+            noise_mask = torch.ones((num_atoms, 1), dtype=torch.bool, device=device)
+        if 'dens_batch_mask' in data:
+            dens_batch_mask = data['dens_batch_mask'].view(-1, 1)
+        else:
+            dens_batch_mask = torch.ones((num_graphs, 1), dtype=torch.bool, device=device)
+
+        forces_sh = o3.spherical_harmonics(
+            l=self.irreps_forces_sh,
+            x=forces_data,
+            normalize=True,
+            normalization='component'
+        )
+        
+        return forces_data, forces_sh, noise_mask, dens_batch_mask
+    
+    def _forward_dens_forces_encoding(self, data):
+        forces_data, forces_sh, noise_mask, dens_batch_mask = self._generate_dens_data(data)
+        forces_norm = forces_data.norm(dim=-1, keepdim=True)
+        forces_norm = forces_norm / math.sqrt(3.0)
+        forces_embedding = forces_sh * forces_norm # [node, 3]
+        forces_embedding = self.forces_embedding(forces_embedding)
+        forces_embedding = forces_embedding * noise_mask
+        return forces_embedding, noise_mask, dens_batch_mask
 
 

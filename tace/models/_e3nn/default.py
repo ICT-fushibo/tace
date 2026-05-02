@@ -76,13 +76,12 @@ DEFAULT_MODEL_CONFIG = {
     "product_basis": {
         "type": "cgtp",
         "l1l2": None,
-        "l3s": None,
         "correlation": 3,
         "ictp_ictc_like": True,
         "resolution": None,
         "num_channel": None,
         "nonlinear": None,
-        "return_all_components": False,
+        "return_components": None,
     },
     "readout_emlp": {
         "bias": False,

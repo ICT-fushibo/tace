@@ -298,10 +298,10 @@ class SO2Interaction(Interaction):
             lmax=self.lmax,
             num_channel=self.num_channel,
             num_hidden_channel=self.num_hidden_channel,
-            num_channel_per_head=self.num_channel_per_head,
+            # num_channel_per_head=self.num_channel_per_head,
             is_so2_layout=self.is_so2_layout,
             is_scalar_tp=(self.irreps_node_embedding.lmax == 0) and (self.layer == 0),
-            num_head=self.num_head,
+            # num_head=self.num_head,
             edge_nonlinear=self.edge_nonlinear,
             use_so2_edge_ace=self.use_so2_edge_ace,
             num_elements=self.num_elements,
@@ -312,8 +312,8 @@ class SO2Interaction(Interaction):
 
         )
 
-        if self.rejector.use_transformer:
-            self.scatter_norm = None
+        # if self.rejector.use_transformer:
+        #     self.scatter_norm = None
 
         linear_down_irreps_out = self.irreps_out
         if self.nonlinear_type is not None:

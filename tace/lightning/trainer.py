@@ -21,6 +21,7 @@ from ..utils.callbacks import PrintMetricsCallback
 from .lit_model import LightningWrapperModel
 from ..utils.utils import log_parameters
 
+
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
 
