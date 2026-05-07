@@ -4,7 +4,7 @@
 ################################################################################
 
 import math
-from typing import List, Optional
+from typing import Union
 
 
 import torch
@@ -24,10 +24,10 @@ class UncertaintyLoss(nn.Module):
 
     def __init__(
         self,
-        loss_property: List[str],
-        loss_function_name: List[str],
-        loss_property_weights: List[float],
-        loss_huber_delta: Optional[float | List[float]] = 0.01,
+        loss_property: list[str],
+        loss_function_name: list[str],
+        loss_property_weights: list[float],
+        loss_huber_delta: Union[float, list[float]] = 0.01,
         **kwargs,
     ):
         super().__init__()
@@ -35,21 +35,21 @@ class UncertaintyLoss(nn.Module):
             -math.log(2.0 * w) for w in loss_property_weights
         ]
         assert isinstance(
-            loss_property, (List, ListConfig)
+            loss_property, (list, ListConfig)
         ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
         assert isinstance(
-            loss_function_name, (List, ListConfig)
+            loss_function_name, (list, ListConfig)
         ), f"cfg.loss.loss_function_name should be a list, got {type(loss_property)}"
         assert isinstance(
-            init_log_sigmas, (List, ListConfig)
+            init_log_sigmas, (list, ListConfig)
         ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property)}"
         if isinstance(loss_huber_delta, float) or loss_huber_delta is None:
             loss_huber_delta = [loss_huber_delta] * len(loss_property)
         assert isinstance(
-            loss_huber_delta, (List, ListConfig)
+            loss_huber_delta, (list, ListConfig)
         ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_property)}"
         assert isinstance(
-            loss_huber_delta, (List, ListConfig)
+            loss_huber_delta, (list, ListConfig)
         ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_property)}"
         assert (
             len(loss_property) == len(loss_function_name) == 

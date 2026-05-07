@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Tuple
+from typing import Union
 
 
 import torch
@@ -21,7 +21,7 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         irreps_in2: o3.Irreps,
         irreps_out: o3.Irreps,
         num_channel: int,
-        path: List[Tuple[int, int, int]],
+        path: list[tuple[int, int, int]],
         trainable: bool,
     ):
         super().__init__()
@@ -46,7 +46,7 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         )
 
     def forward(
-            self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor | None = None
+            self, x: torch.Tensor, y: torch.Tensor, w: Union[torch.Tensor, None] = None
         ) -> torch.Tensor:
         return self.reshap3.inverse(self.eqt_tp(self.reshap1(x), self.reshap2(y), w))
 

@@ -137,12 +137,12 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     except Exception as e:
         error_detail = (
             "Trainer initialization failed\n"
-            f"Configuration: {cfg["trainer"]}\n"
+            f"Configuration: {cfg['trainer']}\n"
             f"Error: {str(e)}"
         )
         raise RuntimeError(error_detail) from e
     
-    logging.info(f"Callbacks: {list(cfg.get("callbacks", {}))}")
+    logging.info(f"Callbacks: {list(cfg.get('callbacks', {}))}")
 
     return trainer
 

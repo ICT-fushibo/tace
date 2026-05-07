@@ -4,6 +4,7 @@
 ################################################################################
 
 import math
+from typing import Union
 
 
 import torch
@@ -100,7 +101,7 @@ class SO2MLinear(torch.nn.Module):
 
         self._Cout = self.num_components_out * self.num_channel_out
 
-    def forward(self, x, concat_outputs=True) -> tuple[torch.Tensor | torch.Tensor] | torch.Tensor:
+    def forward(self, x, concat_outputs=True) -> Union[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         # [batch, 2, -1]
         x = self.fc(x)
         w1_x = x.narrow(2, 0, self._Cout)
@@ -124,8 +125,8 @@ class SO2Linear(torch.nn.Module):
         lmax: int,
         num_channel_in: int,
         num_channel_out: int,
-        num_components_in: None | list[int] = None,
-        num_components_out: None | list[int] = None,
+        num_components_in: Union[None, list[int]] = None,
+        num_components_out: Union[None, list[int]] = None,
     ):
         super().__init__()
 
@@ -665,7 +666,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
             self, 
             x: torch.Tensor, 
             y: torch.Tensor, 
-            weight: torch.Tensor | None = None,
+            weight: Union[torch.Tensor, None] = None,
         ) -> torch.Tensor:
 
         xs = self.to_list(x) #  m = 0 [B, lmax+1, C]

@@ -5,7 +5,10 @@
 
 import sys
 import logging
+from typing import Union
 from datetime import datetime
+
+
 
 import torch
 import lightning as L
@@ -29,7 +32,7 @@ LOG_LEVELS = {
 }
 
 
-def set_logger(_level: int | str = "info", _rank_zero_only: bool = True) -> None:
+def set_logger(_level: Union[int, str] = "info", _rank_zero_only: bool = True) -> None:
     log_level = LOG_LEVELS[_level]
     root_logger = logging.getLogger()
     if root_logger.handlers:

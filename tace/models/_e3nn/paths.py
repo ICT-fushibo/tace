@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Optional, List, Tuple
+from typing import Union
 
 
 from e3nn import o3
@@ -41,8 +41,8 @@ def generate_paths(
     trainable: bool = False,
 ):
 
-    e3nn_paths: List[Tuple[int, int, int, str, bool]] = []
-    e3nn_out_irreps: List[Tuple[int, o3.Irrep]] = [] 
+    e3nn_paths: list[tuple[int, int, int, str, bool]] = []
+    e3nn_out_irreps: list[tuple[int, o3.Irrep]] = [] 
 
 
     for _, (_, ir_out) in enumerate(irreps_out):

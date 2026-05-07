@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any, Union
 
 
 import torch
@@ -241,8 +241,8 @@ class e3nnTACE(torch.nn.Module):
         self,
         data: Dict[str, torch.Tensor],
         graph,
-        from_representation: Dict[str, Optional[torch.Tensor]]
-    ) -> Dict[str, Optional[torch.Tensor]]:
+        from_representation: Dict[str, Union[torch.Tensor, None]]
+    ) -> Dict[str, Union[torch.Tensor, None]]:
 
         batch = data["batch"]
         descriptors = from_representation['descriptors']

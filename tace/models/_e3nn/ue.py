@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict
+from typing import Union
 
 
 import torch
@@ -52,7 +52,7 @@ class UniversalInvariantEmbedding(torch.nn.Module):
     def __init__(
         self,
         out_dim: int,
-        invariant_embedding: Dict[str, bool | str | int],
+        invariant_embedding: dict[str, Union[bool, str, int]],
         bias: bool,
         activation: str,
     ):
@@ -81,7 +81,7 @@ class UniversalInvariantEmbedding(torch.nn.Module):
     def forward(
         self,
         batch: torch.Tensor,
-        attrs: Dict[str, torch.Tensor],
+        attrs: dict[str, torch.Tensor],
     ) -> torch.Tensor:
         embeddings = []
 
@@ -178,7 +178,7 @@ class EquivariantEmbedding(torch.nn.Module):
 class UniversalEquivariantEmbedding(torch.nn.Module):
     def __init__(
         self,
-        equivariant_embedding: Dict[str, bool | str | int],
+        equivariant_embedding: dict[str, Union[bool, str, int]],
         num_elements: int,
         num_channel: int,
         lmax: int,
@@ -207,7 +207,7 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
             batch: torch.Tensor,
-            attrs: Dict[str, torch.Tensor]
+            attrs: dict[str, torch.Tensor]
         ) -> torch.Tensor:
         node_feats = self.reshape(node_feats)
         for p, module in self.uee.items():
