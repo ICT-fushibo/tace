@@ -80,14 +80,12 @@ DEFAULT_MODEL_CONFIG = {
         "ictp_ictc_like": True,
         "resolution": None,
         "num_channel": None,
-        "nonlinear": None,
         "return_components": None,
     },
     "readout_emlp": {
         "bias": False,
         "hidden": [16],
         "use_alllayer": True,
-        "cat_alllayer": False,
         "use_uie": False,
     },
     "scale_shift": {

@@ -279,7 +279,6 @@ class Product(torch.nn.Module):
         ictp_ictc_like: bool,
         bias: bool,
         resolution: list[int],
-        nonlinear: Union[str, None],
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
     ) -> None:
@@ -297,39 +296,25 @@ class Product(torch.nn.Module):
         self.ictp_ictc_like = ictp_ictc_like
         self.use_bias = bias
         self.num_hidden_channel = num_hidden_channel or num_channel
-        self.nonlinear = nonlinear
         self.nonlinear_type = None
         self.nonlinear_act = None
-        if nonlinear is not None:
-            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
         self.resolution = resolution
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
 
         if self.correlation == 1:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
-            self.irreps_hidden1 = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
+            self.irreps_hidden = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
         else:
             self.irreps_in = _to_full_so3_irreps(self.lmax, self.num_channel)
-            self.irreps_hidden1 = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
+            self.irreps_hidden = _to_full_so3_irreps(self.lmax, self.num_hidden_channel)
 
         if layer == num_layers-1:
-            self.irreps_hidden2 = _to_full_so3_irreps(self.target_weight, self.num_hidden_channel)
+            self.irreps_coefs_out = _to_full_so3_irreps(self.target_weight, self.num_hidden_channel)
             self.irreps_out = _to_full_so3_irreps(self.target_weight, self.num_channel)
         else:
-            self.irreps_hidden2 = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
+            self.irreps_coefs_out = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
             self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
-
-        if self.nonlinear_type == 'gate':
-            self.irreps_nonlinear =(
-                self.irreps_hidden2 + o3.Irreps(f"{len(self.irreps_hidden2)*self.num_hidden_channel}x0e")
-            ).regroup()
-        elif self.nonlinear_type == 'e3nngate':
-            self.irreps_nonlinear =(
-                self.irreps_hidden2 + o3.Irreps(f"{(len(self.irreps_hidden2)-1)*self.num_hidden_channel}x0e")
-            ).regroup()
-        else:
-            self.irreps_nonlinear = self.irreps_hidden2
 
         self._setup()
     

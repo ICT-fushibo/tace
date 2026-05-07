@@ -56,31 +56,33 @@ config:
     use_first_resnet: false
 
   atomic_basis:
-    type: cgtp # [cgtp]
+    type: cgtp # [cgtp, so2] 
+    # type: [cgtp, so2, cgtp, so2 ...]
     l1l2: null # [null, <=], restriction for each layer
-    ictp_ictc_like: true # always true (cueq not support true, need modify source code)
+    ictp_ictc_like: true # always true
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
-    nonlinear: sigmoid_gate # [null, sigmoid_gate, sigmoid_norm, silu_grid]
-    edge_nonlinear: null # [null, so2_sigmoid_gate]
+    nonlinear: sigmoid_gate # [null, sigmoid_gate]
+    edge_nonlinear: so2_sigmoid_gate # [null, so2_sigmoid_gate]
     edge_info_type: mlp # [mlp, glu]
       
   product_basis:
-    type: cgtp  # [cgtp, gtp, oam]
+    # We currently don't think there is much improvement in adding nonlinearity to product basis
+    type: cgtp  # [cgtp, gtp]
+    # type: [cgtp, gtp, cgtp, gtp ...]
     l1l2: null  # [null, <=]
-    l3s: null
     ictp_ictc_like: true
     correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
     num_channel: null # (int)
-    nonlinear: null # [null, sigmoid_gate, sigmoid_norm]
+    return_components: null # [null, list(int)], if not specify, last layer will only return target weight
 
   readout_emlp:
     bias: false
     hidden: [16]
     use_alllayer: false # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
-    use_uie: false
+    use_uie: false # (bool) whether use uie readout
    
   scale_shift:
-    scale_type: rms_forces_by_element # [null, rms_forces, rms_forcesrms_forces_by_element]
+    scale_type: rms_forces # [null, rms_forces, rms_forcesrms_forces_by_element]
     shift_type: null # [null, mean_delta_energy_per_atom, forces, mean_delta_energy_per_atom_by_element]
     scale_trainable: false # (bool) 
     shift_trainable: false # (bool) 
@@ -126,7 +128,7 @@ config:
       enable: false
       normalizer: 1.0 # (float)
 
-    initial_noncollinear_magmoms:
+    initial_noncollinear_magmoms: # only in SO(3) group, not O(3) now
       enable: false
       normalizer: 1.0 # (float)
 

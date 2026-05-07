@@ -239,7 +239,6 @@ class Representation(torch.nn.Module):
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
-                    nonlinear=product_basis['nonlinear'][layer],
                     resolution=product_basis['resolution'],
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
