@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "TACE - ST and ICT based equivariant atomistic model."
 authors = [{ name = "Zemin Xu", email = "xv_chana@163.com" }]
 
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
     "torch>=2.4",
     "torch_geometric>=2.4",

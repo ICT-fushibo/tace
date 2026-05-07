@@ -4,12 +4,11 @@
 ################################################################################
 
 import math
-from typing import Optional
 
 
 import torch
-from e3nn.nn import Activation
 from e3nn import o3
+from e3nn.nn import Activation
 
 
 class Linear(torch.nn.Module):
@@ -139,7 +138,9 @@ class ElementLinear(torch.nn.Module):
             torch.nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        weight = torch.einsum("bz,zi->bi", y, self.weight)
+        node_type = y.argmax(dim=-1)
+        weight = self.weight[node_type]
+        # weight = torch.einsum("bz,zi->bi", y, self.weight)
         out = self.linear(x, weight)
         if self.bias is not None:
             bias = torch.einsum("bz,zi->bi", y, self.bias)
@@ -241,4 +242,3 @@ class GatedLinearUnit(torch.nn.Module):
             f"linear={self.linear}, "
             f"bias={self.bias is not None})"
         )
-    

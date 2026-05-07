@@ -14,6 +14,25 @@ from .utils import so2_expand_index
 
 # torch.set_printoptions(sci_mode=False, precision=4)
 
+def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
+    if restriction == None:
+        return True
+    elif restriction == "<":
+        return l1 < l2
+    elif restriction == "<=":
+        return l1 <= l2
+    elif restriction == ">":
+        return l1 > l2
+    elif restriction == ">=":
+        return l1 >= l2
+    elif restriction == "==":
+        return l1 == l2
+    elif restriction == "!=":
+        return l1 != l2
+    else:
+        raise ValueError(f"Unknown restriction: {restriction}")
+    
+
 class Linear(torch.nn.Module):
 
     __constants__ = ["in_features", "out_features"]
@@ -49,163 +68,156 @@ class Linear(torch.nn.Module):
         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
 
-# class SO2MLinear(torch.nn.Module):
-#     """
-#     Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
-#     Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
-#     """
-#     def __init__(
-#         self,
-#         m,
-#         num_in_channels,
-#         num_out_channels,
-#         lmax,
-#         mmax,
-#     ):
-#         super().__init__()
+class SO2MLinear(torch.nn.Module):
+    """
+    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
+    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
+    """
+    def __init__(
+        self,
+        m: int, 
+        num_channel_in: int,
+        num_channel_out: int,
+        num_components_in: int,
+        num_components_out: int,
+    ):
+        super().__init__()
 
-#         self.m = m
-#         self.num_in_channels = num_in_channels
-#         self.num_out_channels = num_out_channels
-#         self.lmax = lmax
-#         self.mmax = mmax
+        self.m = m
+        self.num_channel_in = num_channel_in
+        self.num_channel_out = num_channel_out
+        self.num_components_in = num_components_in
+        self.num_components_out = num_components_out
+        assert self.num_components_in > 0
+        assert self.num_components_out > 0
 
-#         num_m_components = self.lmax - self.m + 1
-#         assert num_m_components > 0
+        self.fc = Linear(
+            self.num_components_in * self.num_channel_in,
+            self.num_components_out * self.num_channel_out * 2,
+            bias=False,
+        )
+        self.fc.weight.data.mul_(1 / math.sqrt(2))
 
-#         self.in_features = num_m_components * self.num_in_channels
-#         self.out_features = num_m_components * self.num_out_channels
+        self._Cout = self.num_components_out * self.num_channel_out
+
+    def forward(self, x, concat_outputs=True) -> tuple[torch.Tensor | torch.Tensor] | torch.Tensor:
+        # [batch, 2, -1]
+        x = self.fc(x)
+        w1_x = x.narrow(2, 0, self._Cout)
+        w2_x = x.narrow(2, self._Cout, self._Cout)
+        xr = w1_x.narrow(1, 0, 1) - w2_x.narrow(1, 1, 1) # w1_x+m - w2x-m
+        xi = w1_x.narrow(1, 1, 1) + w2_x.narrow(1, 0, 1) # w1_x-m + w2x+m
+        x_out = (xr, xi)
+        if concat_outputs:
+            x_out = torch.cat(x_out, dim=1)
+        return x_out
+
+
+class SO2Linear(torch.nn.Module):
+    """
+    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
+    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
+    """
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channel_in: int,
+        num_channel_out: int,
+        num_components_in: None | list[int] = None,
+        num_components_out: None | list[int] = None,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel_in = num_channel_in
+        self.num_channel_out = num_channel_out
+
+        if num_components_in is None:
+            self.num_components_in = [lmax + 1 -m for m in range(mmax + 1)]
+        else:
+            self.num_components_in = num_components_in
+        assert isinstance(self.num_components_in, list)
+        if num_components_out is None:
+            self.num_components_out = [lmax + 1 -m for m in range(mmax + 1)]
+        else:
+            self.num_components_out = num_components_out
+        assert isinstance(self.num_components_out, list)
+
+
+        self.m0_rlinear = Linear(
+            self.num_channel_in * self.num_components_in[0], 
+            self.num_channel_out * self.num_components_out[0], 
+            bias=True,
+        )
+        self.ms_clinear = torch.nn.ModuleList()
+        for m in range(1, self.mmax + 1):
+            self.ms_clinear.append(
+                SO2MLinear(
+                    m,
+                    self.num_channel_in,
+                    self.num_channel_out,
+                    self.num_components_in[m], 
+                    self.num_components_out[m], 
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # [batch, num_components, num_channel],
+        # layout of m components is (0, 0, ...), (1, 1, ...), ...
+
+        B = x.size(0)
+        Cout = self.num_channel_out
+
+        outputs = []
+
+        # m = 0
+        xm0 = x.narrow(1, 0, self.num_components_in[0])
+        xm0 = xm0.reshape(B, -1)
+        xm0 = self.m0_rlinear(xm0)
+        xm0 = xm0.view(B, -1, Cout)
+        outputs.append(xm0)
+
+        # m > 0
+        offset = self.lmax + 1
+        for m in range(1, self.mmax + 1):
+            xm = x.narrow(1, offset, 2 * (self.num_components_in[m]))
+            offset = offset + 2 * self.num_components_in[m]
+            xm = xm.reshape(B, 2, -1)
+            xm = self.ms_clinear[m - 1](xm, concat_outputs=False)
+            xr, xi = xm[0], xm[1]
+            xr = xr.view(B, -1, Cout)
+            xi = xi.view(B, -1, Cout)
+            outputs.append(xr)
+            outputs.append(xi)
+        outputs = torch.cat(outputs, dim=1)
+
+        return outputs
         
-#         self.fc = Linear(
-#             self.in_features,
-#             (2 * self.out_features),
-#             bias=False,
-#         )
-#         self.fc.weight.data.mul_(1 / math.sqrt(2))
-
-#     def forward(self, x_m, concat_outputs=True):
-#         x_m = self.fc(x_m)
-#         x_r = x_m.narrow(2, 0, self.out_features)
-#         x_i = x_m.narrow(2, self.out_features, self.out_features)
-#         x_m_r = x_r.narrow(1, 0, 1) - x_i.narrow(1, 1, 1) 
-#         x_m_i = x_r.narrow(1, 1, 1) + x_i.narrow(1, 0, 1)
-#         x_out = (x_m_r, x_m_i)
-#         if concat_outputs:
-#             x_out = torch.cat(x_out, dim=1)
-#         return x_out
-
-
-# class SO2Linear(torch.nn.Module):
-#     """
-#     Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
-#     Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
-#     """
-#     def __init__(
-#         self,
-#         mmax,
-#         lmax,
-#         num_in_channels,
-#         num_out_channels,
-#         extra_m0_out_channels=None
-#     ):
-#         super().__init__()
-#         self.num_in_channels = num_in_channels
-#         self.num_out_channels = num_out_channels
-#         self.lmax = lmax
-#         self.mmax = mmax
-#         self.extra_m0_out_channels = extra_m0_out_channels
-
-#         num_in_channels_m0 = (self.lmax + 1) * self.num_in_channels
-#         num_out_channels_m0 = (self.lmax + 1) * self.num_out_channels
-#         if self.extra_m0_out_channels is not None:
-#             self.num_channels_m0_list = [self.extra_m0_out_channels, num_out_channels_m0]
-#             num_out_channels_m0 = num_out_channels_m0 + self.extra_m0_out_channels
-#         self.fc_m0 = Linear(
-#             num_in_channels_m0, 
-#             num_out_channels_m0,
-#             bias=True,
-#         )
-#         self.so2_m_linear = torch.nn.ModuleList()
-#         for m in range(1, self.mmax + 1):
-#             self.so2_m_linear.append(
-#                 SO2MLinear(
-#                     m,
-#                     self.num_in_channels,
-#                     self.num_out_channels,
-#                     self.lmax,
-#                     self.mmax,
-#                 )
-#             )
-
-#     def forward(self, x):
-#         """
-#             1.  `x` shape: [num_edges, num_m_components, num_channels]
-#             2.  We assume the layout of m components is (0, 0, ...), (1, 1, ...), ...
-#         """
-#         num_edges = x.shape[0]
-#         outputs = []
-
-#         # Compute m=0 coefficients separately since they only have real values (no imaginary)
-#         x_m0 = x.narrow(1, 0, (self.lmax + 1))
-#         x_m0 = x_m0.reshape(num_edges, -1)
-#         x_m0 = self.fc_m0(x_m0)
-
-#         x_m0_extra = None
-#         # extract extra m0 features
-#         if self.extra_m0_out_channels is not None:
-#             x_m0_extra, x_m0 = torch.split(x_m0, self.num_channels_m0_list, dim=1)
-
-#         x_m0 = x_m0.view(num_edges, -1, self.num_out_channels)
-#         outputs.append(x_m0)
-
-#         # Compute the values for the m > 0 coefficients
-#         offset = self.lmax + 1
-#         for m in range(1, self.mmax + 1):
-#             x_m = x.narrow(1, offset, 2 * (self.lmax + 1 - m))
-#             offset = offset + 2 * (self.lmax + 1 - m)
-#             x_m = x_m.reshape(num_edges, 2, -1)
-#             x_m = self.so2_m_linear[m - 1](x_m, concat_outputs=False)
-#             x_m_pos, x_m_neg = x_m[0], x_m[1]
-#             x_m_pos = x_m_pos.view(num_edges, -1, self.num_out_channels)
-#             x_m_neg = x_m_neg.view(num_edges, -1, self.num_out_channels)
-#             # print('+',  x_m_pos[0, :, 0])
-#             # print('-',  x_m_neg[0, :, 0])
-#             outputs.append(x_m_pos)
-#             outputs.append(x_m_neg)
-            
-#         outputs = torch.cat(outputs, dim=1)
-
-#         if self.extra_m0_out_channels is not None:
-#             return outputs, x_m0_extra
-#         else:
-#             return outputs
-        
-#     def __repr__(self) -> str:
-#         p = {
-#             0: 'e',
-#             1: 'o',
-#         }
-#         ins = []
-#         outs = []
-#         for m in range(self.mmax + 1):
-#             num_components = self.lmax + 1 - m
-#             in_mul = self.num_in_channels * num_components
-#             out_mul = self.num_out_channels * num_components
-#             if m == 0 and self.extra_m0_out_channels is not None:
-#                 out_mul += self.extra_m0_out_channels
-#             ins.append(f"{in_mul}x{m}{p[m % 2]}")
-#             outs.append(f"{out_mul}x{m}{p[m % 2]}")
-#         num_weights = sum(
-#             p.numel() for p in self.parameters() if p.requires_grad
-#         )
-#         return (
-#             f"{self.__class__.__name__}"
-#             f"({'+'.join(ins)} -> "
-#             f"{'+'.join(outs)} | "
-#             f"{num_weights} weights)"
-#             f"(bias={True})"
-#         )
-
+    def __repr__(self) -> str:
+        p = {
+            0: 'e',
+            1: 'o',
+        }
+        ins = []
+        outs = []
+        for m in range(self.mmax + 1):
+            n1 = self.num_components_in[m] 
+            n2 = self.num_components_out[m] 
+            ins.append(f"{self.num_channel_in * n1}x{m}{p[m % 2]}")
+            outs.append(f"{self.num_channel_out * n2}x{m}{p[m % 2]}")
+        num_weights = sum(
+            p.numel() for p in self.parameters() if p.requires_grad
+        )
+        return (
+            f"{self.__class__.__name__}"
+            f"({'+'.join(ins)} -> "
+            f"{'+'.join(outs)} | "
+            f"{num_weights} weights)"
+            f"(bias={True})"
+        )
+    
 
 class SO2Gate(torch.nn.Module):
     def __init__(
@@ -247,25 +259,6 @@ class SO2Gate(torch.nn.Module):
         g = torch.index_select(g, dim=1, index=self.expand_index)
         return g * x 
 
-
-def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
-    if restriction == None:
-        return True
-    elif restriction == "<":
-        return l1 < l2
-    elif restriction == "<=":
-        return l1 <= l2
-    elif restriction == ">":
-        return l1 > l2
-    elif restriction == ">=":
-        return l1 >= l2
-    elif restriction == "==":
-        return l1 == l2
-    elif restriction == "!=":
-        return l1 != l2
-    else:
-        raise ValueError(f"Unknown restriction: {restriction}")
-    
 
 # class ChannelWiseFullyConnectedSO2TensorProduct(torch.nn.Module):
 
@@ -747,10 +740,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
             outputs.append(imag)
 
         out = torch.cat(outputs, dim=1)
-        # print(out.shape)
-        # import sys 
-        # sys.exit()
-        # # out = out * self.output_scales.view(1, -1, 1)
+        out = out * self.output_scales.view(1, -1, 1)
         return out
         
     def __repr__(self):
@@ -786,154 +776,3 @@ class uuuSO2TensorProduct(torch.nn.Module):
         lines.append(f"  total_paths={total_paths}")
         lines.append(")")
         return "\n".join(lines)
-    
-
-class SO2MLinear(torch.nn.Module):
-    """
-    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
-    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
-    """
-    def __init__(
-        self,
-        m: int, 
-        num_channel_in: int,
-        num_channel_out: int,
-        num_components_in: int,
-        num_components_out: int,
-    ):
-        super().__init__()
-
-        self.m = m
-        self.num_channel_in = num_channel_in
-        self.num_channel_out = num_channel_out
-        self.num_components_in = num_components_in
-        self.num_components_out = num_components_out
-        assert self.num_components_in > 0
-        assert self.num_components_out > 0
-
-        self.fc = Linear(
-            self.num_components_in * self.num_channel_in,
-            self.num_components_out * self.num_channel_out * 2,
-            bias=False,
-        )
-        self.fc.weight.data.mul_(1 / math.sqrt(2))
-
-        self._Cout = self.num_components_out * self.num_channel_out
-
-    def forward(self, x, concat_outputs=True) -> tuple[torch.Tensor | torch.Tensor] | torch.Tensor:
-        # [batch, 2, -1]
-        x = self.fc(x)
-        w1_x = x.narrow(2, 0, self._Cout)
-        w2_x = x.narrow(2, self._Cout, self._Cout)
-        xr = w1_x.narrow(1, 0, 1) - w2_x.narrow(1, 1, 1) # w1_x+m - w2x-m
-        xi = w1_x.narrow(1, 1, 1) + w2_x.narrow(1, 0, 1) # w1_x-m + w2x+m
-        x_out = (xr, xi)
-        if concat_outputs:
-            x_out = torch.cat(x_out, dim=1)
-        return x_out
-
-
-class SO2Linear(torch.nn.Module):
-    """
-    Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
-    Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
-    """
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channel_in: int,
-        num_channel_out: int,
-        num_components_in: None | list[int] = None,
-        num_components_out: None | list[int] = None,
-    ):
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel_in = num_channel_in
-        self.num_channel_out = num_channel_out
-
-        if num_components_in is None:
-            self.num_components_in = [lmax + 1 -m for m in range(mmax + 1)]
-        else:
-            self.num_components_in = num_components_in
-        assert isinstance(self.num_components_in, list)
-        if num_components_out is None:
-            self.num_components_out = [lmax + 1 -m for m in range(mmax + 1)]
-        else:
-            self.num_components_out = num_components_out
-        assert isinstance(self.num_components_out, list)
-
-
-        self.m0_rlinear = Linear(
-            self.num_channel_in * self.num_components_in[0], 
-            self.num_channel_out * self.num_components_out[0], 
-            bias=True,
-        )
-        self.ms_clinear = torch.nn.ModuleList()
-        for m in range(1, self.mmax + 1):
-            self.ms_clinear.append(
-                SO2MLinear(
-                    m,
-                    self.num_channel_in,
-                    self.num_channel_out,
-                    self.num_components_in[m], 
-                    self.num_components_out[m], 
-                )
-            )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # [batch, num_components, num_channel],
-        # layout of m components is (0, 0, ...), (1, 1, ...), ...
-
-        B = x.size(0)
-        Cout = self.num_channel_out
-
-        outputs = []
-
-        # m = 0
-        xm0 = x.narrow(1, 0, self.num_components_in[0])
-        xm0 = xm0.reshape(B, -1)
-        xm0 = self.m0_rlinear(xm0)
-        xm0 = xm0.view(B, -1, Cout)
-        outputs.append(xm0)
-
-        # m > 0
-        offset = self.lmax + 1
-        for m in range(1, self.mmax + 1):
-            xm = x.narrow(1, offset, 2 * (self.num_components_in[m]))
-            offset = offset + 2 * self.num_components_in[m]
-            xm = xm.reshape(B, 2, -1)
-            xm = self.ms_clinear[m - 1](xm, concat_outputs=False)
-            xr, xi = xm[0], xm[1]
-            xr = xr.view(B, -1, Cout)
-            xi = xi.view(B, -1, Cout)
-            outputs.append(xr)
-            outputs.append(xi)
-        outputs = torch.cat(outputs, dim=1)
-
-        return outputs
-        
-    def __repr__(self) -> str:
-        p = {
-            0: 'e',
-            1: 'o',
-        }
-        ins = []
-        outs = []
-        for m in range(self.mmax + 1):
-            n1 = self.num_components_in[m] 
-            n2 = self.num_components_out[m] 
-            ins.append(f"{self.num_channel_in * n1}x{m}{p[m % 2]}")
-            outs.append(f"{self.num_channel_out * n2}x{m}{p[m % 2]}")
-        num_weights = sum(
-            p.numel() for p in self.parameters() if p.requires_grad
-        )
-        return (
-            f"{self.__class__.__name__}"
-            f"({'+'.join(ins)} -> "
-            f"{'+'.join(outs)} | "
-            f"{num_weights} weights)"
-            f"(bias={True})"
-        )

@@ -4,12 +4,11 @@
 ################################################################################
 
 import logging
-from typing import Dict, Union
 
 import torch
 
 
-def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module:
+def to_lora_model(finetune_cfg: dict, model: torch.nn.Module) -> torch.nn.Module:
     if not finetune_cfg: 
         return model
 

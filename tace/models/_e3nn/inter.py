@@ -2,20 +2,17 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-"""
-Not all residual link are stable, such as BAB, BaB, BB_ba ...
-"""
-import math
-import copy
+
+
 from typing import Optional, Dict
 
 
 import torch
-from tace.utils.torch_scatter import scatter_sum
 import e3nn
 from e3nn import o3
 
 
+from tace.utils.torch_scatter import scatter_sum
 from ..mlp import ACTIVATION, FFN
 from ..layout import LayoutTransform
 from .base import Interaction
@@ -23,9 +20,6 @@ from .linear import Linear, ElementLinear
 from .fused import O3ScatterTensorProduct, SO2ScatterTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from .layer_norm import get_normalization_layer
-
-
-from tace.utils.torch_scatter import scatter_sum
 
 
 class CgtpInteraction(Interaction):
@@ -185,7 +179,6 @@ class CgtpInteraction(Interaction):
                 )
                 self.reshape2 = LayoutTransform(self.irreps_out)
 
-
     def forward(
         self,
         node_feats: torch.Tensor,
@@ -197,6 +190,7 @@ class CgtpInteraction(Interaction):
         cutoff: Optional[torch.Tensor],
         graph,
         prev_feats: list[torch.Tensor],
+        batch: torch.Tensor,
     ):
     
         lmp_data = graph.lmp_data
@@ -268,7 +262,6 @@ class CgtpInteraction(Interaction):
             else:
                 resAB = self.resnetAB(m_i)
 
-
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
@@ -309,6 +302,7 @@ class SO2Interaction(Interaction):
             so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
+            scatter='sum',
 
         )
 
@@ -459,6 +453,7 @@ class SO2Interaction(Interaction):
         cutoff: Optional[torch.Tensor],
         graph,
         prev_feats: list[torch.Tensor],
+        batch: torch.Tensor,
     ):
     
         lmp_data = graph.lmp_data
@@ -531,7 +526,6 @@ class SO2Interaction(Interaction):
             else:
                 resAB = self.resnetAB(m_i)
 
-
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
@@ -545,9 +539,92 @@ class SO2Interaction(Interaction):
 
         return m_i, self.truncate_ghosts(sc, nlocal)
 
+
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
     "cgtp": CgtpInteraction,
     "so2": SO2Interaction,
 }
+
+
+# class SO2EdgeInteraction(Interaction):
+#     def _setup(self) -> None:
+
+#         self.linear_up = Linear(
+#             self.irreps_in,
+#             self.irreps_in,
+#             bias=self.use_bias,
+#         )    
+
+#         self.rejector = SO2ScatterTensorProduct(
+
+#             mmax=self.mmax,
+#             lmax=self.lmax,
+#             num_channel=self.num_channel,
+#             num_hidden_channel=self.num_hidden_channel,
+#             is_so2_layout=self.is_so2_layout,
+#             is_scalar_tp=(self.irreps_node_embedding.lmax == 0) and (self.layer == 0),
+#             edge_nonlinear=self.edge_nonlinear,
+#             use_so2_edge_ace=self.use_so2_edge_ace,
+#             num_elements=self.num_elements,
+#             so2_angular_basis=self.so2_angular_basis,
+#             reshape_in=LayoutTransform(self.irreps_in),
+#             reshape_out=LayoutTransform(self.irreps_out),
+#             scatter=None,
+
+#         )
+
+#         self.linear_down = Linear(
+#             o3.Irreps([(self.rejector.num_out_channel, ir) for _, ir in self.irreps_out]),
+#             self.irreps_out,
+#             bias=self.use_bias,
+#         )
+
+#         self.edge_info = FFN[self.edge_info_type](
+#             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
+#             bias=self.radial_bias,
+#             layer_norm=self.radial_layer_norm,
+#             act=self.radial_act,
+#         )
+
+#         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
+#             if self.resnet_type in ['BB', "BAB"]:
+#                 self.norm1 = get_normalization_layer(
+#                     self.pre_norm_type,
+#                     ls=self.irreps_in.lmax,
+#                     num_channels=self.num_channel,
+#                 )
+#                 self.reshape1 = LayoutTransform(self.irreps_in)
+
+#     def forward(
+#         self,
+#         node_feats: torch.Tensor,
+#         node_attrs_total: torch.Tensor,
+#         node_attrs_slice: torch.Tensor,
+#         edge_feats: torch.Tensor,
+#         edge_attrs: torch.Tensor,
+#         edge_index: torch.Tensor,
+#         cutoff: Optional[torch.Tensor],
+#         graph,
+#         prev_feats: list[torch.Tensor],
+#     ):
+    
+#         lmp_data = graph.lmp_data
+#         lmp_natoms = graph.lmp_natoms
+#         nlocal = lmp_natoms[0] if lmp_data is not None else None
+
+#         if hasattr(self, 'norm1'):
+#             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
+
+#         node_feats = self.linear_up(node_feats)
+#         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
+        
+#         conv_weights = self.edge_info(edge_feats)
+
+#         if cutoff is not None:
+#             conv_weights = conv_weights * cutoff
+
+#         m_ij = self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index, cutoff)
+
+#         return m_ij

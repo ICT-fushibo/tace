@@ -156,6 +156,10 @@ DEFAULT_MODEL_CONFIG = {
             "method": "lagrangian",
         },
     },
+    "dropout": {
+        "use_first_dropout": False,
+        "stochastic_depth": 0.0,
+    },
 }
 
 

@@ -20,7 +20,7 @@ from .fused import uuuTensorProduct
 from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
 from ..mlp import ACTIVATION
 from ..so2 import SO3Grid
-
+from .dropout import GraphDropPath
 
 
 class CgtpACE(Product):
@@ -119,18 +119,21 @@ class CgtpACE(Product):
         else:
             self.nonlinearity = torch.nn.Identity()
 
-
         self.linear = Linear(
             self.irreps_hidden2,
             self.irreps_out,
             bias=self.use_bias
         )    
+
+        if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
         
     def forward(
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
             sc: torch.Tensor,
+            batch: torch.Tensor,
         ) -> torch.Tensor:
 
         node_feats = self.linear_up(node_feats)
@@ -146,7 +149,10 @@ class CgtpACE(Product):
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 
         outs = self.linear(self.nonlinearity(outs))
-
+        
+        if hasattr(self, "stochastic_depth"):
+            outs = self.stochastic_depth(outs, batch)
+        
         if sc is not None:
             outs = outs + sc
 
@@ -312,6 +318,7 @@ class GtpACE(Product):
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
             sc: torch.Tensor,
+            batch: torch.Tensor,
         ) -> torch.Tensor:
 
         # node_feats = self.reshape1(node_feats).transpose(-1, -2).contiguous()
@@ -404,6 +411,7 @@ class OamACE(Product):
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
             sc: torch.Tensor,
+            batch: torch.Tensor,
         ) -> torch.Tensor:
 
         node_feats = self.linear_up(node_feats)
@@ -433,19 +441,29 @@ class IACE(Product):
 
     def _setup(self):
         
-        self.linear = Linear(
+        self.linear = ElementLinear(
             self.irreps_in,
             self.irreps_out,
+            bias=True,
+            num_elements=self.num_elements
         )
+
+        if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
 
     def forward(
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
             sc: torch.Tensor,
+            batch: torch.Tensor,
         ) -> torch.Tensor:
 
-        outs = self.linear(node_feats)
+        outs = self.linear(node_feats, node_attrs)
+
+        if hasattr(self, "stochastic_depth"):
+            outs = self.stochastic_depth(outs, batch)
+
         if sc is not None:
             outs = outs + sc
 

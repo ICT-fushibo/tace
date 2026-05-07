@@ -4,11 +4,11 @@ import torch
 
 from tace.utils.torch_scatter import scatter
 
-torch.set_printoptions(sci_mode=False, precision=6)
+# torch.set_printoptions(sci_mode=False, precision=6)
 
 @dataclasses.dataclass
 class DenoisingPosParams:
-    prob: float = 0.0
+    prob: float = 0.5
     fixed_noise_std: bool = True
     std: float = 0.025
     corrupt_ratio: float = 0.5

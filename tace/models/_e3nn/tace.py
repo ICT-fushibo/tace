@@ -49,6 +49,7 @@ class e3nnTACE(torch.nn.Module):
         layer_norm: Dict = {},
         normalizer: Dict = {},
         mmax: int = 2,
+        dropout: Dict = {},
         **kwargs,
     ):
         cfg = {
@@ -102,11 +103,13 @@ class e3nnTACE(torch.nn.Module):
             atomic_basis=cfg['atomic_basis'],
             product_basis=cfg['product_basis'],
             target_weight=self.target_weight,
+            target_property=self.target_property,
             invariant_property=cfg['invariant_property'],
             equivariant_property=cfg['equivariant_property'],
             universal_embedding=cfg['universal_embedding'],
             resnet=cfg['resnet'],
             layer_norm=cfg['layer_norm'],
+            dropout=cfg['dropout'],
         )
 
         # === Readout ===
@@ -212,6 +215,12 @@ class e3nnTACE(torch.nn.Module):
             self.direct_diagonal_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
             self.direct_diagonal_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
             self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
+
+        # # === Direct Hessian ===
+        # if "direct_hessian" in self.target_property:
+        #     self.direct_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
+        #     self.direct_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+        #     self.direct_hessian_basis_change = PropertyBasisChange["direct_hessian"]() 
 
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
@@ -439,6 +448,30 @@ class e3nnTACE(torch.nn.Module):
             d_diag_h2_node = torch.sum(torch.stack(d_diag_h2_list, dim=-1), dim=-1)
             D_DIAG_H  = self.direct_diagonal_hessian_basis_change(d_diag_h0_node, d_diag_h2_node)
 
+        # # === Direct Hessian ===
+        # D_H = None
+        # if 'direct_hessian' in self.target_property:
+        #     d_h0_list = []; d_h2_list = []
+        #     for ii, (direct_hessian_readout0, direct_hessian_readout2) in enumerate(
+        #         zip(self.direct_hessian_readout0s, self.direct_hessian_readout2s)
+        #     ):
+        #         # if not self.use_alllayer:
+        #         #     ii = -1
+        #         ii = -1
+        #         d_h0_list.append(
+        #             direct_hessian_readout0(
+        #                 descriptors[ii],
+        #             )[num_atoms_arange, node_fidelity]
+        #         )
+        #         d_h2_list.append(
+        #             direct_hessian_readout2(
+        #                 descriptors[ii],
+        #             ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+        #         )
+        #     d_h0_node = torch.sum(torch.stack(d_h0_list, dim=-1), dim=-1)
+        #     d_h2_node = torch.sum(torch.stack(d_h2_list, dim=-1), dim=-1)
+        #     D_H  = self.direct_hessian_basis_change(d_h0_node, d_h2_node)
+
         # === ABS_F_C_MAG === 
         ABS_F_C_MAG = None
         if "abs_final_collinear_magmoms" in self.target_property:
@@ -511,6 +544,7 @@ class e3nnTACE(torch.nn.Module):
             "direct_virials": D_V,
             "direct_stress": D_S,
             "direct_diagonal_hessian": D_DIAG_H,
+            # "direct_hessian": D_H,
             "charges": CHARGES,
             "les_energy": LES_E,
             "les_latent_charges": LES_LQ,

@@ -101,7 +101,6 @@ def l2mae_dens_direct_forces(
     noise_mask = label['noise_mask'].unsqueeze(-1)
     forces_error = (pred['direct_forces'] - label['direct_forces'])* (~noise_mask)
     noise_error = (pred['noise_vec'] - label['noise_vec'])* noise_mask * NOISE_MUL
-
     return torch.mean(
         torch.linalg.vector_norm(forces_error + noise_error, ord=2, dim=-1)
         * total_weight

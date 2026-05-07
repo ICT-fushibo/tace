@@ -3,8 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-
-import os
 import copy
 import logging
 from pathlib import Path
@@ -18,102 +16,19 @@ import torch.distributed as dist
 import lightning as L
 from torchmetrics import MetricCollection
 from omegaconf import OmegaConf
-from tace.utils.torch_scatter import scatter_sum
 
 
-from .skip import LossSkipController
+from tace.utils.env import TACE_APPLY_U_SHIFT, TACE_USE_DENS
+from tace.utils.metrics import build_metrics, update_metrics
+from tace.utils._global import DTYPE, DEVICE
+from tace.utils.loss.uncertainty import UncertaintyLoss
+from tace.dataset.quantity import get_target_property, get_embedding_property
+from tace.models.adapter import TensorModel
 from .select_model import select_model
-from ..dataset.quantity import get_target_property, get_embedding_property
-from ..utils.metrics import build_metrics, update_metrics
-from .. utils._global import DTYPE, DEVICE
-from ..utils.loss.uncertainty import UncertaintyLoss
-from ..models.adapter import TensorModel
-
-
-from ..models._e3nn.dens import add_gaussian_noise_to_position
-
-
-def to_lora_model(finetune_cfg: Dict, model: torch.nn.Module) -> torch.nn.Module:
-    if not finetune_cfg: 
-        return model
-
-    # # === LoRA ===
-    # lora = finetune_cfg.get('lora', {})
-    # if len(lora) > 0:
-    #     inject_lora_into_model(model, lora)
-
-    # === Freeze ===
-    freeze = finetune_cfg.get('freeze', {})
-    if len(freeze) > 0:
-        name_to_param = dict(model.named_parameters())
-        for name, flag in freeze.items():
-            if name not in name_to_param:
-                logging.warning(f"Parameter '{name}' not found in model")
-                continue
-            param = name_to_param[name]
-            param.requires_grad = not bool(flag)
-    logging.info(model)
-
-    return model
-
-
-TACE_APPLY_U_SHIFT = os.environ.get('TACE_APPLY_U_SHIFT', '0') 
-TACE_USE_DENS = os.environ.get('TACE_USE_DENS', '0')
-
-U_SHIFT = {
-    23: -2.271,  # V
-    24: -2.458,  # Cr
-    25: -1.602,  # Mn
-    26: -1.925,  # Fe
-    27: -2.004,  # Co
-    28: -2.586,  # Ni
-    42: -4.895,  # Mo
-    74: -5.875,  # W
-}
-
-def apply_u_shift(batch, energy):
-    with torch.no_grad():
-
-        device = energy.device
-        node_attrs = batch["node_attrs"]  
-        atomic_numbers = torch.tensor([
-            1,2,3,4,5,6,7,8,9,10,
-            11,12,13,14,15,16,17,18,19,20,
-            21,22,23,24,25,26,27,28,29,30,
-            31,32,33,34,35,36,37,38,39,40,
-            41,42,43,44,45,46,47,48,49,50,
-            51,52,53,54,55,56,57,58,59,60,
-            61,62,63,64,65,66,67,68,69,70,
-            71,72,73,74,75,76,77,78,79,80,
-            81,82,83,89,90,91,92,93,94
-        ], device=device)
-
-        delta_E = torch.zeros_like(atomic_numbers, dtype=energy.dtype)
-        for i, Z in enumerate(atomic_numbers.tolist()):
-            if Z in U_SHIFT:
-                delta_E[i] = U_SHIFT[Z]
-
-        per_atom_shift = node_attrs @ delta_E  # [N]
-
-        batch_idx = batch['batch']
-        graph_shift = scatter_sum(per_atom_shift, batch_idx, dim=0)  # [num_graphs]
-
-        is_O = (atomic_numbers == 8).nonzero(as_tuple=True)[0].item()
-        is_F = (atomic_numbers == 9).nonzero(as_tuple=True)[0].item()
-
-        has_O_atom = node_attrs[:, is_O] > 0
-        has_F_atom = node_attrs[:, is_F] > 0
-
-        has_O = scatter_sum(has_O_atom.float(), batch_idx, dim=0) > 0
-        has_F = scatter_sum(has_F_atom.float(), batch_idx, dim=0) > 0
-
-        mask = has_O | has_F  # [num_graphs]
-
-        graph_shift = graph_shift * mask
-
-        energy = energy + graph_shift
-
-        return energy
+from .skip import LossSkipController
+from .lora import to_lora_model
+from .u_shift import apply_u_shift
+from .dens import add_gaussian_noise_to_position
 
 
 def get_class_from_cfg(cfg):
@@ -220,26 +135,20 @@ class LightningWrapperModel(L.LightningModule):
         return output, loss
 
     # def on_before_optimizer_step(self, optimizer):
-    #     for p in self.parameters():
-    #         if p.grad is not None:
-    #             if not torch.isfinite(p.grad).all():
-    #                 logging.warning("Non-finite grad detected, zeroing.")
-    #                 p.grad.zero_()
-
 
     def _shared_step(self, batch, batch_idx, prefix):
 
-        if TACE_APPLY_U_SHIFT == '1':
-            batch['energy'] = apply_u_shift(batch, batch['energy'])
+        with torch.no_grad():
+            if TACE_APPLY_U_SHIFT == '1':
+                batch['energy'] = apply_u_shift(batch, batch['energy'])
 
-        if TACE_USE_DENS == '1':
-            with torch.no_grad():
-                batch = add_gaussian_noise_to_position(batch)
+            if TACE_USE_DENS == '1':
+                    batch = add_gaussian_noise_to_position(batch)
 
-        # batch['direct_forces'] = batch['forces']
-        # batch['direct_forces_weight'] = batch['forces_weight']
-        # batch['direct_stress'] = batch['stress']
-        # batch['direct_stress_weight'] = batch['stress_weight']
+        batch['direct_forces'] = batch['forces']
+        batch['direct_forces_weight'] = batch['forces_weight']
+        batch['direct_stress'] = batch['stress']
+        batch['direct_stress_weight'] = batch['stress_weight']
 
         if self.force_dtype is not None:
             batch = batch.apply(
@@ -570,26 +479,27 @@ class LightningWrapperModel(L.LightningModule):
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
         }
-        model.load_state_dict(state_dict, strict=False)
+        model.load_state_dict(state_dict, strict=strict)
 
-        # === SWA ===
-        if 'swa' in cfg['callbacks']:
-            logging.debug("Since swa is enabled, skip trying load ema.")
-            return model.to(map_location)
+        # # === SWA ===
+        # if 'swa' in cfg['callbacks']:
+        #     logging.debug("Since swa is enabled, skip trying load ema.")
+        #     return model.to(map_location)
         
         # === EMA ===
         if bool(use_ema) and "ema_state_dict" in checkpoint:
             ema_params = checkpoint['ema_state_dict']['shadow_params']
-            for idx, (name, _ ) in enumerate(model.named_parameters()):
+            for idx, (name, _) in enumerate(model.named_parameters()):
                 state_dict[name] = ema_params[idx]
-            model.load_state_dict(state_dict, strict=False)
+            model.load_state_dict(state_dict, strict=strict)
 
         return model.to(map_location)
 
+
 def _load_tace(
     model: str | Path | torch.nn.Module,
-    device: Optional[str | torch.device] = None,
-    strict: Optional[bool] = True,
+    device: str | torch.device | None = None,
+    strict: bool = True,
     use_ema: bool = True,
     **kwargs: Any,
 ) -> TensorModel:
@@ -626,10 +536,11 @@ def _load_tace(
 
     return model.to(device)
 
+
 def load_tace(
     model: str | Path | torch.nn.Module,
-    device: Optional[str | torch.device] = None,
-    strict: Optional[bool] = True,
+    device: str | torch.device | None = None,
+    strict: bool = True,
     use_ema: bool = True,
     target_property: Optional[list[str]] = None,
     **kwargs: Any,
@@ -647,6 +558,7 @@ def load_tace(
         model.reset_target_property(target_property)
 
     return model
+
 
 def finetune(cfg: Dict) -> torch.nn.Module:
 

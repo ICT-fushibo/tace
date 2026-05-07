@@ -18,7 +18,7 @@ from ..so2 import SO3Rotation
 from ..layout import LayoutTransform
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
-from .inter import INTERACTION
+from .inter import INTERACTION # , SO2EdgeInteraction
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .layer_norm import get_normalization_layer
@@ -40,6 +40,7 @@ class Representation(torch.nn.Module):
         lmax: int,
         num_channel: int,
         target_weight: List[int],
+        target_property: List[str],     
         node_embedding: Dict,
         edge_embedding: Dict,
         edge_update: Dict,
@@ -51,6 +52,7 @@ class Representation(torch.nn.Module):
         equivariant_property: List[str],
         universal_embedding: Dict,
         layer_norm: Dict,
+        dropout: Dict,
     ):
         super().__init__()
 
@@ -161,49 +163,66 @@ class Representation(torch.nn.Module):
             ]
         )
 
-
         # === Interaction ===
+        for_interactions = {
+            "num_layers": num_layers,
+            "num_elements": self.num_elements,
+            "avg_num_neighbors": avg_num_neighbors,
+            "mmax": mmax,
+            "Lmax": Lmax,
+            "lmax": lmax,
+            "num_channel": num_channel,
+            "num_hidden_channel": atomic_basis["num_channel"],
+            "target_weight": target_weight,
+            "num_radial_basis": radial_basis["num_radial_basis"],
+            "radial_mlp": radial_basis["hidden"],
+            "radial_bias": radial_basis["bias"],
+            "l1l2": atomic_basis["l1l2"],
+            "scatter_norm": atomic_basis["scatter_norm"],
+            "ictp_ictc_like": atomic_basis["ictp_ictc_like"],
+            "correlation": product_basis["correlation"],
+            "edge_info_type": atomic_basis["edge_info_type"],
+            "resnet_type": resnet["type"],
+            "resnet_linear_type": resnet["linear_type"],
+            "use_first_resnet": resnet["use_first_resnet"],
+            "resnet_window": resnet["window"],
+            "irreps_node_embedding": self.node_embedding.irreps_out,
+            "pre_norm_type": layer_norm["pre_norm_type"],
+            "use_first_pre_norm": layer_norm["use_first_pre_norm"],
+            "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
+            "is_so2_layout": atomic_basis["is_so2_layout"],
+            "num_head": atomic_basis["num_head"],
+            "num_channel_per_head": atomic_basis["num_channel_per_head"],
+            "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
+            "bias": True,
+            "stochastic_depth": dropout['stochastic_depth'],
+        }
         self.interactions = torch.nn.ModuleList(
             [
                 INTERACTION[atomic_basis['type'][layer]](
+                    **for_interactions,
                     layer=layer,
-                    num_layers=num_layers,
-                    num_elements=self.num_elements,
-                    avg_num_neighbors=avg_num_neighbors,
-                    mmax=mmax,
-                    Lmax=Lmax,
-                    lmax=lmax,
-                    num_channel=num_channel,
-                    num_hidden_channel=atomic_basis['num_channel'],
                     edge_feats_channel=self.edge_updates[layer].out_dim,
-                    target_weight=target_weight,
-                    num_radial_basis=radial_basis['num_radial_basis'],
-                    radial_mlp=radial_basis['hidden'],
-                    radial_bias=radial_basis['bias'],
-                    l1l2=atomic_basis['l1l2'],
-                    scatter_norm=atomic_basis['scatter_norm'],
-                    ictp_ictc_like=atomic_basis['ictp_ictc_like'],
                     nonlinear=atomic_basis['nonlinear'][layer],
                     edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-                    correlation=product_basis['correlation'],
-                    edge_info_type=atomic_basis['edge_info_type'],
-                    resnet_type=resnet['type'],
-                    resnet_linear_type=resnet['linear_type'],
-                    use_first_resnet=resnet['use_first_resnet'],
-                    resnet_window=resnet['window'],
-                    irreps_node_embedding=self.node_embedding.irreps_out,
-                    pre_norm_type=layer_norm['pre_norm_type'],
-                    use_first_pre_norm=layer_norm['use_first_pre_norm'],
-                    so2_angular_basis=self.so2_angular_basis if self.use_so2 else None,
-                    is_so2_layout=atomic_basis['is_so2_layout'],
-                    num_head=atomic_basis['num_head'],
-                    num_channel_per_head=atomic_basis['num_channel_per_head'],
-                    use_so2_edge_ace=atomic_basis['use_so2_edge_ace'],
-                    bias=True,
                 )
                 for layer in range(num_layers)
             ]
         )
+
+        # if 'direct_hessian' or 'hamilton' in target_property:
+        #     self.edge_interactions = torch.nn.ModuleList(
+        #         [
+        #             SO2EdgeInteraction(
+        #                 **for_interactions,
+        #                 layer=layer,
+        #                 edge_feats_channel=self.edge_updates[layer].out_dim,
+        #                 nonlinear=atomic_basis['nonlinear'][layer],
+        #                 edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
+        #             )
+        #             for layer in range(num_layers-1, num_layers)
+        #         ]
+        #     )
 
         # === Product ===
         self.products = torch.nn.ModuleList(
@@ -223,6 +242,7 @@ class Representation(torch.nn.Module):
                     nonlinear=product_basis['nonlinear'][layer],
                     resolution=product_basis['resolution'],
                     bias=True,
+                    stochastic_depth=dropout['stochastic_depth'],
                 )
                 for layer in range(num_layers)
             ]
@@ -319,20 +339,35 @@ class Representation(torch.nn.Module):
                 cutoff,
                 graph,
                 prev_feats,
+                data["batch"],
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 
             if hasattr(self, 'uee_embedding'): 
                 node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
-            if forces_embedding is not None:
+            if forces_embedding is not None and idx == 0:
                 node_feats = node_feats + forces_embedding
-            node_feats = prod(node_feats, node_attrs_slice, sc)
+            node_feats = prod(node_feats, node_attrs_slice, sc, data["batch"])
             if idx == self.num_layers -1 and hasattr(self, "final_norm"):
                 node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             prev_feats.append(node_feats)
 
+        # if hasattr(self, 'edge_interactions'):
+        #     edge_descriptors = self.edge_interactions[0](
+        #         node_feats,
+        #         node_attrs_total, 
+        #         node_attrs_slice, 
+        #         this_edge_feats, 
+        #         edge_attrs, 
+        #         data['edge_index'],
+        #         cutoff,
+        #         graph,
+        #         prev_feats,   
+        #     )
+
         return {
             "descriptors": prev_feats,
+            # "edge_descriptors": edge_descriptors,
             "uie_feats": uie_feats,
             "noise_mask_tensor": noise_mask_tensor,
             "dens_batch_mask_tensor": dens_batch_mask_tensor,

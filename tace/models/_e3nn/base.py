@@ -185,6 +185,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_head: int | None = None,
         num_channel_per_head: int | None = None,
         use_so2_edge_ace: bool = False,
+        stochastic_depth: float = 0.0,
+        use_first_dropout: bool = False,
     ) -> None:
         super().__init__()
 
@@ -230,13 +232,15 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.irreps_node_embedding = irreps_node_embedding
         self.num_head = num_head
         self.use_so2_edge_ace = use_so2_edge_ace
-
+        self.use_first_dropout = use_first_dropout
+        
         self.resnet_linear_type = resnet_linear_type
         self.resnet_window = resnet_window
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
         self.so2_angular_basis = so2_angular_basis
+        self.stochastic_depth_p = stochastic_depth
 
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
         if self.correlation == 1:
@@ -276,6 +280,8 @@ class Product(torch.nn.Module):
         bias: bool,
         resolution: List[int],
         nonlinear: str | None,
+        stochastic_depth: float = 0.0,
+        use_first_dropout: bool = False,
     ) -> None:
         super().__init__()
 
@@ -297,6 +303,8 @@ class Product(torch.nn.Module):
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
         self.resolution = resolution
+        self.stochastic_depth_p = stochastic_depth
+        self.use_first_dropout = use_first_dropout
 
         if self.correlation == 1:
             self.irreps_in = _to_full_so3_irreps(self.Lmax, self.num_channel)
