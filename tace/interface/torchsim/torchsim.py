@@ -8,6 +8,7 @@ Based on https://github.com/TorchSim/torch-sim/blob/main/torch_sim/models
 """
 
 import os
+from typing import Union
 from collections.abc import Callable
 from pathlib import Path
 
@@ -54,17 +55,17 @@ class TACETorchSimCalc(ModelInterface):
 
     def __init__(
         self,
-        model: str | Path | torch.nn.Module | None = None,
+        model: Union[str, Path, torch.nn.Module, None] = None,
         *,
-        device: torch.device | None = None,
+        device: Union[torch.device, None] = None,
         dtype: torch.dtype = torch.float32,
         neighbor_list_fn: Callable = torchsim_nl,
         compute_forces: bool = True,
         compute_stress: bool = True,
-        atomic_numbers: torch.Tensor | None = None,
-        system_idx: torch.Tensor | None = None,
-        fidelity_idx: int | None = None,
-        target_property: list[str] | None = None,
+        atomic_numbers: Union[torch.Tensor, None] = None,
+        system_idx: Union[torch.Tensor, None] = None,
+        fidelity_idx: Union[int, None] = None,
+        target_property: Union[list[str], None] = None,
         enable_oeq: bool = False,
         enable_eqt: bool = False,
         enable_cue: bool = False,

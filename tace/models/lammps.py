@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Optional, NamedTuple, Tuple, Any
+from typing import NamedTuple, Tuple, Any, Union
 
 
 import torch
@@ -36,10 +36,10 @@ class e3nnGhostExchangeMixin:
     def handle_lammps(
         self,
         node_feats: torch.Tensor,
-        lmp_data: Optional[Any],
+        lmp_data: Any,
         lmp_natoms: Tuple[int, int],
         layer: int,
-    ) -> torch.Tensor | None:  
+    ) -> Union[torch.Tensor, None]:  
         nlocal, nghosts = lmp_natoms
         first_layer = (layer == 0)
         if lmp_data is None or first_layer or torch.jit.is_scripting():
@@ -59,57 +59,22 @@ class e3nnGhostExchangeMixin:
         return node_feats
 
     def truncate_ghosts(
-        self, tensor: torch.Tensor | None, nlocal: Optional[int] = None
+        self, tensor: Union[torch.Tensor, None], nlocal: Union[int, None] = None
     ) -> torch.Tensor:
         if tensor is None:
             return tensor
         return tensor[:nlocal] if nlocal is not None else tensor
-    
-
-class eqtGhostExchangeMixin:
-    def handle_lammps(
-        self,
-        node_feats: torch.Tensor,
-        lmp_data: Optional[Any],
-        lmp_natoms: Tuple[int, int],
-        layer: int,
-    ) -> torch.Tensor | None:  
-        nlocal, nghosts = lmp_natoms
-        first_layer = (layer == 0)
-        if lmp_data is None or first_layer or torch.jit.is_scripting():
-            return node_feats
-        node_feats = node_feats.contiguous()
-        expected_total = nlocal + nghosts
-        if node_feats.shape[0] == expected_total:
-            node_feats = GhostExchange.apply(node_feats, lmp_data)
-            return node_feats
-        pad = torch.zeros(
-            (nghosts, node_feats.shape[1], node_feats.shape[2]),
-            dtype=node_feats.dtype,
-            device=node_feats.device,
-        )
-        node_feats = torch.cat((node_feats, pad), dim=0)
-        node_feats = GhostExchange.apply(node_feats, lmp_data)
-        return node_feats
-
-    def truncate_ghosts(
-        self, tensor: torch.Tensor | None, nlocal: Optional[int] = None
-    ) -> torch.Tensor:
-        if tensor is None:
-            return tensor
-        return tensor[:nlocal] if nlocal is not None else tensor
-    
-
+ 
 class Graph(NamedTuple):
     lmp: bool
-    lmp_data: torch.Tensor | None
+    lmp_data: Union[torch.Tensor, None]
     lmp_natoms: Tuple[int, int]
     num_graphs: int
-    displacement: torch.Tensor | None
+    displacement: Union[torch.Tensor, None]
     positions: torch.Tensor
     edge_vector: torch.Tensor
     edge_length: torch.Tensor
     lattice: torch.Tensor
     node_fidelity: torch.Tensor
     num_atoms_arange: torch.Tensor
-    dcutoff: torch.Tensor | None # [E,]
+    dcutoff: Union[torch.Tensor, None] # [E,]

@@ -4,7 +4,7 @@
 ################################################################################
 
 import math
-
+from typing import Union
 
 import torch
 from tace.utils.torch_scatter import scatter_sum
@@ -39,9 +39,9 @@ class O3ScatterTensorProduct(torch.nn.Module):
         irreps_in1: o3.Irreps,
         irreps_in2: o3.Irreps,
         irreps_out: o3.Irreps,
-        l1l2: str | None = None,
-        l2l3: str | None = None,
-        l3l1: str | None = None,
+        l1l2: Union[str, None] = None,
+        l2l3: Union[str, None] = None,
+        l3l1: Union[str, None] = None,
         ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
@@ -125,7 +125,7 @@ class SO2EdgeProductBasis(torch.nn.Module):
         lmax: int,
         num_channels: int,
         num_elements: int,
-        m1m2: str | None = '<=',
+        m1m2: Union[str, None] = '<=',
         internal_weights: bool = False,
     ):
         super().__init__()
@@ -226,12 +226,12 @@ class SO2EdgeProductBasis(torch.nn.Module):
 #         lmax: int,
 #         num_channel: int,
 #         num_hidden_channel: int,
-#         num_head: int | None,
+#         num_head: Union[int, None],
 #         num_channel_per_head: int,
 #         is_scalar_tp: bool,
 #         is_so2_layout: bool,
 #         use_so2_edge_ace: bool,
-#         edge_nonlinear: str | None,
+#         edge_nonlinear: Union[str, None],
 #         num_elements: int,
 #         so2_angular_basis: SO3Rotation,
 #         reshape_in: LayoutTransform,
@@ -444,9 +444,9 @@ class uuuTensorProduct(torch.nn.Module):
         irreps_in1: o3.Irreps,
         irreps_in2: o3.Irreps,
         irreps_out: o3.Irreps,
-        l1l2: str | None = None,
-        l2l3: str | None = None,
-        l3l1: str | None = None,
+        l1l2: Union[str, None] = None,
+        l2l3: Union[str, None] = None,
+        l3l1: Union[str, None] = None,
         ictp_ictc_like: bool = True,
         trainable: bool = False,
     ) -> None:
@@ -496,7 +496,7 @@ class uuuTensorProduct(torch.nn.Module):
             pass
 
     def forward(
-            self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor | None = None
+            self, x: torch.Tensor, y: torch.Tensor, w: Union[torch.Tensor, None] = None
         ) -> torch.Tensor:
             if hasattr(self, "fused_tp"):
                 return self.fused_tp(x, y, w)
@@ -513,12 +513,12 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         is_scalar_tp: bool,
         is_so2_layout: bool,
         use_so2_edge_ace: bool,
-        edge_nonlinear: str | None,
+        edge_nonlinear: Union[str, None],
         num_elements: int,
         so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
-        scatter: str | None,
+        scatter: Union[str, None],
     ) -> None:
         super().__init__()
 
@@ -691,7 +691,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
 #         mmax: int,
 #         lmax: int,
 #         num_channel: int,
-#         m1m2: str | None = '<=',
+#         m1m2: Union[str, None] = '<=',
 #         internal_weights: bool = False,
 #     ):
 #         super().__init__()
@@ -743,12 +743,12 @@ class SO2ScatterTensorProduct(torch.nn.Module):
 #         is_scalar_tp: bool,
 #         is_so2_layout: bool,
 #         use_so2_edge_ace: bool,
-#         edge_nonlinear: str | None,
+#         edge_nonlinear: Union[str, None],
 #         num_elements: int,
 #         so2_angular_basis: SO3Rotation,
 #         reshape_in: LayoutTransform,
 #         reshape_out: LayoutTransform,
-#         scatter: str | None,
+#         scatter: Union[str, None],
 #     ) -> None:
 #         super().__init__()
 

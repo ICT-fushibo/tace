@@ -3,6 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+from typing import Union
+
+
 import torch
 from e3nn.nn import Activation
 from e3nn import o3
@@ -29,7 +32,7 @@ class IdentityEdgeEmbedding(EdgeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return edge_feats
@@ -63,7 +66,7 @@ class LinearEdgeEmbedding(EdgeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return self.radial_proj(edge_feats)
@@ -100,7 +103,7 @@ class NonLinearEdgeEmbedding(EdgeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return self.act1(self.radial_proj(edge_feats))
@@ -149,7 +152,7 @@ class ElementEdgeEmbedding(EdgeEmbedding):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
@@ -178,7 +181,7 @@ class IdentityEdgeUpdate(EdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return edge_feats
@@ -216,7 +219,7 @@ class ElementEdgeUpdate(EdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         edge_feats_list = [edge_feats]
@@ -244,7 +247,7 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         edge_feats_list = [edge_feats]
@@ -309,7 +312,7 @@ class TensorDotEdgeUpdate(EdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         edge_feats_list = [edge_feats]
@@ -342,7 +345,7 @@ class TensorDotElement2EdgeUpdate(TensorDotEdgeUpdate, ElementEdgeUpdate):
         node_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: torch.Tensor | None,
+        cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         assert cutoff is not None

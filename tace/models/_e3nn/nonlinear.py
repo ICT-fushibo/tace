@@ -4,6 +4,7 @@
 ################################################################################
 
 from math import sqrt
+from typing import Union
 
 
 import torch
@@ -47,7 +48,7 @@ class GatedLinearUnit(torch.nn.Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__} ({self.irreps_in} -> {self.irreps_out})"
 
-    def forward(self, features, gates: torch.Tensor | None = None):
+    def forward(self, features, gates: Union[torch.Tensor, None] = None):
         if gates is None:
             gates, gated = self.sc(features)
         else:
@@ -91,7 +92,7 @@ class NormLinearUnit(torch.nn.Module):
             irreps_in2=self.irreps_in,
         )
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
         norm = self.norm_fn(x) * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
         norm = self.activation(norm)
         if y is not None:

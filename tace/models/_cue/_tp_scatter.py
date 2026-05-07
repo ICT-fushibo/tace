@@ -3,8 +3,12 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+from typing import Union
+
+
 import torch
 from e3nn import o3
+
 
 try:
     import cuequivariance as cue
@@ -22,9 +26,9 @@ class e3nnCueScatterTensorProduct(torch.nn.Module):
         irreps_in1: o3.Irreps,
         irreps_in2: o3.Irreps,
         irreps_out: o3.Irreps,
-        l1l2: str | None = None,
-        l2l3: str | None = None,
-        l3l1: str | None = None,
+        l1l2: Union[str, None] = None,
+        l2l3: Union[str, None] = None,
+        l3l1: Union[str, None] = None,
         ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()

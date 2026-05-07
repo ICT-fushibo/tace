@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Dict, Optional
+from typing import Dict, Union
 
 
 import torch
@@ -31,7 +31,7 @@ class TensorModel(torch.nn.Module):
         self._set_lammps_mliap()
         self.reset_fidelity_idx()
    
-    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor | None]:
+    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Union[torch.Tensor, None]]:
         graph = self.prepare_graph(data)
         RESULTS = self.readout_fn(data, graph)
         FIRST = self.first_derivative_fn(data, graph, RESULTS)
@@ -40,7 +40,7 @@ class TensorModel(torch.nn.Module):
         # return self.denorm(OUT)
         return OUT
     
-    def denorm(self, out: Dict[str, torch.Tensor | None]) -> Dict[str, torch.Tensor | None]:
+    def denorm(self, out: Dict[str, Union[torch.Tensor, None]]) -> Dict[str, Union[torch.Tensor, None]]:
         """
         We always return:
         -  normalized value in train
@@ -56,7 +56,7 @@ class TensorModel(torch.nn.Module):
 
     def first_derivative_fn(
         self, data: Dict[str, Tensor], graph: Graph, results: Dict[str, Tensor]
-    ) -> Dict[str, Optional[Tensor]]:
+    ) -> Dict[str, Union[torch.Tensor, None]]:
 
         E = results["energy"]
         F = None
@@ -166,7 +166,7 @@ class TensorModel(torch.nn.Module):
         polarization = first_derivative["polarization"]
         magnetization = first_derivative["magnetization"]
 
-        inputs_list: List[Tensor] = []
+        inputs_list: list[torch.Tensor] = []
         if self.flags.compute_born_effective_charges:
             inputs_list.append(graph.positions)
         if self.flags.compute_conservative_polarizability:
@@ -364,14 +364,14 @@ class TensorModel(torch.nn.Module):
     def get_fidelity_idx(self) -> int:
         return int(self.fidelity_idx)
     
-    def reset_fidelity_idx(self, fidelity_idx: int | None = 0) -> None:
+    def reset_fidelity_idx(self, fidelity_idx: Union[int, None]= 0) -> None:
         if fidelity_idx is not None:
             self.fidelity_idx = fidelity_idx
         
-    def get_embedding_property(self) -> List[str]:
+    def get_embedding_property(self) -> list[str]:
         return list(set(self.readout_fn.embedding_property))
     
-    def get_target_property(self) -> List[str]:
+    def get_target_property(self) -> list[str]:
         return list(set(self.readout_fn.target_property))
 
     def _set_target_property(self) -> None:
@@ -395,8 +395,8 @@ class TensorModel(torch.nn.Module):
         self.retain_graph = self.compute_second_derivative
         self.create_graph = self.compute_second_derivative
         
-    def reset_target_property(self, target_property: List[str]) -> None:
-        assert isinstance(target_property, List)
+    def reset_target_property(self, target_property: list[str]) -> None:
+        assert isinstance(target_property, list)
         self.readout_fn.target_property = target_property
         self._set_target_property()
       
@@ -406,7 +406,7 @@ class TensorModel(torch.nn.Module):
     def get_model_dtype(self) -> torch.dtype:
         return self.readout_fn.cutoff.dtype
     
-    def get_max_neighbors(self) -> int | None:
+    def get_max_neighbors(self) -> Union[int, None]:
         return self.readout_fn.max_neighbors
     
     def get_cutoff(self) -> float:

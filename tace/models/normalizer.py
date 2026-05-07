@@ -1,3 +1,6 @@
+from typing import Union
+
+
 import torch
 
 
@@ -5,8 +8,8 @@ class Normalizer(torch.nn.Module):
    
     def __init__(
         self,
-        mean: float | torch.Tensor = 0.0,
-        rmsd: float | torch.Tensor = 1.0,
+        mean: Union[torch.nn.Module, float] = 0.0,
+        rmsd: Union[torch.nn.Module, float] = 1.0,
     ):
         super().__init__()
 

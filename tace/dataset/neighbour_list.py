@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from ase.geometry import complete_cell
 
@@ -50,9 +50,9 @@ def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf")
 def get_neighborhood(
     positions: np.ndarray,
     cutoff: float,
-    pbc: Optional[bool | Tuple[bool, bool, bool]] = None,
-    lattice: Optional[np.ndarray] = None,  # [3, 3]
-    max_neighbors: Optional[int] = None,
+    pbc: Union[bool, Tuple[bool, bool, bool], None] = None,
+    lattice: Union[np.ndarray, None] = None,  # [3, 3]
+    max_neighbors: Union[int, None] = None,
     backend: str = "vesin" # "matscipy",
 ) -> Tuple[np.ndarray, np.ndarray]:
     

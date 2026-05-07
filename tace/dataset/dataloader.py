@@ -5,7 +5,7 @@
 
 import gc
 import logging
-from typing import Dict, List
+from typing import Dict, List, Union
 
 
 from tqdm import tqdm
@@ -64,7 +64,7 @@ def build_atomsList(
     # === multi-fidelity atomic_energy ===
     if "energy" in target_property:
 
-        atomic_energies_cfg: List[Dict[int, float] | None] = []
+        atomic_energies_cfg: List[Union[Dict[int, float], None]] = []
         for idx in range(num_fidelities):
             this_atomic_energy = fidelity[idx].get('atomic_energy', None)
             assert (

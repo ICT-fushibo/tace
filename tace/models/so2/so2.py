@@ -14,7 +14,7 @@ from .utils import so2_expand_index
 
 # torch.set_printoptions(sci_mode=False, precision=4)
 
-def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
+def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
     if restriction == None:
         return True
     elif restriction == "<":
@@ -267,7 +267,7 @@ class SO2Gate(torch.nn.Module):
 #         mmax: int,
 #         lmax: int,
 #         num_channels: int,
-#         m1m2: str | None = None,
+#         m1m2: Union[str, None] = None,
 #     ):
 #         super().__init__()
 
@@ -541,7 +541,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channels: int,
-        m1m2: str | None = None,
+        m1m2: Union[str, None] = None,
         internal_weights: bool = True,
     ):
         super().__init__()

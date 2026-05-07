@@ -9,7 +9,7 @@ from typing import Optional, List, Tuple
 from e3nn import o3
 
 
-def satisfy(l1: int, l2: int, restriction: str | None = None) -> bool:
+def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
     if restriction == None:
         return True
     elif restriction == "<":
@@ -33,9 +33,9 @@ def generate_paths(
     irreps_in1: o3.Irreps, 
     irreps_in2: o3.Irreps,  
     *,
-    l1l2: str | None = None,
-    l2l3: str | None = None,
-    l3l1: str | None = None,
+    l1l2: Union[str, None] = None,
+    l2l3: Union[str, None] = None,
+    l3l1: Union[str, None] = None,
     ictp_ictc_like: bool = True,
     e3nn_mode = 'uvu',
     trainable: bool = False,

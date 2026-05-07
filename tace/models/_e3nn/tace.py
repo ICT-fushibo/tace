@@ -31,7 +31,7 @@ class e3nnTACE(torch.nn.Module):
         cutoff: float,
         statistics: List[Dict],
         target_property: List[str],
-        max_neighbors: int | None,
+        max_neighbors: Union[int, None],
         fidelity: Dict,
         node_embedding: Dict,
         edge_embedding: Dict,

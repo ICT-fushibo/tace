@@ -5,7 +5,7 @@
 
 
 import abc 
-from typing import Optional, List
+from typing import Union
 
 
 import torch
@@ -15,10 +15,10 @@ from e3nn import o3
 from ..lammps import e3nnGhostExchangeMixin
 from ..so2 import SO3Rotation
 
-def _to_full_so3_irreps(lmax: int | List[int], num_channel: int) -> o3.Irreps:
+def _to_full_so3_irreps(lmax: Union[int, list[int]], num_channel: int) -> o3.Irreps:
     if isinstance(lmax, int):
         return o3.Irreps([(num_channel, (l, (-1)**l)) for l in range(lmax + 1)])
-    assert isinstance(lmax, List)
+    assert isinstance(lmax, list)
     return o3.Irreps([(num_channel, (l, (-1)**l)) for l in lmax])
 
 
@@ -32,7 +32,7 @@ class NodeEmbedding(torch.nn.Module):
         lmax: int,
         avg_num_neighbors: float,
         bias: bool = False,
-        so2_angular_basis: SO3Rotation | None = None,
+        so2_angular_basis: Union[SO3Rotation, None] = None,
     ) -> None:
         super().__init__()
 
@@ -84,7 +84,7 @@ class EdgeUpdate(torch.nn.Module):
         num_channel: int,
         edge_embedding_channel: int,
         Lmax: int,
-        tensor_dot_channel: int | None,
+        tensor_dot_channel: Union[int, None],
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -119,9 +119,9 @@ class Residual(torch.nn.Module):
         irreps_out: o3.Irreps,
         num_channel: int,
         num_elements: int,
-        liner_type: str | List[int],
+        liner_type: Union[str, list[str]],
         bias: bool = True,
-        window: int | None = None,
+        window: Union[int, None] = None,
     ) -> None:
         super().__init__()
 
@@ -158,32 +158,32 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         mmax: int,
         Lmax: int,
         lmax: int,
-        correlation: List[int],
+        correlation: list[int],
         num_channel: int,
-        num_hidden_channel: int | None,
+        num_hidden_channel: Union[int, None],
         edge_feats_channel: int,
-        target_weight: List[int],
+        target_weight: list[int],
         num_radial_basis: int,
-        radial_mlp: List[int],
+        radial_mlp: list[int],
         radial_bias: bool,
         irreps_node_embedding: o3.Irreps,
-        l1l2: Optional[str] = None,
+        l1l2: Union[str, None] = None,
         scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
         bias: bool = True,
-        nonlinear: str | None = None,
-        edge_nonlinear: str | None = None,
+        nonlinear: Union[str, None] = None,
+        edge_nonlinear: Union[str, None] = None,
         edge_info_type: str = 'mlp',
-        resnet_type: str | List[str] = 'BB',
+        resnet_type: str = 'BB',
         resnet_linear_type: str = 'aware',
-        resnet_window: int | None = None,
+        resnet_window: Union[int, None] = None,
         use_first_resnet: bool = False,
-        pre_norm_type: str | None = None,
+        pre_norm_type: Union[str, None] = None,
         use_first_pre_norm: bool = False,
-        so2_angular_basis: SO3Rotation | None = None,
+        so2_angular_basis: Union[SO3Rotation, None] = None,
         is_so2_layout: bool = False,
-        num_head: int | None = None,
-        num_channel_per_head: int | None = None,
+        num_head: Union[int, None] = None,
+        num_channel_per_head: Union[int, None] = None,
         use_so2_edge_ace: bool = False,
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
@@ -273,13 +273,13 @@ class Product(torch.nn.Module):
         lmax: int,
         num_channel: int,
         num_hidden_channel: int,
-        target_weight: List[int],
-        correlation: List[int],
-        l1l2: str | None,
+        target_weight: list[int],
+        correlation: list[int],
+        l1l2: Union[str, None],
         ictp_ictc_like: bool,
         bias: bool,
-        resolution: List[int],
-        nonlinear: str | None,
+        resolution: list[int],
+        nonlinear: Union[str, None],
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
     ) -> None:
@@ -346,8 +346,8 @@ class ReadOut(torch.nn.Module):
         Lmax: int,
         lmax: int,
         num_channel: int,
-        hidden_channel: List[int], 
-        target_weight: List[int],
+        hidden_channel: list[int], 
+        target_weight: list[int],
         bias: bool,
         num_fidelities: int,
         l: int,

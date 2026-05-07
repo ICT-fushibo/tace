@@ -4,6 +4,7 @@
 ################################################################################
 
 import warnings
+from typing import Union
 
 
 import torch
@@ -57,10 +58,10 @@ class TACEAseCalc(Calculator):
         self,
         model: str,
         *,
-        dtype: str | None = None,
-        device: str | None = None,
-        fidelity_idx: int | None = None,
-        target_property: list[str] | None = None,
+        dtype: Union[str, None] = None,
+        device: Union[str, None] = None,
+        fidelity_idx: Union[int, None] = None,
+        target_property: Union[list[str], None] = None,
         neighborlist_backend: str = "matscipy",
         **kwargs,
     ):

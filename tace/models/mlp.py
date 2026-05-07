@@ -4,7 +4,7 @@
 ################################################################################
 
 from math import sqrt
-from typing import List
+from typing import List, Union
 
 
 import torch
@@ -96,11 +96,11 @@ class MLP(torch.nn.Module):
         self,
         channels: List[int],
         bias: bool = False,
-        act: str | None | torch.nn.Module= "silu",
+        act: Union[str, torch.nn.Module, None] = "silu",
         forward_weight_init: bool = True,
         layer_norm: bool = False,
         rms_norm: bool = False,
-        # parametrization: str | None = None, # ["spectral_norm", "weight_norm", "orthogonal"]
+        # parametrization: Union[str, None] = None, # ["spectral_norm", "weight_norm", "orthogonal"]
     ):
         """Based on https://github.com/mir-group/nequip/blob/main/nequip/nn/mlp.py"""
         super().__init__()
@@ -177,10 +177,10 @@ class GLULayer(torch.nn.Module):
         in_dim: int,
         out_dim: int,
         bias: bool = False,
-        act: str | torch.nn.Module = "sigmoid",
+        act: Union[str, torch.nn.Module] = "sigmoid",
         alpha: float = 1.0,
-        norm1: torch.nn.Module | None = None,
-        norm2: torch.nn.Module | None = None,
+        norm1: Union[torch.nn.Module, None] = None,
+        norm2: Union[torch.nn.Module, None] = None,
     ):
         super().__init__()
 
@@ -226,7 +226,7 @@ class GLU(torch.nn.Module):
         self,
         channels: List[int],
         bias: bool = False,
-        act: str | None | torch.nn.Module = "sigmoid",
+        act: Union[str, torch.nn.Module, None] = "sigmoid",
         forward_weight_init: bool = True,
         layer_norm: bool = False,
         rms_norm: bool = False,

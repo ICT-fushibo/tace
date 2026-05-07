@@ -7,7 +7,7 @@ import copy
 import logging
 from pathlib import Path
 from collections import Counter
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import importlib
 
 
@@ -459,7 +459,7 @@ class LightningWrapperModel(L.LightningModule):
         ckpt_path: str,
         map_location: str = "cpu",
         strict: Optional[bool] = True,
-        use_ema: int | bool = 1,
+        use_ema: Union[int, bool] = 1,
     ) -> Any:
 
         checkpoint = torch.load(
@@ -497,14 +497,14 @@ class LightningWrapperModel(L.LightningModule):
 
 
 def _load_tace(
-    model: str | Path | torch.nn.Module,
-    device: str | torch.device | None = None,
+    model: Union[str, Path, torch.nn.Module],
+    device: Union[str, torch.device, None] = None,
     strict: bool = True,
     use_ema: bool = True,
     **kwargs: Any,
 ) -> TensorModel:
     device = DEVICE[device]
-    if isinstance(model, str | Path):
+    if isinstance(model, (str, Path)):
         model_path = str(model)
         if model_path.endswith(".ckpt"):
             model = LightningWrapperModel.load_from_checkpoint(
@@ -538,8 +538,8 @@ def _load_tace(
 
 
 def load_tace(
-    model: str | Path | torch.nn.Module,
-    device: str | torch.device | None = None,
+    model: Union[str, Path, torch.nn.Module],
+    device: Union[str, torch.device, None] = None,
     strict: bool = True,
     use_ema: bool = True,
     target_property: Optional[list[str]] = None,

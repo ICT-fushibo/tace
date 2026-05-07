@@ -4,7 +4,7 @@
 ################################################################################
 
 import math
-from typing import List
+from typing import Union
 
 
 import numpy as np
@@ -156,8 +156,8 @@ class jnSphericalBesselBasis(torch.nn.Module):
     def __init__(
         self,
         cutoff: float = 6.0,
-        order: int | List[int] = 0,
-        num_basis: int | List[int] = 8,
+        order: Union[int, list[int]] = 0,
+        num_basis: Union[int, list[int]] = 8,
         trainable: bool = False,
     ) -> None:
         super().__init__()
@@ -168,7 +168,7 @@ class jnSphericalBesselBasis(torch.nn.Module):
                 raise ValueError("order must be a nonnegative integer")
             order = [order]
         else:
-            if not isinstance(order, List):
+            if not isinstance(order, list):
                 raise TypeError("order must be a list of nonnegative integer")
             if not all(isinstance(x, int) and x >= 0 for x in order):
                 raise ValueError("All elements of order must be nonnegative integer")
@@ -178,7 +178,7 @@ class jnSphericalBesselBasis(torch.nn.Module):
                 raise ValueError("num_zero must be a positive integer")
             num_zero = [num_zero]
         else:
-            if not isinstance(num_zero, List):
+            if not isinstance(num_zero, list):
                 raise TypeError("num_zero must be a list of positive integers")
             if not all(isinstance(x, int) and x > 0 for x in num_zero):
                 raise ValueError("All elements of num_zero must be positive integers")
@@ -380,7 +380,7 @@ class CosineCutoff(torch.nn.Module):
             torch.tensor(cutoff, dtype=torch.get_default_dtype()),
         )
 
-    def forward(self, x: torch.Tensor, cutoff: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff)
@@ -408,7 +408,7 @@ class MollifierCutoff(torch.nn.Module):
         )
         self.eps = eps
         
-    def forward(self, x: torch.Tensor, cutoff: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.eps)
@@ -439,7 +439,7 @@ class C2PolynomialCutoff(torch.nn.Module):
             "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
         )
 
-    def forward(self, x: torch.Tensor, cutoff: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.p.to(torch.int))
@@ -474,7 +474,7 @@ class C3PolynomialCutoff(torch.nn.Module):
             "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
         )
 
-    def forward(self, x: torch.Tensor, cutoff: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.p.to(torch.int))
@@ -808,7 +808,7 @@ class RadialBasis(torch.nn.Module):
         polynomial_cutoff: int = 5,
         radial_basis: str = "j0",
         distance_transform=None,
-        order: int | List[int] = [0],
+        order: Union[int, list[int]] = [0],
         trainable: bool = False,
         apply_cutoff: bool = True,
         cutoff_fn: str ='mollifier', # ['cosine', 'mollifier', 'polynomial']

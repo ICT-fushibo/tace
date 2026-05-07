@@ -4,7 +4,7 @@
 ################################################################################
 
 import logging
-from typing import List, Dict
+from typing import List, Dict, Union
 from pathlib import Path
 import multiprocessing
 from concurrent.futures import as_completed
@@ -176,7 +176,7 @@ def read_single_file(fpath: str, target_property, keyspec, embedding_property, b
     
 
 def read_all_files(
-    filename: str | List[str],
+    filename: Union[str, List[str]],
     target_property: List[str],
     keyspec,
     embedding_property: List[str],

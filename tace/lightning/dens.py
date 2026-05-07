@@ -1,4 +1,7 @@
 import dataclasses
+from typing import Union
+
+
 import torch
 
 
@@ -13,11 +16,11 @@ class DenoisingPosParams:
     std: float = 0.025
     corrupt_ratio: float = 0.5
     all_atoms: bool = True
-    min_num_atoms: int | None = None
-    strict_max_ratio: float | None = 0.75
-    max_force_norm: float | None  = 2.5
-    max_stress_norm: float | None  = None
-    max_mean_force_norm: float | None  = None
+    min_num_atoms: Union[int, None] = None
+    strict_max_ratio: Union[float, None] = 0.75
+    max_force_norm: Union[float, None]  = 2.5
+    max_stress_norm: Union[float, None]  = None
+    max_mean_force_norm: Union[float, None]  = None
     denoising_pos_coefficient: float = 1.0
 
 DeNS = DenoisingPosParams()
