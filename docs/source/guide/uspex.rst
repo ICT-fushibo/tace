@@ -6,7 +6,7 @@ This tutorial demonstrates how to use a TACE model within USPEX.
 Since USPEX currently does not provide a direct external machine-learning
 potential interface, we integrate TACE through the following workflow::
 
-    USPEX -> LAMMPS-MLIAP -> TACE
+    USPEX -> LAMMPS-ML-IAP -> TACE
 
 At present (as of May 8, 2026), we restrict support to USPEX-v10.5, since
 USPEX-2025 does not yet provide LAMMPS support.

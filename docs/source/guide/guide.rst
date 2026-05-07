@@ -29,5 +29,6 @@ and `Hydra <https://hydra.cc/>`_.
    ase.rst
    lammps.rst
    openmm.rst
+   uspex.rst
    torchSim.rst
    scripts.rst

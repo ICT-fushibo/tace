@@ -84,9 +84,9 @@ Interfaces
 
 - ✅ Supports integration with **LAMMPS-ML-IAP**.
 
-- ✅ Supports integration with **OpenMM-ML (OpenMM-ML -> ASE)**.
-
 - ✅ Supports integration with **TorchSim**.
+
+- ✅ Supports integration with **OpenMM-ML (OpenMM-ML -> ASE -> TACE)**.
 
 - ✅ Supports integration with **USPEX (USPEX -> LAMMPS-ML-IAP -> TACE)**.
 
