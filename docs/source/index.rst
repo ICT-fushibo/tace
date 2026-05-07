@@ -29,19 +29,22 @@ Currently, the officially supported properties include:
 
 - Energy
 - Forces (conservative | direct)
-- Hessians (conservative, predict only)
+- Hessian (conservative, predict only)
 - Stress (conservative | direct)
 - Virials (conservative | direct)
 - Charges (lagrangian or uniform_distribution)
 - Dipole moment (conservative | direct)
 - Polarization (conservative, multi-value for PBC systems)
 - Polarizability (conservative | direct)
-- Born effective charges (conservative, under electric field or LES )  (LES predict only)
+- Born effective charges (conservative, under electric field or LES)  (LES predict only)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - absolute final collinear magmoms
-- Noncollinear magnetic forces (conservative)
-
+- Noncollinear magnetic forces (conservative, SO(3) now, O(3) will be improved later)
+.. - Magnetization (conservative) *(not tested by us)*
+.. - Magnetic susceptibility (conservative) *(not tested by us)*
+.. - final (non)collinear magmoms (not time reversal)
+.. - total (non)collinear magmoms *(not tested by us)*
 
 For embedding property, we support:
 
@@ -52,7 +55,7 @@ For embedding property, we support:
 - initial (non)collinear magmoms
 - spin multiplicity *(not tested by us)*
 - electron_temperature *(not tested by us)*
-- magnetic field *(not tested by us)*
+- magnetic field *(not tested by us, SO(3) now, O(3) will be improved later)*
 
 
 Plugins
