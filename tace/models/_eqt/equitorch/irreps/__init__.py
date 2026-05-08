@@ -1,7 +1,7 @@
 """Provides classes and functions for O(3) and SO(3) irreducible representations (irreps)."""
 import math
 import re
-from typing import List, Literal, Tuple, Union, overload, override
+from typing import List, Literal, Tuple, Union, overload
 
 import torch
 
@@ -35,7 +35,7 @@ class Irrep:
     def __init__(self, l: int, p: Union[Literal['e', 'o'], int, None] = None): ...
     
     @overload
-    def __init__(self, lp: str | Tuple[int, Union[Literal['e', 'o'], int, None]]): ...
+    def __init__(self, lp: Union[str, Tuple[int, Union[Literal['e', 'o'], int, None]]]): ...
     
     def __init__(self, *args):
         # Check the number of arguments
@@ -583,7 +583,6 @@ class Irreps:
         """
         return sum(mul for ir, mul in self.irrep_groups)
 
-    @override
     def __getitem__(self, index: Union[int, slice]) -> Union[Irrep, 'Irreps']:
         """
         Access individual irrep(s) by index or slice (with step=1) in the expanded multiplicity sequence.

@@ -6,7 +6,7 @@ Installation
 
     .. code-block:: bash
         
-        # python 3.12 or 3.13, linux
+        # python >=3.9
         micromamba create -n tace python=3.13.11 -y 
         micromamba activate tace 
 
@@ -30,31 +30,42 @@ Install from Source (recommended)
     pip install .
 
     # Optional packages for accelerating computations, highly recommended.
-    # For equitroch, we maintain a local version.
 
+    # openequivariance
     pip install openequivariance
 
-    # cuda12
+    # cuequivariance, cuda12
     pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
-    # cuda13
+    # cuequivariance, cuda13
     pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+
+    # equitorch
+    # If you want to accelerate correlation > 2 in the product basis,
+    # you need to install torch_scatter according to your PyTorch version.
+    pip install torch_scatter -f https://data.pyg.org/whl/torch-2.11.0+cu130.html
+
 
 Install via pip (not recommended)
 ---------------------------------
 
 .. code-block:: bash
 
-    pip install tace 
+    pip install tace
 
     # Optional packages for accelerating computations, highly recommended.
-    # For equitroch, we maintain a local version.
 
+    # openequivariance
     pip install openequivariance
 
-    # cuda12
+    # cuequivariance, cuda12
     pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
 
-    # cuda13
+    # cuequivariance, cuda13
     pip install cuequivariance cuequivariance-torch cuequivariance-ops-torch-cu12
+
+    # equitorch
+    # If you want to accelerate correlation > 2 in the product basis,
+    # you need to install torch_scatter according to your PyTorch version.
+    pip install torch_scatter -f https://data.pyg.org/whl/torch-2.11.0+cu130.html
 

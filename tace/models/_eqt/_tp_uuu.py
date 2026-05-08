@@ -11,7 +11,7 @@ from e3nn import o3
 
 
 from ..layout import LayoutTransform
-from .equitorch.nn import TensorProduct
+
 
 
 class e3nnEqtTensorProduct(torch.nn.Module):
@@ -22,14 +22,16 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         irreps_out: o3.Irreps,
         num_channel: int,
         path: list[tuple[int, int, int]],
-        trainable: bool,
     ):
         super().__init__()
+
+        trainable = False
 
         self.reshap1 = LayoutTransform(irreps_in1)
         self.reshap2 = LayoutTransform(irreps_in2)
         self.reshap3 = LayoutTransform(irreps_out)
 
+        from .equitorch.nn import TensorProduct
         self.eqt_tp = TensorProduct(
             irreps_in1="+".join(str(ir) for _, ir in irreps_in1),
             irreps_in2="+".join(str(ir) for _, ir in irreps_in2),
@@ -38,9 +40,7 @@ class e3nnEqtTensorProduct(torch.nn.Module):
             channels_in2=num_channel,
             channels_out=num_channel,
             internal_weights=False if trainable else True,
-            feature_mode='uuu',
             path_norm=True,
-            channel_norm=False,
             trainable=trainable,
             path=[(k, i, j) for (i, j, k, _, _) in path],
         )

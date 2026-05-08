@@ -12,8 +12,6 @@ requires-python = ">=3.9"
 dependencies = [
     "torch>=2.4",
     "torch_geometric>=2.4",
-    "triton>=3.2; platform_system != 'Windows'",
-    "triton-windows>=3.2; platform_system == 'Windows'",
     "lightning",
     "omegaconf",
     "hydra-core>=1.3",

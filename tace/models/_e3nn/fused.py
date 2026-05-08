@@ -27,10 +27,6 @@ try:
     from .._cue import e3nnCueScatterTensorProduct
 except Exception:
     pass
-try:
-    from .._eqt import e3nnEqtTensorProduct
-except Exception:
-    pass
 
 
 class O3ScatterTensorProduct(torch.nn.Module):
@@ -448,7 +444,6 @@ class uuuTensorProduct(torch.nn.Module):
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
         ictp_ictc_like: bool = True,
-        trainable: bool = False,
     ) -> None:
         super().__init__()
 
@@ -461,7 +456,6 @@ class uuuTensorProduct(torch.nn.Module):
             l3l1=l3l1,
             ictp_ictc_like=ictp_ictc_like,
             e3nn_mode='uuu',
-            trainable=trainable,
         )
 
         self.tp = o3.TensorProduct(
@@ -478,29 +472,28 @@ class uuuTensorProduct(torch.nn.Module):
         self.irreps_out = actual_irreps_out
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
-        self.trainable = trainable
         self.use_eqt = TACE_USE_EQT == '1'
         # self.use_oeq = TACE_USE_OEQ == '1'
         # self.use_cue = TACE_USE_CUE == '1'
 
         if self.use_eqt:
+            from .._eqt import e3nnEqtTensorProduct
             self.fused_tp = e3nnEqtTensorProduct(
                 irreps_in1=irreps_in1,
                 irreps_in2=irreps_in2,
                 irreps_out=actual_irreps_out,
-                num_channel=irreps_in1.count("0e"),
+                num_channel=irreps_in2.count("0e"),
                 path=instructions,
-                trainable=trainable,
             )
         else:
             pass
 
     def forward(
-            self, x: torch.Tensor, y: torch.Tensor, w: Union[torch.Tensor, None] = None
+            self, x: torch.Tensor, y: torch.Tensor
         ) -> torch.Tensor:
             if hasattr(self, "fused_tp"):
-                return self.fused_tp(x, y, w)
-            return self.tp(x, y, w)
+                return self.fused_tp(x, y)
+            return self.tp(x, y)
 
 
 class SO2ScatterTensorProduct(torch.nn.Module):

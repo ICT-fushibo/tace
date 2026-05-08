@@ -68,7 +68,9 @@ def build_atomsList(
         for idx in range(num_fidelities):
             this_atomic_energy = fidelity[idx].get('atomic_energy', None)
             assert (
-                this_atomic_energy is None or isinstance(this_atomic_energy, Dict),
+                this_atomic_energy is None
+                or isinstance(this_atomic_energy, dict)
+            ), (
                 "If you want to use multi-fidelity or multi-head training, "
                 "you must provide each fidelity's atomic_energy or set to null"
             )
