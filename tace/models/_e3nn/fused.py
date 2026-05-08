@@ -11,7 +11,7 @@ from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
 
 
-from tace.utils.env import TACE_USE_OEQ, TACE_USE_CUE, TACE_USE_EQT
+from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 
 from .paths import generate_paths
@@ -71,8 +71,8 @@ class O3ScatterTensorProduct(torch.nn.Module):
         self.irreps_out = actual_irreps_out
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
-        self.use_oeq = TACE_USE_OEQ == '1'
-        self.use_cue = TACE_USE_CUE == '1'
+        self.use_oeq = get_tace_use_oeq() == '1'
+        self.use_cue = get_tace_use_cue == '1'
         # assert not (self.use_oeq & self.use_cue)
 
         if self.use_oeq:
@@ -472,7 +472,7 @@ class uuuTensorProduct(torch.nn.Module):
         self.irreps_out = actual_irreps_out
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
-        self.use_eqt = TACE_USE_EQT == '1'
+        self.use_eqt = get_tace_use_eqt() == '1'
         # self.use_oeq = TACE_USE_OEQ == '1'
         # self.use_cue = TACE_USE_CUE == '1'
 

@@ -246,7 +246,7 @@ def read_all_files(
 
     all_structures = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = {
+        futures = { # TODO, as_completed => train sequence not identical
             executor.submit(
                 read_single_file,
                 str(f),
@@ -271,7 +271,7 @@ def tace_read_all_files(
     cfg: Dict,
     target_property: List[str],
     embedding_property: List[str],
-    keyspec: KeyboardInterrupt,
+    keyspec: KeySpecification,
     in_datamodule: bool = False,
 ) -> ThreeDataset:
     

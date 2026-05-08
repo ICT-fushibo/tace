@@ -77,7 +77,6 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     initialized_callbacks += [
         PrintMetricsCallback(), 
         TQDMProgressBar(), # not allow use hydra to build progress_bar to avoid bug
-
     ]
 
     # === Disallow SWA callback ===

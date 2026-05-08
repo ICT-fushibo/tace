@@ -282,7 +282,7 @@ def mse_final_noncollinear_magmoms(
 ) -> torch.Tensor:
     key = "final_noncollinear_magmoms"
     batch = label.batch
-    total_weight = label.entropy[batch].unsqueeze(-1) * label.final_collinear_magmoms_weight[
+    total_weight = label.entropy[batch].unsqueeze(-1) * label.final_noncollinear_magmoms_weight[
         batch
     ].unsqueeze(-1)
     return torch.mean(torch.square(pred[key] - label[key]) * total_weight)

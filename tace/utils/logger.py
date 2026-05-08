@@ -41,7 +41,7 @@ def set_logger(_level: Union[int, str] = "info", _rank_zero_only: bool = True) -
             handler.setFormatter(formatter)
     else:
         logging.basicConfig(
-            fidelity_idx=log_level,
+            level=log_level,
             format="[%(levelname)s] %(message)s",
         )
     root_logger.setLevel(log_level)

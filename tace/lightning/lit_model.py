@@ -18,7 +18,7 @@ from torchmetrics import MetricCollection
 from omegaconf import OmegaConf
 
 
-from tace.utils.env import TACE_APPLY_U_SHIFT, TACE_USE_DENS
+from tace.utils.env import get_tace_apply_u_shift, get_tace_use_dens
 from tace.utils.metrics import build_metrics, update_metrics
 from tace.utils._global import DTYPE, DEVICE
 from tace.utils.loss.uncertainty import UncertaintyLoss
@@ -63,9 +63,8 @@ class LightningWrapperModel(L.LightningModule):
         self.save_hyperparameters(ignore=["model"])
         self.cfg = cfg
         self.statistics = statistics 
-        self.model = self.model = to_lora_model(cfg.get('finetune', {}), model)
+        self.model = to_lora_model(cfg.get('finetune', {}), model)
         # self.normalizers = copy.deepcopy(self.model.readout_fn.normalizers)
-
 
         # === Loss === 
         loss_cls, loss_cfg = get_class_from_cfg(cfg["loss"])
@@ -110,11 +109,6 @@ class LightningWrapperModel(L.LightningModule):
                 skip_large=cfg['misc']['LossSkipController'].get('skip_large', True),
             )
 
-    def setup(self, stage: Optional[str] = None):
-        self.sync_dist = self.trainer.num_devices > 1
-        if self.ema is not None:
-            self.ema.to(self.device)
-
     def _create_metrics(self, prefix):
         metric_collection = MetricCollection(build_metrics(prefix, self.loss_property))
         setattr(self, f"{prefix}_metrics", metric_collection)
@@ -139,10 +133,10 @@ class LightningWrapperModel(L.LightningModule):
     def _shared_step(self, batch, batch_idx, prefix):
 
         with torch.no_grad():
-            if TACE_APPLY_U_SHIFT == '1':
+            if get_tace_apply_u_shift() == '1':
                 batch['energy'] = apply_u_shift(batch, batch['energy'])
 
-            if TACE_USE_DENS == '1':
+            if get_tace_use_dens() == '1':
                     batch = add_gaussian_noise_to_position(batch)
 
         # batch['direct_forces'] = batch['forces']
@@ -324,11 +318,13 @@ class LightningWrapperModel(L.LightningModule):
                         f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
                     )
 
-    def setup(self, stage=None):
+    def setup(self, stage: Union[str, None] = None):
         if self.trainer.world_size > 1:
             self.sync_dist = True
         else:
             self.sync_dist = False
+        # if self.ema is not None:
+        #     self.ema.to(self.device)
 
     # def on_load_checkpoint(self, checkpoint):
     #     for opt_state in checkpoint["optimizer_states"]:

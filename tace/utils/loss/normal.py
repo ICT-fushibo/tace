@@ -29,15 +29,15 @@ class NormalLoss(torch.nn.Module):
         ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
         assert isinstance(
             loss_function_name, (list, ListConfig)
-        ), f"cfg.loss.loss_function_name should be a list, got {type(loss_property)}"
+        ), f"cfg.loss.loss_function_name should be a list, got {type(loss_function_name)}"
         assert isinstance(
             loss_property_weights, (list, ListConfig)
-        ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property)}"
+        ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property_weights)}"
         if isinstance(loss_huber_delta, float) or loss_huber_delta is None:
             loss_huber_delta = [loss_huber_delta] * len(loss_property)
         assert isinstance(
             loss_huber_delta, (list, ListConfig)
-        ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_property)}"
+        ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
         assert (
             len(loss_property) == len(loss_function_name) == 
             len(loss_property_weights) == len(loss_huber_delta)

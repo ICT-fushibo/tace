@@ -214,7 +214,7 @@ def l2mae_total_collinear_magmom(
     pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
 ) -> torch.Tensor:
     key = "total_collinear_magmom"
-    total_weight = [label.entropy * label.total_collinear_magmom_weight]
+    total_weight = label.entropy * label.total_collinear_magmom_weight
     return torch.mean(
         torch.linalg.vector_norm(label[key] - pred[key], ord=2, dim=-1)
         * total_weight

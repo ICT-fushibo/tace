@@ -65,7 +65,7 @@ class CgtpInteraction(Interaction):
                     [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
                 )
                 irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_out if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_gated)
+                irreps_gates = o3.Irreps([(mul, (0, 1)) for mul, _ in irreps_gated])
                 activation_fn = torch.nn.functional.silu
                 act_gates_fn = torch.nn.functional.sigmoid
                 self.nonlinearity = e3nn.nn.Gate(

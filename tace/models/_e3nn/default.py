@@ -247,6 +247,5 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
-    cfg['product_basis']['nonlinear'] = _to_list(cfg['product_basis']['nonlinear'])
 
     return cfg

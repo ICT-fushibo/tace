@@ -456,48 +456,51 @@ class GraphDataModule(LightningDataModule):
                 gc.collect()
 
                 
-    # def train_dataloader(self):
-    #     return instantiate(self.cfg["dataset"]["train_dataloader"], dataset=self.train_dataset)
-
     def train_dataloader(self):
-        config = self.cfg["dataset"]["train_dataloader"]
-        per_epoch_frac = config.get("extra", {}).get("per_epoch_frac", 0.0)
-        config.pop("extra", None)
-        if per_epoch_frac > 0.0:
-            dataset = self.train_dataset
-            N = len(dataset)
-            epoch = self.trainer.current_epoch
-            chunk = max(1, int(per_epoch_frac * N))
-            total_consumed = epoch * chunk
-            k = total_consumed // N
-            offset = total_consumed % N
-            g = torch.Generator()
-            g.manual_seed(self.cfg["misc"]["global_seed"] + k)
-            indices = torch.randperm(N, generator=g)
-            end = offset + chunk
-            if end <= N:
-                selected = indices[offset:end]
-            else:
-                part1 = indices[offset:]
-                g_next = torch.Generator()
-                g_next.manual_seed(self.cfg["misc"]["global_seed"] + k + 1)
-                indices_next = torch.randperm(N, generator=g_next)
-                part2 = indices_next[:end - N]
-                selected = torch.cat([part1, part2])
-            subset = Subset(dataset, selected.tolist())
-            assert config.get("shuffle", False), \
-                "Set shuffle=True for when using per_epoch_frac"
-            assert config.get("sampler", None) is None, \
-                "Do not set sampler manually when using per_epoch_frac"
-            return instantiate(
-                self.cfg["dataset"]["train_dataloader"],
-                dataset=subset
-            )
-            
-        return instantiate(
-            self.cfg["dataset"]["train_dataloader"],
-            dataset=self.train_dataset
-        )
+        return instantiate(self.cfg["dataset"]["train_dataloader"], dataset=self.train_dataset)
+
+    # def train_dataloader(self):
+    #     config = self.cfg["dataset"]["train_dataloader"]
+    #     per_epoch_frac = config.get("extra", {}).get("per_epoch_frac", 0.0)
+    #     config.pop("extra", None)
+        
+    #     if per_epoch_frac > 0.0:
+    #         dataset = self.train_dataset
+    #         N = len(dataset)
+    #         epoch = self.trainer.current_epoch
+    #         chunk = max(1, int(per_epoch_frac * N))
+    #         total_consumed = epoch * chunk
+    #         k = total_consumed // N
+    #         offset = total_consumed % N
+    #         g = torch.Generator()
+    #         g.manual_seed(self.cfg["misc"]["global_seed"] + k)
+    #         indices = torch.randperm(N, generator=g)
+    #         end = offset + chunk
+    #         if end <= N:
+    #             selected = indices[offset:end]
+    #         else:
+    #             part1 = indices[offset:]
+    #             g_next = torch.Generator()
+    #             g_next.manual_seed(self.cfg["misc"]["global_seed"] + k + 1)
+    #             indices_next = torch.randperm(N, generator=g_next)
+    #             part2 = indices_next[:end - N]
+    #             selected = torch.cat([part1, part2])
+    #         subset = Subset(dataset, selected.tolist())
+    #         assert config.get("shuffle", False), \
+    #             "Set shuffle=True for when using per_epoch_frac"
+    #         assert config.get("sampler", None) is None, \
+    #             "Do not set sampler manually when using per_epoch_frac"
+    #         print('per_epoch')
+
+    #         return instantiate(
+    #             self.cfg["dataset"]["train_dataloader"],
+    #             dataset=subset
+    #         )
+    #     print('not epoch')
+    #     return instantiate(
+    #         self.cfg["dataset"]["train_dataloader"],
+    #         dataset=self.train_dataset
+    #     )
 
 
     def val_dataloader(self):

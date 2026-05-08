@@ -34,7 +34,7 @@ def update_cfg(cfg: Dict):
     ignore_default_config = cfg.get("ignore_default_config", False)
 
     if not ignore_default_config:
-        logging.info("Useing user's config and default config")
+        logging.info("Using user's config and default config")
         cfg = deep_update(default_cfg, cfg)
     else:
         logging.info("Useing only user's config")

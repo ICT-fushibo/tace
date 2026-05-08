@@ -807,39 +807,9 @@ def update_keyspec_from_kwargs(
 
 
 def get_target_property(cfg: Dict) -> List[str]:
-    """
-    Automatically infer the physical quantities required for training from the loss function.
-    Ensure no conflicting physical quantities appear simultaneously.
-    """
-    try:
-        loss = str(cfg["loss"]["_target_"]).lower()
-    except KeyError as e:
-        raise KeyError("Missing 'cfg.loss._target_' field in configuration") from e
     loss_property = cfg["loss"].get("loss_property", None)
-    if loss_property is None:
-        logging.warning(
-            "The argument `cfg.loss.loss_property` must be provided by the user. "
-            "It is kept optional only for backward compatibility with earlier versions. "
-            "Omitting it may lead to bugs when predicted physical property names share common prefixes or substrings."
-        )
-        loss_property = []
-        for p in SUPPORT_PREDICT_PROPERTY:
-            clean_property = p.replace("_", "")
-            clean_property = p
-            if clean_property.lower() in loss:
-                loss_property.append(p)
-
-        for p in loss_property:
-            conflict_with = PROPERTY[p]['conflict_with']
-            for _, conflict_ps in conflict_with.items():
-                for conflict_p in conflict_ps:
-                    if conflict_p in loss_property:
-                        raise ValueError(
-                            f"Conflict Property detected: {p} with {conflict_with} cannot be used together."
-                        )
-    else:
-        assert set(loss_property).issubset(list(PROPERTY))
-
+    assert isinstance(loss_property, list)
+    assert set(loss_property).issubset(list(PROPERTY))
     return loss_property
 
 

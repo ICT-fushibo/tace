@@ -380,7 +380,7 @@ def huber_abs_final_collinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, 
 @register_loss
 def huber_final_noncollinear_magmoms(pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01) -> torch.Tensor:
     batch = label.batch
-    total_weight = label.entropy[batch].unsqueeze(-1) * label.final_collinear_magmoms_weight[
+    total_weight = label.entropy[batch].unsqueeze(-1) * label.final_noncollinear_magmoms_weight[
         batch
     ].unsqueeze(-1)
     key = "final_noncollinear_magmoms"

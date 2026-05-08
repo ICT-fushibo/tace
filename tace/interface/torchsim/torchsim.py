@@ -137,10 +137,10 @@ class TACETorchSimCalc(ModelInterface):
         for param in model.parameters():
             param.requires_grad = False
         self.model = model
-        self.model = self.model.to(device=self._device)
-        if self.dtype is not None:
+        if self._dtype is not None:
+            self.model = self.model.to(dtype=self._dtype)
+        if self._device is not None:
             self.model = self.model.to(device=self._device)
-
         # Set model properties
         self.r_max = self.model.readout_fn.cutoff
         atomic_nums = self.model.readout_fn.atomic_numbers

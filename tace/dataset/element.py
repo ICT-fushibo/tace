@@ -38,53 +38,11 @@ ATOMIC_COVALENT_RADII = (
 ATOMIC_MAGMOM = ground_state_magnetic_moments.tolist()  # ground state
 
 
-class Element:
-    def __init__(self, zs: Sequence[int]):
-
-        self.zs = sorted(list(zs))
-        if not all(isinstance(num, int) for num in self.zs):
-            raise ValueError(f"All elements in {zs} must be integers.")
-        self.num_elements = len(self.zs)
-        self.z_to_idx = {z: i for i, z in enumerate(self.zs)}
-
-    def z2idx(self, z: int) -> int:
-        return self.z_to_idx[z]
-
-    def idx2symbol(self, idx: int) -> int:
-        z = self.idx2z(idx)
-        return ATOMIC_SYMBOLS[z]
-
-    def idx2mass(self, idx: int) -> float:
-        z = self.idx2z(idx)
-        return ATOMIC_MASSES[z]
-
-    def idx2name(self, idx: int) -> str:
-        z = self.idx2z(idx)
-        return ATOMIC_NAMES[z]
-
-    def idx2covalent_radii(self, idx: int) -> float:
-        z = self.idx2z(idx)
-        return ATOMIC_COVALENT_RADII[z]
-
-    def idx2vdw_radii(self, idx: int) -> float:
-        z = self.idx2z(idx)
-        return ATOMIC_VDW_RADII[z]
-
-    def idx2magmom(self, idx: int) -> float:
-        z = self.idx2z(idx)
-        return ATOMIC_MAGMOM[z]
-
-    def __len__(self) -> int:
-        return len(self.zs)
-
-    def __repr__(self):
-        return f"Element in the model: {(z for z in self.zs)}"
-
-
-class TorchElement(Element):
+class TorchElement:
     def __init__(self, zs: Union[List[int], Tuple[int, ...]]):
 
-        super().__init__(zs)
+        self.zs = sorted(list(zs))
+        self.num_elements = len(zs)
 
         self.lookup_table = torch.full(
             (max(self.zs) + 1,), -1, dtype=torch.int64

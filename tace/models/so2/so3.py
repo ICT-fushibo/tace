@@ -738,7 +738,8 @@ class SO3Linear(torch.nn.Module):
     def forward(self, inputs):
         weight = torch.index_select(self.weight, dim=0, index=self.expand_index)        # [(L_max + 1) ** 2, C_out, C_in]
         outputs = torch.einsum('bmi, moi -> bmo', inputs, weight)                       # [N, (L_max + 1) ** 2, C_out]
-        outputs[:, 0:1, :] = outputs.narrow(1, 0, 1) + self.bias
+        if self.bias is not None:
+            outputs[:, 0:1, :] = outputs.narrow(1, 0, 1) + self.bias
         return outputs
 
 

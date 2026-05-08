@@ -26,7 +26,8 @@ def to_lora_model(finetune_cfg: dict, model: torch.nn.Module) -> torch.nn.Module
                 logging.warning(f"Parameter '{name}' not found in model")
                 continue
             param = name_to_param[name]
-            param.requires_grad = not bool(flag)
+            assert isinstance(flag, bool)
+            param.requires_grad = not flag
     logging.info(model)
 
     return model

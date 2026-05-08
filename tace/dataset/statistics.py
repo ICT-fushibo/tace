@@ -12,7 +12,7 @@ import torch
 from torch_geometric.loader import DataLoader
 import ase
 
-from .element import Element
+from .element import TorchElement
 from .quantity import KeySpecification
 from ..utils.utils import log_statistics_to_yaml
 from ..utils.torch_scatter import scatter, scatter_add
@@ -43,7 +43,7 @@ class OneHotToAtomicEnergy(torch.nn.Module):
     
 
 def _compute_atomic_energy(
-    points: ase.Atoms, element: Element, keyspec: KeySpecification,
+    points: ase.Atoms, element: TorchElement, keyspec: KeySpecification,
 ) -> Dict[int, float]:
     len_train = len(points)
     A = np.zeros((len_train, len(element)))
@@ -74,7 +74,7 @@ def _compute_atomic_energy(
 
 def compute_atomic_energy(
     atomsList: ase.Atoms,
-    element: Element,
+    element: TorchElement,
     keyspec: KeySpecification,
     fidelity_idx: int,
 ) -> Dict[int, float]:

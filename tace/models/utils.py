@@ -199,7 +199,7 @@ def build_grad_outputs(
         (K_total, total_atoms, 3),
         device=device,
         dtype=all_samples.dtype,
-    )
+    ) # TODO, dtype may have bug
 
     grad_outputs[
         torch.arange(K_total, device=device),
