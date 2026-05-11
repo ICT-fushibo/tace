@@ -12,6 +12,7 @@ import torch
 from e3nn import o3
 
 
+from ...utils.env import get_tace_use_dens
 from ..radial import RadialBasis
 from ..angular import SphericalHarmonics
 from ..so2 import SO3Rotation
@@ -24,8 +25,6 @@ from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .layer_norm import get_normalization_layer
 from .linear import Linear
 
-
-TACE_USE_DENS = os.environ.get('TACE_USE_DENS', '0')
 
 
 class Representation(torch.nn.Module):
@@ -53,6 +52,7 @@ class Representation(torch.nn.Module):
         universal_embedding: Dict,
         layer_norm: Dict,
         dropout: Dict,
+        parity: bool,
     ):
         super().__init__()
 
@@ -64,13 +64,7 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
-        self.use_dens = TACE_USE_DENS == '1'
-
-        # has_so2 = any(t == 'so2' for t in atomic_basis['type'])
-        # all_so2 = all(t == 'so2' for t in atomic_basis['type'])
-        # if has_so2 and not all_so2:
-        #     raise ValueError("If any type is 'so2', then all types must be 'so2'")
-        # self.use_so2 = all_so2
+        self.use_dens = get_tace_use_dens == '1'
         self.use_so2 = 'so2' in atomic_basis['type']
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type'])
 
@@ -156,8 +150,6 @@ class Representation(torch.nn.Module):
                     num_radial_basis=self.radial_basis.num_basis,
                     edge_embedding_channel=self.edge_embedding.out_dim,
                     num_channel=num_channel,
-                    Lmax=Lmax,
-                    tensor_dot_channel=edge_update['tensor_dot_channel'],
                 )
                 for layer in range(num_layers)
             ]
@@ -196,6 +188,7 @@ class Representation(torch.nn.Module):
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "bias": True,
             "stochastic_depth": dropout['stochastic_depth'],
+            "parity": parity,
         }
         self.interactions = torch.nn.ModuleList(
             [
@@ -242,6 +235,7 @@ class Representation(torch.nn.Module):
                     resolution=product_basis['resolution'],
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
+                    parity=parity,
                 )
                 for layer in range(num_layers)
             ]

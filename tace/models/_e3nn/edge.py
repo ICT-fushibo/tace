@@ -8,7 +8,6 @@ from typing import Union
 
 import torch
 from e3nn.nn import Activation
-from e3nn import o3
 
 
 from .base import EdgeEmbedding, EdgeUpdate
@@ -263,110 +262,6 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         return torch.cat(edge_feats_list, dim=-1)
 
 
-class TensorDotEdgeUpdate(EdgeUpdate):
-    """
-    An edge update module based on tensor dot interactions.
-
-    This module is analogous to self-attention. However,
-    instead of applying a softmax to obtain attention weights, the resulting
-    interactions are directly treated as edge features and used to generate
-    convolution weights, enabling the model to capture higher-order geometric 
-    and feature correlations between connected nodes.
-
-    """
-
-    def _setup(self) -> None:
-
-        c = self.tensor_dot_channel
-        irreps_hidden = o3.Irreps([(c, ir) for _, ir in self.irreps_node])
-
-        if self.layer == 0:
-            self.out_dim = self.edge_embedding_channel       
-        else:
-            self.out_dim = self.edge_embedding_channel + c * len(self.irreps_node)
-
-        if self.layer > 0:
-            self.linear_q = Linear(
-                self.irreps_node,
-                irreps_hidden
-            )
-            self.linear_k = Linear(
-                self.irreps_node,
-                irreps_hidden
-            )
-            self.dot = o3.TensorProduct(
-                irreps_in1=irreps_hidden, 
-                irreps_in2=irreps_hidden, 
-                irreps_out=[(c, (0, 1)) for _, _ in self.irreps_node], 
-                instructions=[
-                    (i, i, 0, 'uuu', False)
-                    for i, (mul, ir) in enumerate(self.irreps_node)
-                ],
-                shared_weights=False,
-                internal_weights=False,
-            )
-
-    def forward(
-        self,
-        node_feats: torch.Tensor,
-        node_attrs: torch.Tensor,
-        edge_feats: torch.Tensor,
-        edge_index: torch.Tensor,
-        cutoff: Union[torch.Tensor, None],
-    ) -> torch.Tensor:
-        
-        edge_feats_list = [edge_feats]
-        if self.layer > 0:
-            Q = self.linear_q(node_feats)
-            K = self.linear_k(node_feats)
-            edge_feats_list.append(
-                self.dot(Q[edge_index[1]], K[edge_index[0]])
-            )
-        return torch.cat(edge_feats_list, dim=-1)
-
-
-class TensorDotElement2EdgeUpdate(TensorDotEdgeUpdate, ElementEdgeUpdate):
-
-    def _setup(self) -> None:
-
-        TensorDotEdgeUpdate._setup(self)
-        ElementEdgeUpdate._setup(self)
-
-
-        if self.layer == 0:
-            self.out_dim = self.edge_embedding_channel + 2 * self.num_channel     
-        else:
-            self.out_dim = self.edge_embedding_channel + self.tensor_dot_channel * len(self.irreps_node) + 2 * self.num_channel  
-
-
-    def forward(
-        self,
-        node_feats: torch.Tensor,
-        node_attrs: torch.Tensor,
-        edge_feats: torch.Tensor,
-        edge_index: torch.Tensor,
-        cutoff: Union[torch.Tensor, None],
-    ) -> torch.Tensor:
-        
-        assert cutoff is not None
-        
-        edge_feats_list = [edge_feats]
-        if self.layer > 0:
-            Q = self.linear_q(node_feats)
-            K = self.linear_k(node_feats)
-            edge_feats_list.append(
-                self.dot(Q[edge_index[1]], K[edge_index[0]])
-            )
-        edge_feats_list.append(
-            self.target_embedding(node_attrs[edge_index[1]])
-        )
-
-        edge_feats_list.append(
-            self.source_embedding(node_attrs[edge_index[0]])
-        )
-
-        return torch.cat(edge_feats_list, dim=-1)
-
 EDGE_EMBEDDING = {
     "identity": IdentityEdgeEmbedding,
     "linear": LinearEdgeEmbedding,
@@ -378,8 +273,6 @@ EDGE_UPDATE = {
     "identity": IdentityEdgeUpdate,
     "element": ElementEdgeUpdate,
     "element2": Element2EdgeUpdate,
-    "tensor_dot": TensorDotEdgeUpdate,
-    "tensor_dot_element2": TensorDotElement2EdgeUpdate,
 }
 
 

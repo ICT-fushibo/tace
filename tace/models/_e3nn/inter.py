@@ -49,18 +49,18 @@ class CgtpInteraction(Interaction):
 
         linear_down_irreps_out = self.irreps_out
         if self.nonlinear_type is not None:
-            if self.nonlinear_type == 'norm':
-                self.nonlinearity = NormLinearUnit(
-                    linear_down_irreps_out,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                )
-            elif self.nonlinear_type == 'grid':
-                self.nonlinearity = GridMLPUnit(
-                    linear_down_irreps_out,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                    bias=False,
-                )
-            elif self.nonlinear_type == 'e3nngate':
+            # if self.nonlinear_type == 'norm':
+            #     self.nonlinearity = NormLinearUnit(
+            #         linear_down_irreps_out,
+            #         activation=ACTIVATION[self.nonlinear_act](),
+            #     )
+            # elif self.nonlinear_type == 'grid':
+            #     self.nonlinearity = GridMLPUnit(
+            #         linear_down_irreps_out,
+            #         activation=ACTIVATION[self.nonlinear_act](),
+            #         bias=False,
+            #     )
+            if self.nonlinear_type == 'e3nngate':
                 irreps_scalars = o3.Irreps(
                     [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
                 )
@@ -311,18 +311,18 @@ class SO2Interaction(Interaction):
 
         linear_down_irreps_out = self.irreps_out
         if self.nonlinear_type is not None:
-            if self.nonlinear_type == 'norm':
-                self.nonlinearity = NormLinearUnit(
-                    linear_down_irreps_out,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                )
-            elif self.nonlinear_type == 'grid':
-                self.nonlinearity = GridMLPUnit(
-                    linear_down_irreps_out,
-                    activation=ACTIVATION[self.nonlinear_act](),
-                    bias=False,
-                )
-            elif self.nonlinear_type == 'e3nngate':
+            # if self.nonlinear_type == 'norm':
+            #     self.nonlinearity = NormLinearUnit(
+            #         linear_down_irreps_out,
+            #         activation=ACTIVATION[self.nonlinear_act](),
+            #     )
+            # elif self.nonlinear_type == 'grid':
+            #     self.nonlinearity = GridMLPUnit(
+            #         linear_down_irreps_out,
+            #         activation=ACTIVATION[self.nonlinear_act](),
+            #         bias=False,
+            #     )
+            if self.nonlinear_type == 'e3nngate':
                 irreps_scalars = o3.Irreps(
                     [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
                 )

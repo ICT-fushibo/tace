@@ -490,13 +490,12 @@ class GraphDataModule(LightningDataModule):
     #             "Set shuffle=True for when using per_epoch_frac"
     #         assert config.get("sampler", None) is None, \
     #             "Do not set sampler manually when using per_epoch_frac"
-    #         print('per_epoch')
 
     #         return instantiate(
     #             self.cfg["dataset"]["train_dataloader"],
     #             dataset=subset
     #         )
-    #     print('not epoch')
+
     #     return instantiate(
     #         self.cfg["dataset"]["train_dataloader"],
     #         dataset=self.train_dataset

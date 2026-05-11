@@ -13,6 +13,7 @@ DEFAULT_MODEL_CONFIG = {
     "mmax": 2,
     "Lmax": 2,
     "lmax": 3,
+    "parity": False, # in develop, not for user
     "num_channel": 64,
     "num_layers": 2,
     "target_property": ["energy", "forces"],
@@ -29,7 +30,6 @@ DEFAULT_MODEL_CONFIG = {
     },
     "edge_update": {
         "type": "identity",
-        "tensor_dot_channel": None,
     },
     "radial_basis": {
         "bias": False,
@@ -247,5 +247,6 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
+    if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
 
     return cfg

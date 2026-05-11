@@ -48,6 +48,7 @@ class e3nnTACE(torch.nn.Module):
         resnet: Dict = {},
         layer_norm: Dict = {},
         normalizer: Dict = {},
+        parity: bool = False,
         mmax: int = 2,
         dropout: Dict = {},
         **kwargs,
@@ -110,6 +111,7 @@ class e3nnTACE(torch.nn.Module):
             resnet=cfg['resnet'],
             layer_norm=cfg['layer_norm'],
             dropout=cfg['dropout'],
+            parity=cfg['parity'],
         )
 
         # === Readout ===
@@ -123,6 +125,7 @@ class e3nnTACE(torch.nn.Module):
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
             'target_weight': self.target_weight,
+            'parity': parity,
         }
         for_tensor_readout = {
             'num_layers': cfg['num_layers'],
@@ -134,6 +137,7 @@ class e3nnTACE(torch.nn.Module):
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
             'target_weight': self.target_weight,
+            'parity': parity,
         }
 
         # === Energy ===

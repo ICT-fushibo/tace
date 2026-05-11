@@ -150,6 +150,7 @@ def build_scalar_readout(
     num_fidelities: int,
     use_alllayer: bool,
     l: int,
+    parity: bool,
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -165,6 +166,7 @@ def build_scalar_readout(
                 bias=bias,
                 num_fidelities=num_fidelities,
                 l=l,
+                parity=parity,
             )
         )
     if use_alllayer:
@@ -183,6 +185,7 @@ def build_tensor_readout(
     num_fidelities: int,
     use_alllayer: bool,
     l: int,
+    parity: bool,
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -198,6 +201,7 @@ def build_tensor_readout(
                 bias=bias,
                 num_fidelities=num_fidelities,
                 l=l,
+                parity=parity,
             )
         )
     if use_alllayer:

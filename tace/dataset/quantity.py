@@ -34,6 +34,7 @@ PROPERTY = {
         'type': 'int',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "F_IDX",
         "shape": {
             "in_data": (1,),
@@ -52,6 +53,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "E",
         "shape": {
             "in_data": (1,),
@@ -70,6 +72,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "F",
         "shape": {
             "in_data": (-1, 3),
@@ -88,6 +91,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-edge",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "EDGE_F",
         "shape": {
             "in_data": (-1, 3),
@@ -106,6 +110,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "D_F",
         "shape": {
             "in_data": (-1, 3),
@@ -124,6 +129,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-edge",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "HESSIAN",
         "shape": {
             "in_data": (-1,),
@@ -142,6 +148,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "D_DIAG_H",
         "shape": {
             "in_data": (-1, 3, 3),
@@ -160,6 +167,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "S",
         "shape": {
             "in_data": (1, 3, 3),
@@ -179,6 +187,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "D_S",
         "shape": {
             "in_data": (1, 3, 3),
@@ -197,6 +206,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "V",
         "shape": {
             "in_data": (1, 3, 3),
@@ -216,6 +226,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "D_V",
         "shape": {
             "in_data": (1, 3, 3),
@@ -234,6 +245,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "A_S",
         "shape": {
             "in_data": (-1, 3, 3),
@@ -252,6 +264,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "A_V",
         "shape": {
             "in_data": (-1, 3, 3),
@@ -270,6 +283,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "D",
         "shape": {
             "in_data": (1, 3),
@@ -288,6 +302,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "D",
         "shape": {
             "in_data": (1, 3),
@@ -306,6 +321,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "P",
         "shape": {
             "in_data": (1, 3),
@@ -324,6 +340,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "ALPHA",
         "shape": {
             "in_data": (1, 3, 3),
@@ -342,6 +359,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "ALPHA",
         "shape": {
             "in_data": (1, 3, 3),
@@ -360,6 +378,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 2,
+        "irreps": '1x2e',
         "abbreviation": "BEC",
         "shape": {
             "in_data": (-1, 3, 3),
@@ -378,6 +397,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1e',
         "abbreviation": "M",
         "shape": {
             "in_data": (1, 3),
@@ -396,6 +416,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 2,
+        "irreps": '1x2e', # TODO, check
         "abbreviation": "CHI_M",
         "shape": {
             "in_data": (1, 3, 3),
@@ -414,6 +435,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "C",
         "shape": {
             "in_data": (-1,),
@@ -432,6 +454,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "TC",
         "shape": {
             "in_data": (1,),
@@ -450,6 +473,7 @@ PROPERTY = {
         'type': 'int',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "SM",
         "shape": {
             "in_data": (1,),
@@ -468,6 +492,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
+        "irreps": '1x0e', # TODO, check
         "abbreviation": "I_C_MAG",
         "shape": {
             "in_data": (-1,),
@@ -486,6 +511,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1e', # TODO, check
         "abbreviation": "I_NC_MAG",
         "shape": {
             "in_data": (-1, 3),
@@ -504,6 +530,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
+        "irreps": '1x0e', # TODO, check
         "abbreviation": "F_C_MAG",
         "shape": {
             "in_data": (-1,),
@@ -522,6 +549,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
+        "irreps": '1x0e', # TODO, check
         "abbreviation": "ABS_F_C_MAG",
         "shape": {
             "in_data": (-1,),
@@ -540,6 +568,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1e', # TODO, check
         "abbreviation": "F_NC_MAG",
         "shape": {
             "in_data": (-1, 3),
@@ -558,6 +587,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 0,
+        "irreps": '1x0e', # TODO, check
         "abbreviation": "C_MAG_F",
         "shape": {
             "in_data": (-1,),
@@ -576,6 +606,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-atom",
         "rank": 1,
+        "irreps": '1x1e', # TODO, check
         "abbreviation": "NC_MAG_F",
         "shape": {
             "in_data": (-1, 3),
@@ -594,6 +625,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e', # TODO, check
         "abbreviation": "TCM",
         "shape": {
             "in_data": (1,),
@@ -612,6 +644,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1e', # TODO, check
         "abbreviation": "TNCM",
         "shape": {
             "in_data": (1, 3),
@@ -630,6 +663,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1o',
         "abbreviation": "EF",
         "shape": {
             "in_data": (1, 3),
@@ -648,6 +682,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 1,
+        "irreps": '1x1e',
         "abbreviation": "MF",
         "shape": {
             "in_data": (1, 3),
@@ -666,6 +701,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "TEMP",
         "shape": {
             "in_data": (1,),
@@ -684,6 +720,7 @@ PROPERTY = {
         'type': 'float',
         "scope": "per-system",
         "rank": 0,
+        "irreps": '1x0e',
         "abbreviation": "E_TEMP",
         "shape": {
             "in_data": (1,),
