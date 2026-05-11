@@ -64,7 +64,7 @@ class Representation(torch.nn.Module):
         self.equivariant_property = equivariant_property
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
-        self.use_dens = get_tace_use_dens == '1'
+        self.use_dens = get_tace_use_dens() == '1'
         self.use_so2 = 'so2' in atomic_basis['type']
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type'])
 
@@ -178,7 +178,6 @@ class Representation(torch.nn.Module):
             "resnet_linear_type": resnet["linear_type"],
             "use_first_resnet": resnet["use_first_resnet"],
             "resnet_window": resnet["window"],
-            "irreps_node_embedding": self.node_embedding.irreps_out,
             "pre_norm_type": layer_norm["pre_norm_type"],
             "use_first_pre_norm": layer_norm["use_first_pre_norm"],
             "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
@@ -190,18 +189,6 @@ class Representation(torch.nn.Module):
             "stochastic_depth": dropout['stochastic_depth'],
             "parity": parity,
         }
-        self.interactions = torch.nn.ModuleList(
-            [
-                INTERACTION[atomic_basis['type'][layer]](
-                    **for_interactions,
-                    layer=layer,
-                    edge_feats_channel=self.edge_updates[layer].out_dim,
-                    nonlinear=atomic_basis['nonlinear'][layer],
-                    edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-                )
-                for layer in range(num_layers)
-            ]
-        )
 
         # if 'direct_hessian' or 'hamilton' in target_property:
         #     self.edge_interactions = torch.nn.ModuleList(
@@ -217,9 +204,23 @@ class Representation(torch.nn.Module):
         #         ]
         #     )
 
-        # === Product ===
-        self.products = torch.nn.ModuleList(
-            [
+        self.interactions = torch.nn.ModuleList()
+        self.products = torch.nn.ModuleList()
+
+        for layer in range(num_layers):
+            # === Interaction ===
+            self.interactions.append(
+                INTERACTION[atomic_basis['type'][layer]](
+                    **for_interactions,
+                    layer=layer,
+                    edge_feats_channel=self.edge_updates[layer].out_dim,
+                    nonlinear=atomic_basis['nonlinear'][layer],
+                    edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
+                    irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out
+                )
+            )
+            # === Product ===
+            self.products.append(
                 PRODUCT[product_basis['type'][layer]](
                     layer=layer,
                     num_layers=num_layers,
@@ -236,10 +237,9 @@ class Representation(torch.nn.Module):
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
+                    irreps_in=self.interactions[layer].irreps_out,
                 )
-                for layer in range(num_layers)
-            ]
-        )
+            )
 
         if layer_norm['final_norm_type'] is not None:
             self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_weight, num_channels=num_channel)

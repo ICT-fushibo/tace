@@ -3,11 +3,13 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Optional
+from typing import List, Union
 
 
 import torch
 from e3nn.nn import Activation
+from e3nn import o3
+
 
 from ..mlp import ACTIVATION
 from .base import ReadOut
@@ -68,7 +70,7 @@ class ScalarReadOut(ReadOut):
             self.last_layer = False
         
     def forward(
-        self, x: torch.Tensor, node_fidelity: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, node_fidelity: Union[torch.Tensor, None] = None
     ) -> torch.Tensor:
         if not self.last_layer:
             return self.linear1[0](x)
@@ -128,7 +130,7 @@ class TensorReadOut(ReadOut):
             self.last_layer = False
         
     def forward(
-        self, x: torch.Tensor, node_fidelity: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, node_fidelity: Union[torch.Tensor, None] = None
     ) -> torch.Tensor:
         if not self.last_layer:
             return self.linear1[0](x)
@@ -141,16 +143,13 @@ class TensorReadOut(ReadOut):
     
 def build_scalar_readout(
     num_layers: int,
-    Lmax: int,
-    lmax: int,
-    num_channel: int,
     hidden_channel: List[int], 
-    target_weight: List[int],
     bias: bool,
     num_fidelities: int,
     use_alllayer: bool,
-    l: int,
     parity: bool,
+    irreps_in: list[o3.Irreps],
+    irreps_out: Union[str, o3.Irreps]
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -158,15 +157,12 @@ def build_scalar_readout(
             ScalarReadOut(
                 layer=layer,
                 num_layers=num_layers,
-                Lmax=Lmax,
-                lmax=lmax,
-                num_channel=num_channel,
-                hidden_channel=hidden_channel, 
-                target_weight=target_weight,
+                hidden_channel=hidden_channel,
                 bias=bias,
                 num_fidelities=num_fidelities,
-                l=l,
                 parity=parity,
+                irreps_in=irreps_in[layer],
+                irreps_out=o3.Irreps(irreps_out),
             )
         )
     if use_alllayer:
@@ -176,16 +172,13 @@ def build_scalar_readout(
 
 def build_tensor_readout(
     num_layers: int,
-    Lmax: int,
-    lmax: int,
-    num_channel: int,
     hidden_channel: int, 
-    target_weight: List[int],
     bias: bool,
     num_fidelities: int,
     use_alllayer: bool,
-    l: int,
     parity: bool,
+    irreps_in: list[o3.Irreps],
+    irreps_out: Union[str, o3.Irreps]
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -193,15 +186,12 @@ def build_tensor_readout(
             TensorReadOut(
                 layer=layer,
                 num_layers=num_layers,
-                Lmax=Lmax,
-                lmax=lmax,
-                num_channel=num_channel,
                 hidden_channel=hidden_channel,
-                target_weight=target_weight,
                 bias=bias,
                 num_fidelities=num_fidelities,
-                l=l,
                 parity=parity,
+                irreps_in=irreps_in[layer],
+                irreps_out=o3.Irreps(irreps_out),
             )
         )
     if use_alllayer:

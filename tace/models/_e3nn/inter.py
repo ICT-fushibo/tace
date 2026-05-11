@@ -8,7 +8,7 @@ from typing import Optional, Dict
 
 
 import torch
-import e3nn
+from e3nn.nn import Gate
 from e3nn import o3
 
 
@@ -48,46 +48,15 @@ class CgtpInteraction(Interaction):
         )
 
         linear_down_irreps_out = self.irreps_out
-        if self.nonlinear_type is not None:
-            # if self.nonlinear_type == 'norm':
-            #     self.nonlinearity = NormLinearUnit(
-            #         linear_down_irreps_out,
-            #         activation=ACTIVATION[self.nonlinear_act](),
-            #     )
-            # elif self.nonlinear_type == 'grid':
-            #     self.nonlinearity = GridMLPUnit(
-            #         linear_down_irreps_out,
-            #         activation=ACTIVATION[self.nonlinear_act](),
-            #         bias=False,
-            #     )
-            if self.nonlinear_type == 'e3nngate':
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_out if ir.l > 0])
-                irreps_gates = o3.Irreps([(mul, (0, 1)) for mul, _ in irreps_gated])
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = e3nn.nn.Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            elif self.nonlinear_type == 'gate':
-                irreps_gated = linear_down_irreps_out
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
-                self.nonlinearity = GatedLinearUnit(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in
-            else:
-                assert False, "Unknown Nonlinear"
-
+        if self.use_gate:
+            irreps_gated = linear_down_irreps_out
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
+            self.nonlinearity = GatedLinearUnit(
+                irreps_gates=irreps_gates,
+                act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
+                irreps_gated=irreps_gated,
+            )
+            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
             self.linear_nonlinearity = Linear(
                 self.irreps_out, 
                 self.irreps_out,  
@@ -293,7 +262,7 @@ class SO2Interaction(Interaction):
             num_hidden_channel=self.num_hidden_channel,
             # num_channel_per_head=self.num_channel_per_head,
             is_so2_layout=self.is_so2_layout,
-            is_scalar_tp=(self.irreps_node_embedding.lmax == 0) and (self.layer == 0),
+            is_scalar_tp=(self.irreps_in.lmax == 0) and (self.layer == 0),
             # num_head=self.num_head,
             edge_nonlinear=self.edge_nonlinear,
             use_so2_edge_ace=self.use_so2_edge_ace,
@@ -303,53 +272,18 @@ class SO2Interaction(Interaction):
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
             scatter='sum',
-
         )
 
-        # if self.rejector.use_transformer:
-        #     self.scatter_norm = None
-
         linear_down_irreps_out = self.irreps_out
-        if self.nonlinear_type is not None:
-            # if self.nonlinear_type == 'norm':
-            #     self.nonlinearity = NormLinearUnit(
-            #         linear_down_irreps_out,
-            #         activation=ACTIVATION[self.nonlinear_act](),
-            #     )
-            # elif self.nonlinear_type == 'grid':
-            #     self.nonlinearity = GridMLPUnit(
-            #         linear_down_irreps_out,
-            #         activation=ACTIVATION[self.nonlinear_act](),
-            #         bias=False,
-            #     )
-            if self.nonlinear_type == 'e3nngate':
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in self.irreps_out if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in self.irreps_out if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = e3nn.nn.Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            elif self.nonlinear_type == 'gate':
-                irreps_gated = linear_down_irreps_out
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
-                self.nonlinearity = GatedLinearUnit(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in
-            else:
-                assert False, "Unknown Nonlinear"
-
+        if self.use_gate:
+            irreps_gated = linear_down_irreps_out
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
+            self.nonlinearity = GatedLinearUnit(
+                irreps_gates=irreps_gates,
+                act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
+                irreps_gated=irreps_gated,
+            )
+            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
             self.linear_nonlinearity = Linear(
                 self.irreps_out, 
                 self.irreps_out,  

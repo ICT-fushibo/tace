@@ -22,8 +22,13 @@ def _to_full_so3_irreps(lmax: Union[int, list[int]], num_channel: int) -> o3.Irr
     assert isinstance(lmax, list)
     return o3.Irreps([(num_channel, (l, (-1)**l)) for l in lmax])
 
+def _to_full_o3_irreps_with_0o(lmax: Union[int, list[int]], num_channel: int) -> o3.Irreps:
+    if isinstance(lmax, int):
+        return o3.Irreps([(num_channel, (l, p)) for l in range(lmax + 1) for p in (-1, 1)])
+    assert isinstance(lmax, list)
+    return o3.Irreps([(num_channel, (l, p)) for l in lmax for p in (-1, 1)])
 
-def _to_full_o3_irreps(lmax: Union[int, list[int]], num_channel: int) -> o3.Irreps:
+def _to_full_o3_irreps_without_0o(lmax: Union[int, list[int]], num_channel: int) -> o3.Irreps:
     if isinstance(lmax, int):
         return o3.Irreps([(num_channel, (l, p)) for l in range(lmax + 1) for p in (-1, 1)])
     assert isinstance(lmax, list)
@@ -169,7 +174,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         num_radial_basis: int,
         radial_mlp: list[int],
         radial_bias: bool,
-        irreps_node_embedding: o3.Irreps,
+        irreps_in: o3.Irreps,
         l1l2: Union[str, None] = None,
         scatter_norm: str = 'avg_num_neighbors',
         ictp_ictc_like: bool = True,
@@ -191,6 +196,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
+
     ) -> None:
         super().__init__()
 
@@ -225,6 +231,13 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
+        if self.nonlinear_type is not None:
+            if self.nonlinear_type == 'gate':
+                self.use_gate = True
+            else:
+                raise ValueError(f"Unsupported nonlinear_type: {self.nonlinear_type}")
+        else:
+            self.use_gate = False
         self.edge_info_type = edge_info_type
         if self.edge_info_type == 'mlp':
             self.radial_act = 'silu'
@@ -233,7 +246,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
         self.is_so2_layout = is_so2_layout
-        self.irreps_node_embedding = irreps_node_embedding
         self.num_head = num_head
         self.use_so2_edge_ace = use_so2_edge_ace
         self.use_first_dropout = use_first_dropout 
@@ -245,25 +257,21 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.so2_angular_basis = so2_angular_basis
         self.stochastic_depth_p = stochastic_depth
         self.parity = parity
-        if self.parity:
-            to_irreps = _to_full_o3_irreps
-        else:
-            to_irreps = _to_full_so3_irreps        
-
         self.irreps_sh = _to_full_so3_irreps(self.lmax, 1)
 
+
+        self.irreps_in = irreps_in
+
         if self.correlation == 1:
-            self.irreps_out = to_irreps(self.Lmax, self.num_channel)
+            self.irreps_out =  _to_full_so3_irreps(self.Lmax, self.num_channel)
         else:
-            self.irreps_out = to_irreps(self.lmax, self.num_channel)
-        if layer == 0:
-            self.irreps_in = irreps_node_embedding
-        else:
-            self.irreps_in = to_irreps(self.Lmax, self.num_channel)
+            self.irreps_out =  _to_full_so3_irreps(self.lmax, self.num_channel)
+
         if self.layer == num_layers - 1:
-            self.irreps_sc = to_irreps(target_weight, self.num_channel)
+            self.irreps_sc =  _to_full_so3_irreps(target_weight, self.num_channel)
         else:
-            self.irreps_sc = to_irreps(self.Lmax, self.num_channel)
+            self.irreps_sc = _to_full_so3_irreps(self.Lmax, self.num_channel)
+
 
         self._setup()
     
@@ -283,6 +291,7 @@ class Product(torch.nn.Module):
         num_channel: int,
         num_hidden_channel: int,
         target_weight: list[int],
+        irreps_in: o3.Irreps,
         correlation: list[int],
         l1l2: Union[str, None],
         ictp_ictc_like: bool,
@@ -312,25 +321,16 @@ class Product(torch.nn.Module):
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
         self.parity = parity
-        if self.parity:
-            to_irreps = _to_full_o3_irreps
-        else:
-            to_irreps = _to_full_so3_irreps    
 
-
-        if self.correlation == 1:
-            self.irreps_in = to_irreps(self.Lmax, self.num_channel)
-            self.irreps_hidden = to_irreps(self.Lmax, self.num_hidden_channel)
-        else:
-            self.irreps_in = to_irreps(self.lmax, self.num_channel)
-            self.irreps_hidden = to_irreps(self.lmax, self.num_hidden_channel)
+        self.irreps_in = irreps_in
+        self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
 
         if layer == num_layers-1:
-            self.irreps_coefs_out = to_irreps(self.target_weight, self.num_hidden_channel)
-            self.irreps_out = to_irreps(self.target_weight, self.num_channel)
+            self.irreps_coefs_out = _to_full_so3_irreps(self.target_weight, self.num_hidden_channel)
+            self.irreps_out = _to_full_so3_irreps(self.target_weight, self.num_channel)
         else:
-            self.irreps_coefs_out = to_irreps(self.Lmax, self.num_hidden_channel)
-            self.irreps_out = to_irreps(self.Lmax, self.num_channel)
+            self.irreps_coefs_out = _to_full_so3_irreps(self.Lmax, self.num_hidden_channel)
+            self.irreps_out = _to_full_so3_irreps(self.Lmax, self.num_channel)
 
         self._setup()
     
@@ -344,46 +344,33 @@ class ReadOut(torch.nn.Module):
         self,
         layer: int,
         num_layers: int,
-        Lmax: int,
-        lmax: int,
-        num_channel: int,
         hidden_channel: list[int], 
-        target_weight: list[int],
         bias: bool,
         num_fidelities: int,
-        l: int,
         parity: bool,
+        irreps_in: o3.Irreps,
+        irreps_out: o3.Irreps,
     ) -> None:
         super().__init__()
 
-        self.layer = layer
-        self.num_layers = num_layers
-        self.num_channel = num_channel
-        self.Lmax = Lmax
-        self.lmax = lmax
-        self.use_bias = bias
-        self.num_fidelities = num_fidelities
-        self.target_weight = target_weight
         self.scalar_act = 'silu'
         self.tensor_act = 'sigmoid'
+
+        self.layer = layer
+        self.num_layers = num_layers
+        self.use_bias = bias
+        self.num_fidelities = num_fidelities
         self.parity = parity
-        if self.parity:
-            to_irreps = _to_full_o3_irreps
-        else:
-            to_irreps = _to_full_so3_irreps 
-        
-        if layer == num_layers-1:
-            self.irreps_in = to_irreps(self.target_weight, self.num_channel)
-        else:
-            self.irreps_in = to_irreps(self.Lmax, self.num_channel)
-        self.irreps_out = to_irreps([l], num_fidelities)
+
+        self.irreps_in = o3.Irreps(irreps_in)
+        self.irreps_out = irreps_out * num_fidelities
 
         self.irreps_gates = [
             o3.Irreps([(c * self.num_fidelities, (0, 1))])
             for c in hidden_channel
         ]
         self.irreps_hidden = [
-            o3.Irreps([(c * self.num_fidelities, (l, (-1)**l))])
+            o3.Irreps([(c * self.num_fidelities, self.irreps_out[0].ir)])
             for c in hidden_channel
         ]
 

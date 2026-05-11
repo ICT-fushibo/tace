@@ -72,7 +72,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
         self.use_oeq = get_tace_use_oeq() == '1'
-        self.use_cue = get_tace_use_cue == '1'
+        self.use_cue = get_tace_use_cue() == '1'
         # assert not (self.use_oeq & self.use_cue)
 
         if self.use_oeq:

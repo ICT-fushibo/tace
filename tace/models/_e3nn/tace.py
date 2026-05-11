@@ -117,32 +117,30 @@ class e3nnTACE(torch.nn.Module):
         # === Readout ===
         for_scalar_readout = {
             'num_layers': cfg['num_layers'],
-            'Lmax': cfg["Lmax"],
-            'lmax': cfg["lmax"],
-            'num_channel': cfg['num_channel'],
             'hidden_channel': cfg['readout_emlp']['hidden'],
             'bias': cfg['readout_emlp']['bias'],
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
-            'target_weight': self.target_weight,
             'parity': parity,
+            'irreps_in': [prod.irreps_out for prod in self.representation.products],
+            # 'Lmax': cfg["Lmax"],
+            # 'lmax': cfg["lmax"],
+            # 'num_channel': cfg['num_channel'],
+            # 'target_weight': self.target_weight,
         }
         for_tensor_readout = {
             'num_layers': cfg['num_layers'],
-            'Lmax': cfg["Lmax"],
-            'lmax': cfg["lmax"],
-            'hidden_channel': cfg['readout_emlp']['hidden'],
-            'num_channel': cfg['num_channel'],
+            'hidden_channel': cfg['readout_emlp']['hidden'],   
             'bias': cfg['readout_emlp']['bias'],
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
-            'target_weight': self.target_weight,
             'parity': parity,
+            'irreps_in': [prod.irreps_out for prod in self.representation.products]
         }
 
         # === Energy ===
         if "energy" in self.target_property:
-            self.energy_readouts = build_scalar_readout(l=0,**for_scalar_readout)
+            self.energy_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
             self.atomic_energy_layer = OneHotToAtomicEnergy(cfg['atomic_energies'])
             if cfg['scale_shift']['enable']:
                 self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
@@ -177,37 +175,37 @@ class e3nnTACE(torch.nn.Module):
             self.compute_bec = les_arguments.get("compute_bec", False)
             self.bec_output_index = les_arguments.get("bec_output_index", None)
             self.les = Les(les_arguments=les_arguments)
-            self.les_readouts = build_scalar_readout(l=0, **for_scalar_readout)
+            self.les_readouts = build_scalar_readout(irreps_out='0e', **for_scalar_readout)
 
 
         # === Direct Dipolet === 
         if "direct_dipole" in self.target_property:
-            self.dipole_readouts = build_tensor_readout(l=1, **for_tensor_readout)
+            self.dipole_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
             
         # === Direct Forces Readout ===
         if "direct_forces" in self.target_property:
-            self.direct_forces_readouts = build_tensor_readout(l=1, **for_tensor_readout)
+            self.direct_forces_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
        
         # === Direct Polarizability ===
         if "direct_polarizability" in self.target_property:
-            self.direct_polarizability_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
-            self.direct_polarizability_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+            self.direct_polarizability_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+            self.direct_polarizability_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
             self.direct_polarizability_basis_change = PropertyBasisChange["direct_polarizability"]() 
 
         # === Direct Virials ===
         if 'direct_virials' in self.target_property or 'direct_stress' in self.target_property:
-            self.direct_virials_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
-            self.direct_virials_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+            self.direct_virials_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+            self.direct_virials_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
             self.direct_virials_basis_change = PropertyBasisChange["direct_virials"]() 
 
         # === Charges ===
         if "charges" in self.target_property:
             self.predict_charges_method = cfg['special']['charges']['method']
             if self.predict_charges_method == 'lagrangian':
-                self.chi_readouts = build_scalar_readout(l=0,**for_scalar_readout)
-                self.eta_readouts = build_scalar_readout(l=0,**for_scalar_readout)
+                self.chi_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+                self.eta_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
             elif self.predict_charges_method == 'uniform_distribution':
-                self.charges_readouts = build_scalar_readout(l=0,**for_scalar_readout)
+                self.charges_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
             else:
                 raise ValueError(
                     f"Unknown predict_charges_method: {self.predict_charges_method}. "
@@ -216,8 +214,8 @@ class e3nnTACE(torch.nn.Module):
 
         # === Direct Diagonal Hessian ===
         if "direct_diagonal_hessian" in self.target_property:
-            self.direct_diagonal_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
-            self.direct_diagonal_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+            self.direct_diagonal_hessian_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+            self.direct_diagonal_hessian_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
             self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
 
         # # === Direct Hessian ===
@@ -228,11 +226,11 @@ class e3nnTACE(torch.nn.Module):
 
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
-            self.abs_final_collinear_magmoms_readouts = build_scalar_readout(l=0, **for_scalar_readout)
+            self.abs_final_collinear_magmoms_readouts = build_scalar_readout(irreps_out='0e', **for_scalar_readout) # TODO, check
 
         # === DeNs noise ===
         if self.representation.use_dens:
-            self.dens_noise_readouts = build_tensor_readout(l=1, **for_tensor_readout)
+            self.dens_noise_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
 
         # self.normalizers = torch.nn.ModuleDict()
         # for p in self.target_property:
