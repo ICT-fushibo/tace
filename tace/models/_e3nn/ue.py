@@ -91,12 +91,12 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
         self.uee = torch.nn.ModuleDict()
         for k, v in config.items():
             self.uee[k] = ElementLinear(
-                o3.Irreps(PROPERTY[p]["irreps"]), 
+                o3.Irreps(PROPERTY[k]["irreps"]), 
                 self.irreps_out,
                 bias=True,
                 num_elements=num_elements,
             )
-            self.config[p]['scope'] = PROPERTY[k]["scope"],
+            self.config[k]['scope'] = PROPERTY[k]["scope"]
 
 
     def forward(
