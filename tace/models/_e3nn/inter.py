@@ -8,7 +8,6 @@ from typing import Optional, Dict
 
 
 import torch
-from e3nn.nn import Gate
 from e3nn import o3
 
 
@@ -18,7 +17,7 @@ from ..layout import LayoutTransform
 from .base import Interaction
 from .linear import Linear, ElementLinear
 from .fused import O3ScatterTensorProduct, SO2ScatterTensorProduct
-from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
+from .nonlinear import O3Gate
 from .layer_norm import get_normalization_layer
 
 
@@ -47,11 +46,10 @@ class CgtpInteraction(Interaction):
             ictp_ictc_like=self.ictp_ictc_like,
         )
 
-        linear_down_irreps_out = self.irreps_out
         if self.use_gate:
-            irreps_gated = linear_down_irreps_out
-            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
-            self.nonlinearity = GatedLinearUnit(
+            irreps_gated = self.irreps_out
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_out)
+            self.nonlinearity = O3Gate(
                 irreps_gates=irreps_gates,
                 act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
                 irreps_gated=irreps_gated,
@@ -62,6 +60,8 @@ class CgtpInteraction(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        else:
+            linear_down_irreps_out = self.irreps_out
 
         self.linear_down = Linear(
             self.rejector.irreps_out.simplify(),
@@ -274,11 +274,10 @@ class SO2Interaction(Interaction):
             scatter='sum',
         )
 
-        linear_down_irreps_out = self.irreps_out
         if self.use_gate:
-            irreps_gated = linear_down_irreps_out
-            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in linear_down_irreps_out)
-            self.nonlinearity = GatedLinearUnit(
+            irreps_gated = self.irreps_out
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_out)
+            self.nonlinearity = O3Gate(
                 irreps_gates=irreps_gates,
                 act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
                 irreps_gated=irreps_gated,
@@ -289,6 +288,8 @@ class SO2Interaction(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        else:
+            linear_down_irreps_out = self.irreps_out
 
         self.linear_down = Linear(
             o3.Irreps([(self.rejector.num_out_channel, ir) for _, ir in self.irreps_out]),

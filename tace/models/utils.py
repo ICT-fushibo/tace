@@ -7,27 +7,30 @@ from typing import List, Tuple, Dict, Tuple, Callable
 
 
 import torch
+from e3nn import o3
+
+
 from tace.utils.torch_scatter import scatter_sum
 
 
-to_weight = {
-    'energy': [0],
-    'charges': [0],
-    'direct_forces': [1],
-    'direct_stress': [0, 2],
-    'direct_virials': [0, 2],
-    'direct_dipole': [1],
-    'direct_polarizability': [0, 2],
-    'direct_diagonal_hessian': [0, 2],
-    'abs_final_collinear_magmoms': [0],
+to_irrep = {
+    'energy': ['0e'],
+    'charges': ['0e'],
+    'direct_forces': ['1o'],
+    'direct_stress': ['0e', '2e'],
+    'direct_virials': ['0e', '2e'],
+    'direct_dipole': ['1o'],
+    'direct_polarizability': ['0e', '2e'],
+    'direct_diagonal_hessian': ['0e', '2e'],
+    'abs_final_collinear_magmoms': ['0e'], #TODO, check
 }
 
 
-def get_target_weight(target_property: List[str]) -> List[int]:
-    target_weight: List[int] = [0]
+def get_target_irreps(target_property: List[str]) -> o3.Irreps:
+    target_irreps: List[str] = ['0e']
     for p in target_property:
-        target_weight.extend(to_weight.get(p, []))
-    return sorted(set(target_weight))
+        target_irreps.extend(to_irrep.get(p, []))
+    return o3.Irreps(list(set(target_irreps)))
 
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
@@ -304,3 +307,5 @@ def replace_module_recursively(
         else:
             replace_module_recursively(child, target_cls, factory)
     return model
+
+

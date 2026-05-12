@@ -38,8 +38,7 @@ class Representation(torch.nn.Module):
         Lmax: int,
         lmax: int,
         num_channel: int,
-        target_weight: List[int],
-        target_property: List[str],     
+        target_irreps: o3.Irreps,  
         node_embedding: Dict,
         edge_embedding: Dict,
         edge_update: Dict,
@@ -56,7 +55,6 @@ class Representation(torch.nn.Module):
     ):
         super().__init__()
 
-        target_weight = list(set(target_weight))
         self.num_elements = len(atomic_numbers)
         self.num_channel = num_channel
         self.num_layers = num_layers
@@ -165,7 +163,7 @@ class Representation(torch.nn.Module):
             "lmax": lmax,
             "num_channel": num_channel,
             "num_hidden_channel": atomic_basis["num_channel"],
-            "target_weight": target_weight,
+            "target_irreps": target_irreps,
             "num_radial_basis": radial_basis["num_radial_basis"],
             "radial_mlp": radial_basis["hidden"],
             "radial_bias": radial_basis["bias"],
@@ -229,7 +227,7 @@ class Representation(torch.nn.Module):
                     lmax=lmax,
                     num_channel=num_channel,
                     num_hidden_channel=product_basis['num_channel'],
-                    target_weight=target_weight,
+                    target_irreps=target_irreps,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
                     ictp_ictc_like=product_basis['ictp_ictc_like'],
@@ -242,9 +240,8 @@ class Representation(torch.nn.Module):
             )
 
         if layer_norm['final_norm_type'] is not None:
-            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_weight, num_channels=num_channel)
-            self.final_reshape = LayoutTransform([(num_channel, (l, (-1)**l)) for l in target_weight])
-
+            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_irreps.ls, num_channels=num_channel)
+            self.final_reshape = LayoutTransform([(num_channel, ir) for _, ir in target_irreps])
 
         if self.use_dens:
             self.irreps_forces_sh = o3.Irreps.spherical_harmonics(lmax=Lmax)

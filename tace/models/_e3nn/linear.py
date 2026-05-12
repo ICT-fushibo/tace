@@ -3,8 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import math
-
 
 import torch
 from e3nn import o3

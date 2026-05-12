@@ -3,22 +3,16 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import math
 from typing import Dict
 
 
 import torch
-import opt_einsum_fx
-import e3nn
-from e3nn import o3
 
 
 from ..layout import LayoutTransform
 from .base import Product
 from .linear import Linear, ElementLinear
 from .fused import uuuTensorProduct
-from .nonlinear import GatedLinearUnit, NormLinearUnit, GridMLPUnit
-from ..mlp import ACTIVATION
 from ..so2 import SO3Grid
 from .dropout import GraphDropPath
 
@@ -57,27 +51,17 @@ class CgtpACE(Product):
 
         product_in1 = self.irreps_hidden
 
-        if self.correlation == 2:
-            product_out = self.irreps_out
-        else:
-            product_out = self.irreps_hidden
-
         for nu in range(2, self.correlation+1):
             this_ace = uuuTensorProduct(
                 irreps_in1=product_in1,
                 irreps_in2=self.irreps_hidden,
-                irreps_out=product_out,
+                irreps_out=self.irreps_tp_out_list[nu-2],
                 l1l2=self.l1l2,
                 ictp_ictc_like=self.ictp_ictc_like,
             )
             self.aces.append(this_ace)
             self.coefs.append(coefs_cls(this_ace.irreps_out.simplify(), **for_coefs))
             product_in1 = this_ace.irreps_out
-
-            if nu == self.correlation-1:
-                product_out = self.irreps_coefs_out
-            else:
-                product_out = self.irreps_hidden
 
         self.linear = Linear(
             self.irreps_coefs_out,

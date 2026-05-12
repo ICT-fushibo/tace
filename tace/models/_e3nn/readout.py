@@ -14,7 +14,7 @@ from e3nn import o3
 from ..mlp import ACTIVATION
 from .base import ReadOut
 from .linear import Linear
-from .nonlinear import GatedLinearUnit
+from .nonlinear import O3Gate
 
 
 def mh_mask(

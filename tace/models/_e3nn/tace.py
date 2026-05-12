@@ -13,7 +13,7 @@ from tace.utils.torch_scatter import scatter_sum
 from ..radial import ZBLBasis
 from ..normalizer import Normalizer
 from ..blocks import OneHotToAtomicEnergy, ScaleShift
-from ..utils import get_target_weight, compute_fixed_charge_dipole
+from ..utils import get_target_irreps, compute_fixed_charge_dipole
 from .readout import build_scalar_readout, build_tensor_readout
 from .representation import Representation
 from .default import check_model_config
@@ -79,13 +79,13 @@ class e3nnTACE(torch.nn.Module):
         self.num_channel = cfg['num_channel']
 
         # === Will be used in __init__ ===
-        if cfg['product_basis']['return_components']:
-            if isinstance(cfg['product_basis']['return_components'], list):
-                self.target_weight = sorted(cfg['product_basis']['return_components'])
-            else:
-                self.target_weight = [l for l in range(cfg['Lmax']+1)]
-        else:
-            self.target_weight = get_target_weight(self.target_property)
+        # if cfg['product_basis']['return_components']:
+        #     if isinstance(cfg['product_basis']['return_components'], list):
+        #         self.target_irreps = sorted(cfg['product_basis']['return_components'])
+        #     else:
+        #         self.target_irreps = [l for l in range(cfg['Lmax']+1)]
+        # else: # TODO
+        self.target_irreps = get_target_irreps(self.target_property)
 
         # === Representation/Descriptor ===
         self.representation = Representation(
@@ -103,8 +103,7 @@ class e3nnTACE(torch.nn.Module):
             radial_basis=cfg['radial_basis'],
             atomic_basis=cfg['atomic_basis'],
             product_basis=cfg['product_basis'],
-            target_weight=self.target_weight,
-            target_property=self.target_property,
+            target_irreps=self.target_irreps,
             invariant_property=cfg['invariant_property'],
             equivariant_property=cfg['equivariant_property'],
             universal_embedding=cfg['universal_embedding'],
@@ -121,7 +120,7 @@ class e3nnTACE(torch.nn.Module):
             'bias': cfg['readout_emlp']['bias'],
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
-            'parity': parity,
+            'parity': cfg['parity'],
             'irreps_in': [prod.irreps_out for prod in self.representation.products],
             # 'Lmax': cfg["Lmax"],
             # 'lmax': cfg["lmax"],
@@ -134,7 +133,7 @@ class e3nnTACE(torch.nn.Module):
             'bias': cfg['readout_emlp']['bias'],
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
-            'parity': parity,
+            'parity': cfg['parity'],
             'irreps_in': [prod.irreps_out for prod in self.representation.products]
         }
 
@@ -515,7 +514,7 @@ class e3nnTACE(torch.nn.Module):
             LES_BEC = None
 
         scalar_descriptor = None
-        if 0 in self.target_weight:
+        if '0e' in self.target_irreps:
             scalar_descriptor_list = []
             for descriptor in descriptors:
                 scalar_descriptor_list.append(descriptor[:, :self.num_channel])
