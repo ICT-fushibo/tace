@@ -19,14 +19,6 @@ from ..so2 import (
     SO3Rotation, SO2Linear, SO2Gate, SO2TensorProduct,
     so2_expand_index, so3_expand_index,
 )
-try:
-    from .._oeq import e3nnOeqScatterTensorProduct
-except Exception:
-    pass
-try:
-    from .._cue import e3nnCueScatterTensorProduct
-except Exception:
-    pass
 
 
 class O3ScatterTensorProduct(torch.nn.Module):
@@ -71,9 +63,9 @@ class O3ScatterTensorProduct(torch.nn.Module):
         self.weight_numel = self.tp.weight_numel
         self.use_oeq = get_tace_use_oeq() == '1'
         self.use_cue = get_tace_use_cue() == '1'
-        # assert not (self.use_oeq & self.use_cue)
 
         if self.use_oeq:
+            from .._oeq import e3nnOeqScatterTensorProduct
             self.fused_tp = e3nnOeqScatterTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,
@@ -81,6 +73,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 instructions=self.instructions,
             )
         elif self.use_cue:
+            from .._cue import e3nnCueScatterTensorProduct
             self.fused_tp = e3nnCueScatterTensorProduct(
                 irreps_in1=self.irreps_in1,
                 irreps_in2=self.irreps_in2,

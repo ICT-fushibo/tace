@@ -62,6 +62,8 @@ class TorchElement:
         idxs = lookup_table[zs]  # shape (N,)
         return F.one_hot(idxs, num_classes=self.num_elements)
 
+    def __len__(self) -> int:
+        return len(self.zs)
 
 def build_element_lookup(atomic_numbers: Sequence[int]) -> TorchElement:
     element = TorchElement(sorted(list(atomic_numbers)))

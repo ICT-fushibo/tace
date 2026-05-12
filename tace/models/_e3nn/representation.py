@@ -122,21 +122,6 @@ class Representation(torch.nn.Module):
                 },
                 bias=False,
             )
-        if len(self.equivariant_property) > 0:
-            self.uee_embedding = torch.nn.ModuleList()
-            for _ in range(num_layers):
-                self.uee_embedding.append(
-                    UniversalEquivariantEmbedding(
-                        {
-                            k: v for k, v in universal_embedding.items() 
-                            if k in self.equivariant_property
-                        },
-                        len(atomic_numbers),
-                        num_channel, # norm bias hardcore to true
-                        lmax=lmax,
-                    )
-                )
-
 
         # === Edge Update ===
         self.edge_updates = torch.nn.ModuleList(
@@ -202,6 +187,10 @@ class Representation(torch.nn.Module):
         #     )
 
         self.interactions = torch.nn.ModuleList()
+        if len(self.equivariant_property) > 0:
+            self.uee_embeddings = torch.nn.ModuleList()
+        else:
+            self.uee_embeddings = None
         self.products = torch.nn.ModuleList()
 
         for layer in range(num_layers):
@@ -216,6 +205,25 @@ class Representation(torch.nn.Module):
                     irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out
                 )
             )
+            inter_irreps_out = self.interactions[layer].irreps_out
+
+            # === UEE ===
+            if self.uee_embeddings is not None:
+                self.uee_embeddings.append(
+                    UniversalEquivariantEmbedding(
+                        irreps_in=inter_irreps_out,
+                        num_channel=num_channel,
+                        num_elements=len(atomic_numbers),
+                        config={
+                            k: v for k, v in universal_embedding.items() 
+                            if k in self.equivariant_property
+                        },
+                    ),
+                )
+                prod_irreps_in = self.uee_embeddings[layer].irreps_out
+            else:
+                prod_irreps_in = inter_irreps_out
+
             # === Product ===
             self.products.append(
                 PRODUCT[product_basis['type'][layer]](
@@ -233,7 +241,7 @@ class Representation(torch.nn.Module):
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
-                    irreps_in=self.interactions[layer].irreps_out,
+                    irreps_in=prod_irreps_in,
                 )
             )
 
@@ -245,8 +253,8 @@ class Representation(torch.nn.Module):
             self.irreps_forces_sh = o3.Irreps.spherical_harmonics(lmax=Lmax)
             self.forces_embedding = Linear(
                 self.irreps_forces_sh,
-                (self.irreps_forces_sh * num_channel).regroup(),
-                bias=True
+                self.interactions[0].irreps_out,
+                bias=True,
             )
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
@@ -276,17 +284,10 @@ class Representation(torch.nn.Module):
             cutoff,
         )
         if hasattr(self, "uie_embedding"):
-            uie_data = {}
-            for k in self.invariant_property:
-                uie_data.update({k: data[k]})
-            uie_feats = self.uie_embedding(data["batch"], uie_data)
+            uie_feats = self.uie_embedding(data)
             node_feats = node_feats + uie_feats
         else:
             uie_feats = None
-        if hasattr(self, 'uee_embedding'):
-            uee_data = {}
-            for k in self.equivariant_property:
-                uee_data.update({k: data[k]})
 
         edge_feats = self.edge_embedding(
             node_feats,
@@ -331,8 +332,8 @@ class Representation(torch.nn.Module):
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 
-            if hasattr(self, 'uee_embedding'): 
-                node_feats = self.uee_embedding[idx](node_feats, node_attrs_slice, data["batch"], uee_data)
+            if self.uee_embeddings is not None: 
+                node_feats = self.uee_embeddings[idx](node_feats, node_attrs_slice, data)
             if forces_embedding is not None and idx == 0:
                 node_feats = node_feats + forces_embedding
             node_feats = prod(node_feats, node_attrs_slice, sc, data["batch"])

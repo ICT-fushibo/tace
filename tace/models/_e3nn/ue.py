@@ -13,39 +13,9 @@ from e3nn.nn import Activation
 from ...dataset.quantity import PROPERTY
 from ..utils import expand_dims_to
 from ..mlp import ACTIVATION, MLP
-from ..layout import LayoutTransform
+from .linear import Linear, ElementLinear
 from ..ictd import ICTD
 
-def add_l0_to_left(t: torch.Tensor, l0: torch.Tensor) -> torch.Tensor:
-    return torch.cat(
-        [t[:, 0:1, :] + l0, t[:, 1:, :]],
-        dim=1
-    )
-
-def add_l1_to_left(t: torch.Tensor, l1: torch.Tensor) -> torch.Tensor:
-    return torch.cat(
-        [t[:, 0:1, :], t[:, 1:4, :] + l1, t[:, 4:, :]],
-        dim=1
-    )
-
-# def add_l2_to_left(t: torch.Tensor, l2: torch.Tensor) -> torch.Tensor:
-#     return torch.cat(
-#         [t[:, 0:4, :], t[:, 4:9, :] + l2, t[:, 9:, :]],
-#         dim=1
-#     )
-
-# def add_l3_to_left(t: torch.Tensor, l3: torch.Tensor) -> torch.Tensor:
-#     return torch.cat(
-#         [t[:, 0:9, :], t[:, 9:16, :] + l3, t[:, 16:, :]],
-#         dim=1
-#     )
-
-ADD_FN = {
-    0: add_l0_to_left,
-    1: add_l1_to_left,
-    # 2: add_l2_to_left,
-    # 3: add_l3_to_left,
-}
 
 
 class UniversalInvariantEmbedding(torch.nn.Module):
@@ -78,11 +48,9 @@ class UniversalInvariantEmbedding(torch.nn.Module):
         )
         self.act = Activation(f"{out_dim}x0e", [ACTIVATION[activation]()])
 
-    def forward(
-        self,
-        batch: torch.Tensor,
-        attrs: dict[str, torch.Tensor],
-    ) -> torch.Tensor:
+    def forward(self, data: dict[str, torch.Tensor]) -> torch.Tensor:
+        
+        batch = data['batch']
         embeddings = []
 
         for p, module in self.uie.items():
@@ -90,7 +58,7 @@ class UniversalInvariantEmbedding(torch.nn.Module):
             p_type = PROPERTY[p]['type']
             p_scope = PROPERTY[p]['scope']
 
-            attr = attrs[p]
+            attr = data[p]
             if p_scope == "per-system":
                 attr = attr[batch]
             if p_type == 'float':
@@ -101,116 +69,56 @@ class UniversalInvariantEmbedding(torch.nn.Module):
         return self.act(self.project(torch.cat(embeddings, dim=-1))).unsqueeze(1)
 
 
-class EquivariantEmbedding(torch.nn.Module):
-    def __init__(
-        self,
-        rank: int,
-        scope: str,
-        num_elements: int,
-        num_channel: int,
-        element_trainable: bool = True,
-        channel_trainable: bool = True,
-        normalizer: float = 1.0,
-    ):
-        super().__init__()
-
-        if element_trainable:
-            self.element_weights = torch.nn.Parameter(
-                torch.ones(num_elements, dtype=torch.get_default_dtype())
-            )
-        else:
-            self.register_buffer(
-                "element_weights",
-                torch.ones(num_elements, dtype=torch.get_default_dtype()),
-                persistent=False,
-            )
-        if channel_trainable:
-            self.channel_weights = torch.nn.Parameter(
-                torch.ones(num_channel, dtype=torch.get_default_dtype())
-            )
-        else:
-            self.register_buffer(
-                "channel_weights",
-                torch.ones(num_channel, dtype=torch.get_default_dtype()),
-                persistent=False,
-            )
-        self.p_rank = rank
-        self.p_scope = scope
-        self.p_add_fn = ADD_FN[self.p_rank]
-        self.p_normalizer = normalizer
-
-        # self.register_buffer(
-        #     "C",
-        #     ICTD(rank, rank)[3][0],
-        #     persistent=False,
-        # )
-
-    def forward(
-        self,
-        node_feats: torch.Tensor,
-        node_attrs: torch.Tensor,
-        batch: torch.Tensor,
-        attr: torch.Tensor,
-    ):
-        
-        label = attr * self.p_normalizer
-        if self.p_scope == "per-system":
-            label = label[batch].unsqueeze(-1)
-        else:
-            label = label.unsqueeze(-1) # [B, M, C]
-
-        element_weights = torch.einsum('bz, z -> b', node_attrs, self.element_weights)
-        W = element_weights.unsqueeze(-1) * self.channel_weights.unsqueeze(0) # [B, C]
-        W = W.unsqueeze(1) # [B, M, C]
-        embedding = label * expand_dims_to(W, label.ndim, dim=1)
-        return self.p_add_fn(node_feats, embedding)
-  
-    def __repr__(self) -> str:
-        cls = self.__class__.__name__
-        return (
-            f"{cls}(\n"
-            f"  rank={self.p_rank},\n"
-            f"  normalizer={self.p_normalizer},\n"
-            f")"
-        )
-
-
 class UniversalEquivariantEmbedding(torch.nn.Module):
     def __init__(
         self,
-        equivariant_embedding: dict[str, Union[bool, str, int]],
-        num_elements: int,
+        irreps_in: o3.Irreps,
         num_channel: int,
-        lmax: int,
+        num_elements: int,
+        config: dict[str, Union[bool, str, int]],
     ):
         super().__init__()
 
-        self.uee = torch.nn.ModuleDict()
-        for k, v in equivariant_embedding.items():
-            if PROPERTY[k]['rank'] > 0:
-                self.uee[k] = EquivariantEmbedding(
-                    PROPERTY[k]["rank"],
-                    PROPERTY[k]["scope"],
-                    num_elements,
-                    num_channel,
-                    element_trainable=True,
-                    channel_trainable=True,
-                    normalizer=v['normalizer'],
-                )
+        self.config = config
+        self.irreps_in = irreps_in
+        irreps_out = irreps_in
+        for p in config.keys():
+            irreps_out += o3.Irreps(PROPERTY[p]["irreps"]) 
+        irreps_out = irreps_out.regroup()
+        self.irreps_out = o3.Irreps([(num_channel, ir) for _, ir in irreps_out])
 
-        self.reshape = LayoutTransform(
-            o3.Irreps([(num_channel, (l, 1)) for l in range(lmax+1)])
-        )
+        self.linear = Linear(self.irreps_in, self.irreps_out)
+        self.uee = torch.nn.ModuleDict()
+        for k, v in config.items():
+            self.uee[k] = ElementLinear(
+                o3.Irreps(PROPERTY[p]["irreps"]), 
+                self.irreps_out,
+                bias=True,
+                num_elements=num_elements,
+            )
+            self.config[p]['scope'] = PROPERTY[k]["scope"],
+
 
     def forward(
             self, 
             node_feats: torch.Tensor, 
             node_attrs: torch.Tensor,
-            batch: torch.Tensor,
-            attrs: dict[str, torch.Tensor]
+            data: dict[str, torch.Tensor]
         ) -> torch.Tensor:
-        node_feats = self.reshape(node_feats)
-        for p, module in self.uee.items():
-            node_feats = module(node_feats, node_attrs, batch, attrs[p])
-        node_feats = self.reshape.inverse(node_feats)
+
+        node_feats = self.linear(node_feats)
+        
+        batch = data['batch']
+        for p, e_linear in self.uee.items():
+            scope = self.config[p]['scope']
+            normalizer = self.config[p]['normalizer']
+            attr = data[p] * normalizer
+            if scope == "per-system":
+                attr = attr[batch]
+            uee_feats = e_linear(attr, node_attrs)
+            node_feats = node_feats + uee_feats
+
         return node_feats
+    
+    def extra_repr(self):
+        return str(self.config)

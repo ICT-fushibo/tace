@@ -45,8 +45,16 @@ def get_normalization_layer(norm_type, ls, num_channels, eps=1e-5, affine=True, 
 
 
 class EquivariantMergeLayerNorm(torch.nn.Module):
-    def __init__(self, ls, num_channels, eps=1e-5, affine=True,
-                 normalization='component', std_balance_degrees=True, centering=True):
+    def __init__(
+            self, 
+            ls, 
+            num_channels, 
+            eps=1e-5, 
+            affine=True,
+            normalization='component', 
+            std_balance_degrees=True, 
+            centering=True
+        ):
         super().__init__()
 
         if isinstance(ls, int):

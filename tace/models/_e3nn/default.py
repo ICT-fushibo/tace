@@ -13,7 +13,7 @@ DEFAULT_MODEL_CONFIG = {
     "mmax": 2,
     "Lmax": 2,
     "lmax": 3,
-    "parity": False, # in develop, not for user
+    "parity": False,
     "num_channel": 64,
     "num_layers": 2,
     "target_property": ["energy", "forces"],
@@ -257,5 +257,11 @@ def check_model_config(cfg: dict[str, Any]):
     else:
         assert components is None
     cfg['product_basis']['return_components'] = components
+
+
+    if cfg['parity']:
+        # assert cfg['dropout']['stochastic_depth'] == 0.0, "O(3) module support is still incomplete; dropout is not supported yet."
+        assert cfg['layer_norm']['pre_norm_type'] == None, "O(3) module support is still incomplete; layer_norm is not supported yet."
+        assert cfg['layer_norm']['final_norm_type'] == None, "O(3) module support is still incomplete; layer_norm is not supported yet."
 
     return cfg

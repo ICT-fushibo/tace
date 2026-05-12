@@ -83,8 +83,8 @@ class e3nnTACE(torch.nn.Module):
         target_irreps = get_target_irreps(self.target_property)
         if cfg['product_basis']['return_components'] is not None:
             target_irreps =  list(set(target_irreps + cfg['product_basis']['return_components']))
-        self.target_irreps = o3.Irreps(target_irreps)
-            
+        self.target_irreps = o3.Irreps(target_irreps).regroup()
+
         # === Representation/Descriptor ===
         self.representation = Representation(
             num_layers=cfg['num_layers'],

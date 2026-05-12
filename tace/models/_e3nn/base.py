@@ -265,10 +265,12 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         else:
             self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=lmax)
         self.irreps_out =  (self.irrreps_tp_out * num_channel).regroup()
+
         if self.layer == num_layers -1:
             self.irreps_sc = (o3.Irreps(target_irreps) * num_channel).regroup()
         else:
-            self.irreps_sc = self.irreps_out
+            self.irreps_sc = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=Lmax)
+            self.irreps_sc =  (self.irreps_sc * num_channel).regroup()
 
         self._setup()
     

@@ -26,8 +26,7 @@ config:
     type: nonlinear # identity  # [identity, linear, nonlinear, element2], identity is safer
 
   edge_update:
-    type: element  # [identity, element, tensor_dot], identity is safer
-    tensor_dot_channel: null # [null, int] null=8
+    type: element2  # [identity, element2], identity is safer
 
   mmax: 2 # Truncation for SO2 irreps, 2 is recommended.
   Lmax: 2 # Truncation for node, 2 is recommended.
@@ -51,7 +50,7 @@ config:
     dydynamic_cutoff_mu: 40     # in test
    
   resnet: 
-    type: BB # [BB, AB, AttnRes] A = atomic_basis, B = product_basis, control how resnet connect
+    type: BB # [BB, AB, BAB] A = atomic_basis, B = product_basis, control how resnet connect
     linear_type: aware # [aware, agnostic]
     use_first_resnet: false
 
@@ -59,7 +58,6 @@ config:
     type: cgtp # [cgtp, so2] 
     # type: [cgtp, so2, cgtp, so2 ...]
     l1l2: null # [null, <=], restriction for each layer
-    ictp_ictc_like: true # always true
     scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
     nonlinear: sigmoid_gate # [null, sigmoid_gate]
     edge_nonlinear: so2_sigmoid_gate # [null, so2_sigmoid_gate]
@@ -70,7 +68,6 @@ config:
     type: cgtp  # [cgtp, gtp]
     # type: [cgtp, gtp, cgtp, gtp ...]
     l1l2: null  # [null, <=]
-    ictp_ictc_like: true
     correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
     num_channel: null # (int)
     return_components: null # [null, list(int)], if not specify, last layer will only return target weight
