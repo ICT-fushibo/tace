@@ -58,7 +58,6 @@ DEFAULT_MODEL_CONFIG = {
         "num_channel": None,
         "num_head": None,
         "num_channel_per_head": None,
-        "ictp_ictc_like": True,
         "is_so2_layout": True,
         "use_so2_edge_ace": False,
     },
@@ -77,7 +76,6 @@ DEFAULT_MODEL_CONFIG = {
         "type": "cgtp",
         "l1l2": None,
         "correlation": 3,
-        "ictp_ictc_like": True,
         "resolution": None,
         "num_channel": None,
         "return_components": None,
@@ -248,5 +246,16 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
     if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
+    components = cfg['product_basis']['return_components']
+    if isinstance(components, list):
+        for idx ,int_or_irrep in enumerate(components):
+            if isinstance(int_or_irrep, int):
+                parity = "e" if int_or_irrep % 2 == 0 else "o"
+                components[idx] = f"{int_or_irrep}{parity}"
+            else: 
+                assert isinstance(int_or_irrep, str)
+    else:
+        assert components is None
+    cfg['product_basis']['return_components'] = components
 
     return cfg

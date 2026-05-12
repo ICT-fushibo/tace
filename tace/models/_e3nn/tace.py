@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Union
 
 
 import torch
+from e3nn import o3
 from tace.utils.torch_scatter import scatter_sum
 
 
@@ -79,14 +80,11 @@ class e3nnTACE(torch.nn.Module):
         self.num_channel = cfg['num_channel']
 
         # === Will be used in __init__ ===
-        # if cfg['product_basis']['return_components']:
-        #     if isinstance(cfg['product_basis']['return_components'], list):
-        #         self.target_irreps = sorted(cfg['product_basis']['return_components'])
-        #     else:
-        #         self.target_irreps = [l for l in range(cfg['Lmax']+1)]
-        # else: # TODO
-        self.target_irreps = get_target_irreps(self.target_property)
-
+        target_irreps = get_target_irreps(self.target_property)
+        if cfg['product_basis']['return_components'] is not None:
+            target_irreps =  list(set(target_irreps + cfg['product_basis']['return_components']))
+        self.target_irreps = o3.Irreps(target_irreps)
+            
         # === Representation/Descriptor ===
         self.representation = Representation(
             num_layers=cfg['num_layers'],

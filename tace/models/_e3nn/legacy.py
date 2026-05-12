@@ -13,7 +13,6 @@
 #             irreps_out=self.irreps_hidden2,
 #             l1l2=self.l1l2,
 #             l3s=self.l3s,
-#             ictp_ictc_like=self.ictp_ictc_like,
 #             trainable=True,
 #         ) 
 #         self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))

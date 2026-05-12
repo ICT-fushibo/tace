@@ -29,7 +29,6 @@ class e3nnCueScatterTensorProduct(torch.nn.Module):
         l1l2: Union[str, None] = None,
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
-        ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
 
@@ -45,7 +44,6 @@ class e3nnCueScatterTensorProduct(torch.nn.Module):
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,
-                ictp_ictc_like=ictp_ictc_like,
             )
             .flatten_coefficient_modes()
             .squeeze_modes()

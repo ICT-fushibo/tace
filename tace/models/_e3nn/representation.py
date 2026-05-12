@@ -169,7 +169,6 @@ class Representation(torch.nn.Module):
             "radial_bias": radial_basis["bias"],
             "l1l2": atomic_basis["l1l2"],
             "scatter_norm": atomic_basis["scatter_norm"],
-            "ictp_ictc_like": atomic_basis["ictp_ictc_like"],
             "correlation": product_basis["correlation"],
             "edge_info_type": atomic_basis["edge_info_type"],
             "resnet_type": resnet["type"],
@@ -230,7 +229,6 @@ class Representation(torch.nn.Module):
                     target_irreps=target_irreps,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
-                    ictp_ictc_like=product_basis['ictp_ictc_like'],
                     resolution=product_basis['resolution'],
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
@@ -267,7 +265,7 @@ class Representation(torch.nn.Module):
             self.so2_angular_basis.set_wigner(graph.edge_vector)
             edge_attrs = None # wignerD here
         if self.use_o3:
-            edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length)
+            edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
 
         # === node initialize ===
         node_feats = self.node_embedding(

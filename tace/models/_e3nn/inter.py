@@ -43,7 +43,6 @@ class CgtpInteraction(Interaction):
             self.irreps_sh,
             self.irreps_out,
             l1l2=self.l1l2,
-            ictp_ictc_like=self.ictp_ictc_like,
         )
 
         if self.use_gate:

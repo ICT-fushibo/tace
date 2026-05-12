@@ -38,7 +38,6 @@ class O3ScatterTensorProduct(torch.nn.Module):
         l1l2: Union[str, None] = None,
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
-        ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
 
@@ -53,7 +52,6 @@ class O3ScatterTensorProduct(torch.nn.Module):
             l1l2=l1l2,
             l2l3=l2l3,
             l3l1=l3l1,
-            ictp_ictc_like=ictp_ictc_like,
             e3nn_mode='uvu',
         )
 
@@ -90,7 +88,6 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,
-                ictp_ictc_like=ictp_ictc_like,
             )
         else:
             pass
@@ -443,7 +440,6 @@ class uuuTensorProduct(torch.nn.Module):
         l1l2: Union[str, None] = None,
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
-        ictp_ictc_like: bool = True,
     ) -> None:
         super().__init__()
 
@@ -454,7 +450,6 @@ class uuuTensorProduct(torch.nn.Module):
             l1l2=l1l2,
             l2l3=l2l3,
             l3l1=l3l1,
-            ictp_ictc_like=ictp_ictc_like,
             e3nn_mode='uuu',
         )
 

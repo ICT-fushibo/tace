@@ -30,8 +30,8 @@ def get_target_irreps(target_property: List[str]) -> o3.Irreps:
     target_irreps: List[str] = ['0e']
     for p in target_property:
         target_irreps.extend(to_irrep.get(p, []))
-    return o3.Irreps(list(set(target_irreps)))
-
+    # return o3.Irreps(list(set(target_irreps)))
+    return list(set(target_irreps))
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
     while T.ndim < n_dim:

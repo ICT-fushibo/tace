@@ -57,7 +57,6 @@ class CgtpACE(Product):
                 irreps_in2=self.irreps_hidden,
                 irreps_out=self.irreps_tp_out_list[nu-2],
                 l1l2=self.l1l2,
-                ictp_ictc_like=self.ictp_ictc_like,
             )
             self.aces.append(this_ace)
             self.coefs.append(coefs_cls(this_ace.irreps_out.simplify(), **for_coefs))
