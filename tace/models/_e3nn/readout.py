@@ -90,7 +90,7 @@ class TensorReadOut(ReadOut):
             self.acts = torch.nn.ModuleList()
             for irreps_gates, irreps_gated in zip(self.irreps_gates, self.irreps_hidden):
                 self.acts.append(
-                    GatedLinearUnit(
+                    O3Gate(
                         irreps_gates=irreps_gates,
                         act_gates=[ACTIVATION[self.tensor_act]()],
                         irreps_gated=irreps_gated,

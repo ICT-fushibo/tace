@@ -102,6 +102,7 @@ class CgtpACE(Product):
 
         return outs
 
+
 class GtpACE(Product):
     """
     An ACE implementation based on Gaunt tensor products.
@@ -120,6 +121,8 @@ class GtpACE(Product):
     """
 
     def _setup(self):
+
+        assert self.parity == False, "GtpACE not support O(3) group now"
 
         self.linear_up = Linear(
             self.irreps_in,

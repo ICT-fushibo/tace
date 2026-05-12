@@ -245,7 +245,7 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
-    if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
+    # if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
     components = cfg['product_basis']['return_components']
     if isinstance(components, list):
         for idx ,int_or_irrep in enumerate(components):

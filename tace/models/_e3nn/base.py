@@ -260,7 +260,10 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)
-        self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity)
+        if self.correlation == 1:
+            self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=Lmax)
+        else:
+            self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=lmax)
         self.irreps_out =  (self.irrreps_tp_out * num_channel).regroup()
         if self.layer == num_layers -1:
             self.irreps_sc = (o3.Irreps(target_irreps) * num_channel).regroup()
@@ -321,18 +324,21 @@ class Product(torch.nn.Module):
         for nu in range(2, self.correlation+1):
             if nu == self.correlation:
                 if self.last_layer:
-                    self.irreps_tp_out_list.append(_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, Lmax))
+                    self.irreps_tp_out_list.append((self.target_irreps * self.num_hidden_channel).regroup())
                 else:
-                    self.irreps_tp_out_list.append((_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity) * num_hidden_channel).regroup())       
+                    self.irreps_tp_out_list.append((_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, Lmax) * self.num_hidden_channel).regroup())       
             else:
                 self.irreps_tp_out_list.append(_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, lmax))
 
-        if self.last_layer:
-            self.irreps_coefs_out = (self.target_irreps * self.num_hidden_channel).regroup()
-        elif self.correlation == 1:
-            self.irreps_coefs_out = self.irreps_hidden
+        if self.correlation == 1:
+            self.irreps_coefs_out = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in if ir.l <=Lmax])
         else:
             self.irreps_coefs_out = (_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, Lmax) * self.num_hidden_channel).regroup()
+
+        if self.last_layer:
+            self.irreps_coefs_out = (self.target_irreps * self.num_hidden_channel).regroup()
+        else:
+            self.irreps_coefs_out = self.irreps_coefs_out
 
         self.irreps_out = o3.Irreps([(self.num_channel, ir) for _, ir in self.irreps_coefs_out])
 
@@ -357,7 +363,6 @@ class ReadOut(torch.nn.Module):
         super().__init__()
 
         self.scalar_act = 'tanh' if '0o' in irreps_out else 'silu' # 0o's act may change
-        print(self.scalar_act)
         self.tensor_act = 'sigmoid'
         self.layer = layer
         self.num_layers = num_layers

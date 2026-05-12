@@ -247,6 +247,8 @@ class CgtpInteraction(Interaction):
 class SO2Interaction(Interaction):
     def _setup(self) -> None:
 
+        assert self.parity == False, "SO2Interaction not support O(3) group now"
+
         self.linear_up = Linear(
             self.irreps_in,
             self.irreps_in,
