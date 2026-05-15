@@ -244,6 +244,7 @@ class Representation(torch.nn.Module):
                     irreps_in=prod_irreps_in,
                 )
             )
+            self.irreps_out = self.products[-1].irreps_out
 
         if layer_norm['final_norm_type'] is not None:
             self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_irreps.ls, num_channels=num_channel)

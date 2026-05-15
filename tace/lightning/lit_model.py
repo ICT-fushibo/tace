@@ -28,7 +28,7 @@ from .select_model import select_model
 from .skip import LossSkipController
 from .lora import to_lora_model
 from .u_shift import apply_u_shift
-from .dens import add_gaussian_noise_to_position
+from ..utils.loss.dens import add_gaussian_noise_to_position
 
 
 def get_class_from_cfg(cfg):

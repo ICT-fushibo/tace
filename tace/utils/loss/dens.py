@@ -5,7 +5,8 @@ from typing import Union
 import torch
 
 
-from tace.utils.torch_scatter import scatter
+from ..torch_scatter import scatter
+from ..env import get_tace_dens_loss_ratio
 
 # torch.set_printoptions(sci_mode=False, precision=6)
 
@@ -21,7 +22,7 @@ class DenoisingPosParams:
     max_force_norm: Union[float, None]  = 2.5
     max_stress_norm: Union[float, None]  = None
     max_mean_force_norm: Union[float, None]  = None
-    denoising_pos_coefficient: float = 1.0
+    loss_ratio: float = get_tace_dens_loss_ratio()
 
 DeNS = DenoisingPosParams()
 

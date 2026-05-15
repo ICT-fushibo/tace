@@ -284,6 +284,24 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         return self.reshape.inverse(node_feats)
 
 
+# class RepresentationNodeEmbedding
+#     def _setup(self) -> None:
+
+#         self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
+
+#         self.representation = Representation
+
+#     def forward(
+#         self,
+#         node_attrs: torch.Tensor,
+#         edge_feats: torch.Tensor,
+#         edge_index: torch.Tensor,
+#         edge_attrs: torch.Tensor,
+#         cutoff: torch.Tensor
+#     ) -> torch.Tensor:
+        
+#         return self.representation(node_attrs)
+    
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonLinearNodeEmbedding,
