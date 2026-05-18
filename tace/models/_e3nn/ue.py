@@ -11,11 +11,8 @@ from e3nn import o3
 from e3nn.nn import Activation
 
 from ...dataset.quantity import PROPERTY
-from ..utils import expand_dims_to
 from ..mlp import ACTIVATION, MLP
-from ..linear import Linear, ElementLinear
-from ..ictd import ICTD
-
+from ..linear import e3nnLinear, e3nnElementLinear
 
 
 class UniversalInvariantEmbedding(torch.nn.Module):
@@ -87,10 +84,10 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
         irreps_out = irreps_out.regroup()
         self.irreps_out = o3.Irreps([(num_channel, ir) for _, ir in irreps_out])
 
-        self.linear = Linear(self.irreps_in, self.irreps_out)
+        self.linear = e3nnLinear(self.irreps_in, self.irreps_out)
         self.uee = torch.nn.ModuleDict()
         for k, v in config.items():
-            self.uee[k] = ElementLinear(
+            self.uee[k] = e3nnElementLinear(
                 o3.Irreps(PROPERTY[k]["irreps"]), 
                 self.irreps_out,
                 bias=True,

@@ -96,7 +96,7 @@ class MLP(torch.nn.Module):
                 )
 
 
-            linear_layer = LinearLayer(
+            linear_layer = mlpLinear(
                 in_dim=h_in,
                 out_dim=h_out,
                 alpha=gain / sqrt(norm_dim),

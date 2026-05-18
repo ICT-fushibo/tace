@@ -13,7 +13,7 @@ from tace.utils.torch_scatter import scatter_sum
 from ..layout import LayoutTransform
 from ..mlp import MLP
 from .base import NodeEmbedding
-from ..linear import Linear
+from ..linear import e3nnLinear
 from .fused import O3ScatterTensorProduct
 
 
@@ -30,7 +30,7 @@ class LinearNodeEmbedding(NodeEmbedding):
 
         self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
 
-        self.elem_emb1 = Linear(
+        self.elem_emb1 = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
@@ -60,7 +60,7 @@ class NonLinearNodeEmbedding(NodeEmbedding):
 
         self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
 
-        self.elem_emb1 = Linear(
+        self.elem_emb1 = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
@@ -95,19 +95,19 @@ class GroupNodeEmbedding(NodeEmbedding):
 
         self.num_groups = 32
 
-        self.elem_emb1 = Linear(
+        self.elem_emb1 = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
         )
 
-        self.elem_emb2 = Linear(
+        self.elem_emb2 = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_groups}x0e",
             bias=self.bias
         )
 
-        self.group_emb1 = Linear(
+        self.group_emb1 = e3nnLinear(
             f"{self.num_groups}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
@@ -140,17 +140,17 @@ class TensorNodeEmbedding(NodeEmbedding):
 
     def _setup(self) -> None:
         
-        self.node_embedding = Linear(
+        self.node_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
         )
-        self.source_embedding = Linear(
+        self.source_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
         )
-        self.target_embedding = Linear(
+        self.target_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
@@ -207,17 +207,17 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
 
     def _setup(self) -> None:
 
-        self.node_embedding = Linear(
+        self.node_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
         )
-        self.source_embedding = Linear(
+        self.source_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
         )
-        self.target_embedding = Linear(
+        self.target_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias
