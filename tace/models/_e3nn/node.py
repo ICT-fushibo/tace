@@ -186,15 +186,17 @@ class TensorNodeEmbedding(NodeEmbedding):
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
-        assert cutoff is not None
-         
         base_node_feats = self.node_embedding(node_attrs) 
         source_feats = self.source_embedding(node_attrs[edge_index[0]]) 
         target_feats = self.target_embedding(node_attrs[edge_index[1]]) 
+        conv_weights = self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1))
+        if cutoff is not None:
+            conv_weights = conv_weights * cutoff
+
         node_feats = self.rejector(
             torch.ones_like(base_node_feats),
             edge_attrs,
-            self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1)) * cutoff,
+            conv_weights,
             edge_index,
         ) / self.avg_num_neighbors
 
@@ -246,15 +248,14 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         cutoff: torch.Tensor
     ) -> torch.Tensor:
         
-        assert cutoff is not None
-
         base_node_feats = self.node_embedding(node_attrs) 
         source_feats = self.source_embedding(node_attrs[edge_index[0]]) 
         target_feats = self.target_embedding(node_attrs[edge_index[1]]) 
+        edge_feats = self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1))
+        if cutoff is not None:
+            edge_feats = edge_feats * cutoff
 
-        edge_feats = self.edge_info(torch.cat([edge_feats, source_feats, target_feats], dim=-1)) * cutoff
         edge_feats = edge_feats.view(edge_feats.size(0), (self.Lmax + 1), self.num_channel)
-
         edge_feats = torch.bmm(
             self.so2_angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)), 
             edge_feats
@@ -268,18 +269,6 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         ) / self.avg_num_neighbors
 
         node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
-
-        # node_feats = torch.zeros(
-        #     (
-        #         node_attrs.size(0),
-        #         ((self.lmax + 1) ** 2),
-        #         self.num_channel
-        #     ),
-        #     device=node_attrs.device,
-        #     dtype=node_attrs.dtype
-        # )
-        # base_node_feats = self.node_embedding(node_attrs) 
-        # node_feats[:, 0:1, :] = node_feats.narrow(1, 0, 1) + base_node_feats.unsqueeze(1)
 
         return self.reshape.inverse(node_feats)
 

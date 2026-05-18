@@ -63,8 +63,6 @@ class Representation(torch.nn.Module):
         self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
         self.resnet_type = resnet['type']
         self.use_dens = get_tace_use_dens() == '1'
-        self.use_so2 = 'so2' in atomic_basis['type']
-        self.use_o3 = any(t != 'so2' for t in atomic_basis['type'])
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
@@ -84,8 +82,10 @@ class Representation(torch.nn.Module):
         )
 
         # === angular basis ===
+        self.use_so2 = 'so2' in atomic_basis['type'] or node_embedding["type"] == 'so2_tensor'
+        self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
-            assert Lmax == lmax, "SO2 Interaciton require Lmax == lmax in TACE"
+            assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
             self.so2_angular_basis = SO3Rotation(lmax, mmax, use_rotation_mask=True)
         if self.use_o3:
             self.o3_angular_basis = SphericalHarmonics(
