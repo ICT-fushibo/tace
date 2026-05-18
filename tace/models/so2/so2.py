@@ -8,46 +8,11 @@ from typing import Union
 
 
 import torch
-import torch.nn.functional as F
 
 
 from ..mlp import ScaledSigmoid
+from ..linear import torchLinear
 from .utils import so2_expand_index, satisfy
-
-
-class Linear(torch.nn.Module):
-
-    __constants__ = ["in_features", "out_features"]
-    in_features: int
-    out_features: int
-    weight: torch.Tensor
-
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        device=None,
-        dtype=None,
-    ) -> None:
-        factory_kwargs = {"device": device, "dtype": dtype}
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight = torch.nn.Parameter(
-            torch.randn((out_features, in_features), **factory_kwargs)
-        )
-        if bias:
-            self.bias = torch.nn.Parameter(torch.zeros(out_features, **factory_kwargs))
-        else:
-            self.register_parameter("bias", None)
-        self.alpha = 1.0 / math.sqrt(in_features)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.linear(input, self.weight * self.alpha, self.bias)
-
-    def extra_repr(self) -> str:
-        return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
 
 class SO2MLinear(torch.nn.Module):
@@ -73,7 +38,7 @@ class SO2MLinear(torch.nn.Module):
         assert self.num_components_in > 0
         assert self.num_components_out > 0
 
-        self.fc = Linear(
+        self.fc = torchLinear(
             self.num_components_in * self.num_channel_in,
             self.num_components_out * self.num_channel_out * 2,
             bias=False,
@@ -128,7 +93,7 @@ class SO2Linear(torch.nn.Module):
         assert isinstance(self.num_components_out, list)
 
 
-        self.m0_rlinear = Linear(
+        self.m0_rlinear = torchLinear(
             self.num_channel_in * self.num_components_in[0], 
             self.num_channel_out * self.num_components_out[0], 
             bias=True,

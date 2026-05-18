@@ -11,7 +11,7 @@ import torch
 
 from ..layout import LayoutTransform
 from .base import Product
-from .linear import Linear, ElementLinear
+from ..linear import e3nnLinear, e3nnElementLinear
 from .fused import uuuTensorProduct
 from ..so2 import SO3Grid
 from .dropout import GraphDropPath
@@ -32,7 +32,7 @@ class CgtpACE(Product):
 
     def _setup(self):
 
-        self.linear_up = Linear(
+        self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_hidden,
             bias=self.use_bias,
@@ -43,7 +43,7 @@ class CgtpACE(Product):
             "bias": self.use_bias,
             "num_elements": self.num_elements,
         }
-        coefs_cls = ElementLinear
+        coefs_cls = e3nnElementLinear
             
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -62,7 +62,7 @@ class CgtpACE(Product):
             self.coefs.append(coefs_cls(this_ace.irreps_out.simplify(), **for_coefs))
             product_in1 = this_ace.irreps_out
 
-        self.linear = Linear(
+        self.linear = e3nnLinear(
             self.irreps_coefs_out,
             self.irreps_out,
             bias=self.use_bias
@@ -124,7 +124,7 @@ class GtpACE(Product):
 
         assert self.parity == False, "GtpACE not support O(3) group now"
 
-        self.linear_up = Linear(
+        self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_hidden,
             bias=self.use_bias,
@@ -145,12 +145,12 @@ class GtpACE(Product):
             "bias": self.use_bias,
             "num_elements": self.num_elements,
         }
-        coefs_cls = ElementLinear
+        coefs_cls = e3nnElementLinear
         self.coefs = torch.nn.ModuleList()
         for _ in range(1, self.correlation+1):
             self.coefs.append(coefs_cls(**for_coefs))
 
-        self.linear = Linear(
+        self.linear = e3nnLinear(
             self.irreps_coefs_out,
             self.irreps_out,
             bias=self.use_bias

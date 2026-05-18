@@ -11,7 +11,7 @@ from e3nn.nn import Activation
 
 
 from .base import EdgeEmbedding, EdgeUpdate
-from .linear import Linear
+from ..linear import e3nnLinear
 
 
 class IdentityEdgeEmbedding(EdgeEmbedding):
@@ -53,7 +53,7 @@ class LinearEdgeEmbedding(EdgeEmbedding):
 
         self.out_dim = self.num_channel
 
-        self.radial_proj = Linear(
+        self.radial_proj = e3nnLinear(
             f"{self.num_radial_basis}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
@@ -88,7 +88,7 @@ class NonLinearEdgeEmbedding(EdgeEmbedding):
 
         self.out_dim = self.num_channel
 
-        self.radial_proj = Linear(
+        self.radial_proj = e3nnLinear(
             f"{self.num_radial_basis}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
@@ -126,17 +126,17 @@ class ElementEdgeEmbedding(EdgeEmbedding):
 
         self.out_dim = self.num_channel * 3
 
-        self.radial_proj = Linear(
+        self.radial_proj = e3nnLinear(
             f"{self.num_radial_basis}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
         )
-        self.source_embedding = Linear(
+        self.source_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
         )
-        self.target_embedding = Linear(
+        self.target_embedding = e3nnLinear(
             f"{self.num_elements}x0e",
             f"{self.num_channel}x0e",
             bias=self.bias,
@@ -199,12 +199,12 @@ class ElementEdgeUpdate(EdgeUpdate):
 
         self.out_dim = self.edge_embedding_channel + self.num_channel * 2
 
-        self.source_embedding = Linear(
+        self.source_embedding = e3nnLinear(
             f'{self.num_elements}x0e',
             f'{self.num_channel}x0e',
             bias=self.use_bias,
         )
-        self.target_embedding = Linear(
+        self.target_embedding = e3nnLinear(
             f'{self.num_elements}x0e',
             f'{self.num_channel}x0e',
             bias=self.use_bias,

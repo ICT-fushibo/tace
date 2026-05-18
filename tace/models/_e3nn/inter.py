@@ -15,7 +15,7 @@ from tace.utils.torch_scatter import scatter_sum
 from ..mlp import ACTIVATION, FFN
 from ..layout import LayoutTransform
 from .base import Interaction
-from .linear import Linear, ElementLinear
+from ..linear import e3nnLinear, e3nnElementLinear
 from .fused import O3ScatterTensorProduct, SO2ScatterTensorProduct
 from .nonlinear import O3Gate
 from .layer_norm import get_normalization_layer
@@ -32,7 +32,7 @@ class CgtpInteraction(Interaction):
 
     def _setup(self) -> None:
 
-        self.linear_up = Linear(
+        self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
             bias=self.use_bias,
@@ -54,7 +54,7 @@ class CgtpInteraction(Interaction):
                 irreps_gated=irreps_gated,
             )
             linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            self.linear_nonlinearity = Linear(
+            self.linear_nonlinearity = e3nnLinear(
                 self.irreps_out, 
                 self.irreps_out,  
                 bias=self.use_bias,
@@ -62,7 +62,7 @@ class CgtpInteraction(Interaction):
         else:
             linear_down_irreps_out = self.irreps_out
 
-        self.linear_down = Linear(
+        self.linear_down = e3nnLinear(
             self.rejector.irreps_out.simplify(),
             linear_down_irreps_out,
             bias=self.use_bias,
@@ -88,13 +88,13 @@ class CgtpInteraction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = Linear(
+                self.resnetBB = e3nnLinear(
                     irreps_in=self.irreps_in,
                     irreps_out=self.irreps_sc,
                     bias=self.use_bias,
                 )
             else:
-                self.resnetBB = ElementLinear(
+                self.resnetBB = e3nnElementLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,
@@ -103,13 +103,13 @@ class CgtpInteraction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
             if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = Linear(
+                self.resnetBA = e3nnLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
                 )
             else:
-                self.resnetBA = ElementLinear(
+                self.resnetBA = e3nnElementLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
@@ -118,13 +118,13 @@ class CgtpInteraction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = Linear(
+                self.resnetAB = e3nnLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,
                 ) 
             else:
-                self.resnetAB = ElementLinear(
+                self.resnetAB = e3nnElementLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,
@@ -249,7 +249,7 @@ class SO2Interaction(Interaction):
 
         assert self.parity == False, "SO2Interaction not support O(3) group now"
 
-        self.linear_up = Linear(
+        self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
             bias=self.use_bias,
@@ -284,7 +284,7 @@ class SO2Interaction(Interaction):
                 irreps_gated=irreps_gated,
             )
             linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            self.linear_nonlinearity = Linear(
+            self.linear_nonlinearity = e3nnLinear(
                 self.irreps_out, 
                 self.irreps_out,  
                 bias=self.use_bias,
@@ -292,7 +292,7 @@ class SO2Interaction(Interaction):
         else:
             linear_down_irreps_out = self.irreps_out
 
-        self.linear_down = Linear(
+        self.linear_down = e3nnLinear(
             o3.Irreps([(self.rejector.num_out_channel, ir) for _, ir in self.irreps_out]),
             linear_down_irreps_out,
             bias=self.use_bias,
@@ -318,13 +318,13 @@ class SO2Interaction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = Linear(
+                self.resnetBB = e3nnLinear(
                     irreps_in=self.irreps_in,
                     irreps_out=self.irreps_sc,
                     bias=self.use_bias,
                 )
             else:
-                self.resnetBB = ElementLinear(
+                self.resnetBB = e3nnElementLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,
@@ -333,13 +333,13 @@ class SO2Interaction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
             if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = Linear(
+                self.resnetBA = e3nnLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
                 )
             else:
-                self.resnetBA = ElementLinear(
+                self.resnetBA = e3nnElementLinear(
                     irreps_in = self.irreps_in,
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
@@ -348,13 +348,13 @@ class SO2Interaction(Interaction):
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = Linear(
+                self.resnetAB = e3nnLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,
                 ) 
             else:
-                self.resnetAB = ElementLinear(
+                self.resnetAB = e3nnElementLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
                     bias=self.use_bias,

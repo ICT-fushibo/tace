@@ -13,7 +13,7 @@ from tace.utils.torch_scatter import scatter_sum
 from ..layout import LayoutTransform
 from ..mlp import MLP
 from .base import NodeEmbedding
-from .linear import Linear
+from ..linear import Linear
 from .fused import O3ScatterTensorProduct
 
 

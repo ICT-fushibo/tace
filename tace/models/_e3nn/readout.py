@@ -13,7 +13,7 @@ from e3nn import o3
 
 from ..mlp import ACTIVATION
 from .base import ReadOut
-from .linear import Linear
+from ..linear import e3nnLinear
 from .nonlinear import O3Gate
 
 
@@ -50,7 +50,7 @@ class ScalarReadOut(ReadOut):
                 ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:]
             ):
                 self.linear2.append(
-                    Linear(
+                    e3nnLinear(
                         irreps_in,
                         irreps_out,
                         bias=self.use_bias,
@@ -60,7 +60,7 @@ class ScalarReadOut(ReadOut):
         else:
             self.linear1 = torch.nn.ModuleList(
                 [
-                    Linear(
+                    e3nnLinear(
                         irreps_in=self.irreps_in,
                         irreps_out=self.irreps_out,
                         bias=self.use_bias,
@@ -103,14 +103,14 @@ class TensorReadOut(ReadOut):
                 )
             ):
                 self.linear2.append(
-                    Linear(
+                    e3nnLinear(
                         irreps_in=irreps_in,
                         irreps_out=self.acts[idx].irreps_in,
                         bias=self.use_bias,
                     )
                 )
             self.linear2.append(
-                Linear(
+                e3nnLinear(
                     irreps_in=self.irreps_hidden[-1],
                     irreps_out=self.irreps_out,
                     bias=self.use_bias,
@@ -120,7 +120,7 @@ class TensorReadOut(ReadOut):
         else:
             self.linear1 = torch.nn.ModuleList(
                 [
-                    Linear(
+                    e3nnLinear(
                         irreps_in=self.irreps_in,
                         irreps_out=self.irreps_out,
                         bias=self.use_bias,

@@ -12,14 +12,13 @@ from tace.utils.torch_scatter import scatter_sum
 
 
 from ..radial import ZBLBasis
-from ..normalizer import Normalizer
 from ..blocks import OneHotToAtomicEnergy, ScaleShift
 from ..utils import get_target_irreps, compute_fixed_charge_dipole
 from .readout import build_scalar_readout, build_tensor_readout
 from .representation import Representation
 from .default import check_model_config
 from .basis_change import PropertyBasisChange
-from .linear import Linear
+from ..linear import e3nnLinear
 
 
 class e3nnTACE(torch.nn.Module):
@@ -143,7 +142,7 @@ class e3nnTACE(torch.nn.Module):
                 self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
             # uie base
             if cfg['readout_emlp']['use_uie'] and len(cfg['invariant_property']) > 0:
-                self.uie_readout = Linear(
+                self.uie_readout = e3nnLinear(
                     f"{cfg['num_channel']}x0e",
                     f"1x0e",
                     1,

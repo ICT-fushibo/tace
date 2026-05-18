@@ -3,13 +3,84 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import math
+
 
 import torch
+import torch.nn.functional as F
+
+
 from e3nn import o3
-from e3nn.nn import Activation
 
 
-class Linear(torch.nn.Module):
+
+class torchLinear(torch.nn.Module):
+
+    __constants__ = ["in_features", "out_features"]
+    in_features: int
+    out_features: int
+    weight: torch.Tensor
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        device=None,
+        dtype=None,
+    ) -> None:
+        factory_kwargs = {"device": device, "dtype": dtype}
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = torch.nn.Parameter(
+            torch.randn((out_features, in_features), **factory_kwargs)
+        )
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(out_features, **factory_kwargs))
+        else:
+            self.register_parameter("bias", None)
+        self.alpha = 1.0 / math.sqrt(in_features)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return F.linear(input, self.weight * self.alpha, self.bias)
+
+    def extra_repr(self) -> str:
+        return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
+
+
+class mlpLinear(torch.nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        alpha: float = 1.0,
+        bias: bool = False,
+        std: float = math.sqrt(3),
+    ) -> None:
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.alpha = alpha
+        self.weight = torch.nn.Parameter(torch.empty((in_dim, out_dim)))
+        torch.nn.init.uniform_(self.weight, -std, std)
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.register_parameter("bias", None)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        weight = self.weight * self.alpha
+        if self.bias is None:
+            return torch.mm(input, weight)
+        else:
+            return torch.addmm(self.bias, input, weight)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self.bias is not None})"
+
+
+class e3nnLinear(torch.nn.Module):
     def __init__(
         self,
         irreps_in: o3.Irreps,
@@ -80,7 +151,7 @@ class Linear(torch.nn.Module):
         return repr(self.linear) + f"(bias={self.bias is not None})"
 
 
-class ElementLinear(torch.nn.Module):
+class e3nnElementLinear(torch.nn.Module):
     def __init__(
         self,
         irreps_in: o3.Irreps,
@@ -150,93 +221,3 @@ class ElementLinear(torch.nn.Module):
         return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
     
 
-class GatedLinearUnit(torch.nn.Module):
-    def __init__(
-        self,
-        irreps_in: o3.Irreps,
-        irreps_out: o3.Irreps,
-        *,
-        bias: bool = True,
-        num_elements: int,
-        activation: torch.nn.Module = torch.nn.Sigmoid(),
-    ):
-        super().__init__()
-
-        irreps_gated = irreps_out
-        irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_out)
-        self.mul = o3.ElementwiseTensorProduct(irreps_gated, irreps_gates)
-        self.act = Activation(irreps_gates, [activation])
-        self.num_elements = num_elements
-
-        irreps_in = o3.Irreps(irreps_in)
-        irreps_out = o3.Irreps(irreps_out)
-
-        self.gate_linear = o3.Linear(
-            irreps_in=irreps_in,
-            irreps_out=irreps_gates.regroup(),
-            internal_weights=False,
-            shared_weights=False,
-        )
-        self.linear = o3.Linear(
-            irreps_in=irreps_in,
-            irreps_out=irreps_out,
-            internal_weights=False,
-            shared_weights=False,
-        )
-
-        self.weight1 = torch.nn.Parameter(
-            torch.empty(self.gate_linear.weight_numel)
-        )
-        self.weight2 = torch.nn.Parameter(
-            torch.empty(num_elements, self.linear.weight_numel)
-        )
-
-        self._0e_muls = []
-        self._0e_slices = []
-        self._bias_slices = []
-        acc = 0
-        bias_acc = 0
-        for mul, ir in irreps_out:
-            dim = mul * ir.dim
-            if ir.l == 0 and ir.p == 1:
-                self._0e_muls.append(mul)
-                self._0e_slices.append(slice(acc, acc + dim))
-                self._bias_slices.append(slice(bias_acc, bias_acc + dim))
-                bias_acc += dim
-            acc += dim
-
-        if bias and bias_acc > 0:
-            self.bias = torch.nn.Parameter(
-                torch.empty(num_elements, bias_acc)
-            )
-        else:
-            self.register_parameter("bias", None)
-    
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        torch.nn.init.normal_(self.weight1)
-        torch.nn.init.normal_(self.weight2)
-        if self.bias is not None:
-            torch.nn.init.zeros_(self.bias)
-
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-
-        gate = self.act(self.gate_linear(x, self.weight1))
-        weight2 = torch.einsum("bz,zi->bi", y, self.weight2)
-        gated = self.linear(x, weight2)
-        out = self.mul(gated, gate)
-        
-        if self.bias is not None:
-            bias = torch.einsum("bz,zi->bi", y, self.bias)
-            for sl, bias_sl in zip(self._0e_slices, self._bias_slices):
-                out[:, sl] += bias[:, bias_sl]
-        return out
-
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}("
-            f"gate={self.gate_linear}, "
-            f"linear={self.linear}, "
-            f"bias={self.bias is not None})"
-        )

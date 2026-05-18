@@ -13,7 +13,7 @@ from e3nn.nn import Activation
 from ...dataset.quantity import PROPERTY
 from ..utils import expand_dims_to
 from ..mlp import ACTIVATION, MLP
-from .linear import Linear, ElementLinear
+from ..linear import Linear, ElementLinear
 from ..ictd import ICTD
 
 

@@ -23,7 +23,7 @@ from .inter import INTERACTION # , SO2EdgeInteraction
 from .prod import PRODUCT
 from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
 from .layer_norm import get_normalization_layer
-from .linear import Linear
+from ..linear import e3nnLinear
 
 
 
@@ -252,7 +252,7 @@ class Representation(torch.nn.Module):
 
         if self.use_dens:
             self.irreps_forces_sh = o3.Irreps.spherical_harmonics(lmax=Lmax)
-            self.forces_embedding = Linear(
+            self.forces_embedding = e3nnLinear(
                 self.irreps_forces_sh,
                 self.interactions[0].irreps_out,
                 bias=True,

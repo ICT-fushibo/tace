@@ -11,6 +11,9 @@ import torch
 import torch.nn.functional as F
 
 
+from .linear import mlpLinear
+
+
 class ScaledSiLU(torch.nn.Module):
     def __init__(self, inplace: bool = False) -> None:
         super().__init__()
@@ -58,38 +61,6 @@ ACTIVATION = {
     "hardsigmoid": torch.nn.Hardsigmoid,
     "tanhshrink": torch.nn.Tanhshrink,
 }
-
-
-class LinearLayer(torch.nn.Module):
-    def __init__(
-        self,
-        in_dim: int,
-        out_dim: int,
-        alpha: float = 1.0,
-        bias: bool = False,
-        std: float = sqrt(3),
-    ) -> None:
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.alpha = alpha
-        self.weight = torch.nn.Parameter(torch.empty((in_dim, out_dim)))
-        torch.nn.init.uniform_(self.weight, -std, std)
-        if bias:
-            self.bias = torch.nn.Parameter(torch.zeros(out_dim))
-        else:
-            self.register_parameter("bias", None)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        weight = self.weight * self.alpha
-        if self.bias is None:
-            return torch.mm(input, weight)
-        else:
-            return torch.addmm(self.bias, input, weight)
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self.bias is not None})"
-    
 
 class MLP(torch.nn.Module):
     def __init__(
@@ -186,7 +157,7 @@ class GLULayer(torch.nn.Module):
 
         linear_v = []
         linear_v.append(
-            LinearLayer(
+            mlpLinear(
                 in_dim=in_dim,
                 out_dim=out_dim,
                 alpha=alpha,
@@ -199,7 +170,7 @@ class GLULayer(torch.nn.Module):
 
         linear_g = []
         linear_g.append(
-            LinearLayer(
+            mlpLinear(
                 in_dim=in_dim,
                 out_dim=out_dim,
                 alpha=alpha,
@@ -264,7 +235,7 @@ class GLU(torch.nn.Module):
 
             if layer == len(self.dims) -2:
                 layers.append(
-                    LinearLayer(
+                    mlpLinear(
                         in_dim=h_in,
                         out_dim=h_out,
                         alpha=gain / sqrt(norm_dim),
