@@ -4,10 +4,30 @@
 ################################################################################
 
 import math
+from typing import Union
 
 
 import torch
 
+
+def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
+    if restriction == None:
+        return True
+    elif restriction == "<":
+        return l1 < l2
+    elif restriction == "<=":
+        return l1 <= l2
+    elif restriction == ">":
+        return l1 > l2
+    elif restriction == ">=":
+        return l1 >= l2
+    elif restriction == "==":
+        return l1 == l2
+    elif restriction == "!=":
+        return l1 != l2
+    else:
+        raise ValueError(f"Unknown restriction: {restriction}")
+    
 
 def so2_expand_index(mmax: int, lmax: int, start: int = 0) -> tuple[int, torch.Tensor]:
     expand_index = []
