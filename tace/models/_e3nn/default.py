@@ -56,10 +56,9 @@ DEFAULT_MODEL_CONFIG = {
         "edge_nonlinear": 'so2_sigmoid_gate',
         "l1l2": None,
         "num_channel": None,
-        "num_head": None,
-        "num_channel_per_head": None,
         "is_so2_layout": True,
         "use_so2_edge_ace": False,
+        "use_both_Bi_Bj": False,
     },
     "resnet": {
         "type": "BB",

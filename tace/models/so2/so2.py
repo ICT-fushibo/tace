@@ -208,7 +208,9 @@ class SO2Gate(torch.nn.Module):
 
 
 class uuuSO2TensorProduct(torch.nn.Module):
-
+    """
+    The results of all paths are directly summed.
+    """
     def __init__(
         self,
         mmax: int,

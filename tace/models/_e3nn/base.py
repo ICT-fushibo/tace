@@ -191,8 +191,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_pre_norm: bool = False,
         so2_angular_basis: Union[SO3Rotation, None] = None,
         is_so2_layout: bool = False,
-        num_head: Union[int, None] = None,
-        num_channel_per_head: Union[int, None] = None,
+        use_both_Bi_Bj: bool = False,
         use_so2_edge_ace: bool = False,
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
@@ -214,7 +213,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.num_elements = num_elements
         self.num_channel = num_channel
         self.num_hidden_channel = num_hidden_channel or num_channel
-        self.num_channel_per_head = num_channel_per_head
         self.target_irreps = target_irreps
         self.radial_mlp = radial_mlp
         self.radial_bias = radial_bias
@@ -246,7 +244,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
         self.is_so2_layout = is_so2_layout
-        self.num_head = num_head
+        self.use_both_Bi_Bj = use_both_Bi_Bj
         self.use_so2_edge_ace = use_so2_edge_ace
         self.use_first_dropout = use_first_dropout 
         self.resnet_linear_type = resnet_linear_type

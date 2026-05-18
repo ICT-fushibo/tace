@@ -247,7 +247,9 @@ class CgtpInteraction(Interaction):
 class SO2Interaction(Interaction):
     def _setup(self) -> None:
 
-        assert self.parity == False, "SO2Interaction not support O(3) group now"
+        assert self.parity == False, "SO2Interaction not support O(3) group"
+        assert self.irreps_in.lmax > 0, "SO2Interaction's irreps_in.lmax must > 0, use SO2Interaction from the second layer or use other node_embedding"
+        assert self.edge_nonlinear is not None, "SO2Interaction forces to use edge nonlinear"
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -256,19 +258,15 @@ class SO2Interaction(Interaction):
         )    
 
         self.rejector = SO2ScatterTensorProduct(
-
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
             num_hidden_channel=self.num_hidden_channel,
-            # num_channel_per_head=self.num_channel_per_head,
             is_so2_layout=self.is_so2_layout,
-            is_scalar_tp=(self.irreps_in.lmax == 0) and (self.layer == 0),
-            # num_head=self.num_head,
             edge_nonlinear=self.edge_nonlinear,
+            use_both_Bi_Bj=self.use_both_Bi_Bj or self.use_so2_edge_ace,
             use_so2_edge_ace=self.use_so2_edge_ace,
             num_elements=self.num_elements,
-
             so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
