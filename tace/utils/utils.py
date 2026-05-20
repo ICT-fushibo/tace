@@ -1,6 +1,6 @@
 ################################################################################
 # Authors: Zemin Xu
-# License: Academic / Non-Commercial Use Only
+# License: MIT, see LICENSE.md
 ################################################################################
 
 import contextlib

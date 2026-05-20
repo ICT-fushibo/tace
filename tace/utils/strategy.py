@@ -1,7 +1,3 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
 '''Copy from Nequip-v0.15.0, avoid some unnecessary synchronization operations in MLIPs'''
 import torch
 from lightning.pytorch.strategies import DDPStrategy

@@ -58,6 +58,8 @@ class e3nnTACE(torch.nn.Module):
             if k == "_target_"
             or (k != "self" and not k.startswith('_'))
         }
+        # self.model_config = locals()           
+        # del self.config['self']    
         self.model_config = cfg
         cfg = check_model_config(cfg)
         super().__init__()

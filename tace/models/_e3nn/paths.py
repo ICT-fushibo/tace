@@ -61,7 +61,7 @@ def generate_paths(
 
                     k = len(e3nn_out_irreps)
                     e3nn_out_irreps.append((mul, (ir_out.l, ir_out.p)))
-                    e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode=='uvu' or trainable))
+                    e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode =='uvu' or trainable))
                     
     return e3nn_paths, o3.Irreps(e3nn_out_irreps)
 

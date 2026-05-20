@@ -250,7 +250,10 @@ class SO2Interaction(Interaction):
         assert self.parity == False, "SO2Interaction not support O(3) group"
         assert self.irreps_in.lmax > 0, "SO2Interaction's irreps_in.lmax must > 0, use SO2Interaction from the second layer or use other node_embedding"
         assert self.edge_nonlinear is not None, "SO2Interaction forces to use edge nonlinear"
+        if self.use_graph_softmax:
+            self.scatter_norm = None
 
+            
         self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
@@ -262,9 +265,11 @@ class SO2Interaction(Interaction):
             lmax=self.lmax,
             num_channel=self.num_channel,
             num_hidden_channel=self.num_hidden_channel,
+            num_head=self.num_head,
+            use_graph_softmax=self.use_graph_softmax,
             is_so2_layout=self.is_so2_layout,
             edge_nonlinear=self.edge_nonlinear,
-            use_both_Bi_Bj=self.use_both_Bi_Bj or self.use_so2_edge_ace,
+            use_both_Bi_Bj=self.use_both_Bi_Bj or self.use_so2_edge_ace or self.num_head > 1,
             use_so2_edge_ace=self.use_so2_edge_ace,
             num_elements=self.num_elements,
             so2_angular_basis=self.so2_angular_basis,

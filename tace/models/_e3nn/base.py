@@ -196,7 +196,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
-
+        num_head: Union[int, None] = None,
+        use_graph_softmax: bool = False,
     ) -> None:
         super().__init__()
 
@@ -255,6 +256,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.so2_angular_basis = so2_angular_basis
         self.stochastic_depth_p = stochastic_depth
         self.parity = parity
+        self.num_head = num_head or 1
+        self.use_graph_softmax = use_graph_softmax
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)

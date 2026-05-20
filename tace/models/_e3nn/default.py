@@ -59,6 +59,8 @@ DEFAULT_MODEL_CONFIG = {
         "is_so2_layout": True,
         "use_so2_edge_ace": False,
         "use_both_Bi_Bj": False,
+        "num_head": None,
+        "use_graph_softmax": False,
     },
     "resnet": {
         "type": "BB",

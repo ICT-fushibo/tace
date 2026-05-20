@@ -9,11 +9,11 @@ from typing import Dict
 import torch
 
 
-from ..layout import LayoutTransform
-from .base import Product
-from ..linear import e3nnLinear, e3nnElementLinear
-from .fused import uuuTensorProduct
+from ..layout import LayoutTransform, LayoutTransform2
 from ..so2 import SO3Grid
+from ..linear import e3nnLinear, e3nnElementLinear
+from .base import Product
+from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
 
 
@@ -194,6 +194,133 @@ class GtpACE(Product):
         return outs   
 
 
+class MACE(Product):
+    def _setup(self):
+
+        self.linear_up = e3nnLinear(
+            self.irreps_in,
+            self.irreps_hidden,
+            bias=self.use_bias,
+        ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+        self.reshape = LayoutTransform2(self.irreps_hidden if self.num_channel != self.num_hidden_channel else self.irreps_in)
+
+        from tace.utils.env import get_tace_use_cue
+        from .symmetric_contraction import SymmetricContractionWrapper
+        self.use_cueq = get_tace_use_cue == '1'
+        self.symmetric_contractions = SymmetricContractionWrapper(
+            irreps_in=self.irreps_hidden,
+            irreps_out=self.irreps_coefs_out,
+            correlation=self.correlation,
+            num_elements=self.num_elements,
+            use_reduced_cg=True,
+            use_cueq=self.use_cueq,
+        )
+
+        self.linear = e3nnLinear(
+            self.irreps_coefs_out,
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+
+        if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+
+
+    def forward(
+        self, 
+        node_feats: torch.Tensor, 
+        node_attrs: torch.Tensor,
+        sc: torch.Tensor,
+        batch: torch.Tensor,
+    ) -> torch.Tensor:
+
+        node_feats = self.linear_up(node_feats)
+
+        node_feats = self.reshape(node_feats)
+
+        if self.use_cueq:
+            node_feats = torch.transpose(node_feats, 1, 2)
+            index_attrs = node_attrs.argmax(dim=-1).int()
+            outs = self.symmetric_contractions(
+                node_feats.flatten(1),
+                index_attrs,
+            )
+        else:
+            outs = self.symmetric_contractions(node_feats, node_attrs)
+
+        outs = self.linear(outs)
+        
+        if hasattr(self, "stochastic_depth"):
+            outs = self.stochastic_depth(outs, batch)
+        
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+
+
+class OamACE(Product):
+    def _setup(self):
+
+        self.linear_up = e3nnLinear(
+            self.irreps_in,
+            self.irreps_hidden,
+            bias=self.use_bias,
+        ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+        self.ace = uuuTensorProduct(
+            irreps_in1=self.irreps_hidden,
+            irreps_in2=self.irreps_hidden[:1] + self.irreps_hidden,
+            irreps_out=self.irreps_coefs_out,
+            l1l2=self.l1l2,
+            trainable=True,
+        ) 
+        self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
+
+        self.linear = e3nnLinear(
+            self.ace.irreps_out.simplify(),
+            self.irreps_out,
+            bias=self.use_bias
+        )    
+
+        if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+        
+    def forward(
+            self, 
+            node_feats: torch.Tensor, 
+            node_attrs: torch.Tensor,
+            sc: torch.Tensor,
+            batch: torch.Tensor,
+        ) -> torch.Tensor:
+
+        node_feats = self.linear_up(node_feats)
+        ones = node_feats.new_ones(node_feats.size(0), self.num_hidden_channel)
+
+        outs = self.ace(
+            node_feats, 
+            torch.cat(
+                [
+                    ones,
+                    node_feats,
+                ],
+                dim=-1,
+            ), 
+            torch.einsum('bz, zi -> bi', node_attrs, self.coef),
+        )
+
+        outs = self.linear(outs)
+
+        if hasattr(self, "stochastic_depth"):
+            outs = self.stochastic_depth(outs, batch)
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+
 PRODUCT: Dict[str, torch.nn.Module] = {
     "spatial": CgtpACE,
     "coupled": CgtpACE,
@@ -203,5 +330,9 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "spectral": GtpACE,
     "grid": GtpACE,
     "gtp": GtpACE,
+
+    "mace": MACE,
+
+    "oam": OamACE,
 
 }

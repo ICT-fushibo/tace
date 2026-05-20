@@ -169,6 +169,8 @@ class Representation(torch.nn.Module):
             "bias": True,
             "stochastic_depth": dropout['stochastic_depth'],
             "parity": parity,
+            "num_head": atomic_basis["num_head"],
+            "use_graph_softmax": atomic_basis["use_graph_softmax"],  
         }
 
         # if 'direct_hessian' or 'hamilton' in target_property:

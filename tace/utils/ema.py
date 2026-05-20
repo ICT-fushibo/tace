@@ -1,14 +1,8 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
 '''
-from torch_ema
+From torch_ema
 It's not a completely official implementation. We made a few modifications.
 https://github.com/fadel/pytorch_ema
-'''
 
-'''
 Copyright (c) 2019 Samuel G. Fadel <samuelfadel@gmail.com>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

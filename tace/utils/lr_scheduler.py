@@ -1,10 +1,6 @@
-################################################################################
-# Authors: Zemin Xu
-# Description: To avoid dependency,
-# copy from https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
-# License: MIT, see LICENSE.md
-################################################################################
 """
+To avoid dependency, copy from https://github.com/katsura-jp/pytorch-cosine-annealing-with-warmup
+
 MIT License
 
 Copyright (c) 2022 Naoki Katsura

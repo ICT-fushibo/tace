@@ -3,6 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+# TODO, refacotor all metric to allow missing property
+
 from typing import Dict, List
 
 

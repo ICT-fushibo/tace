@@ -1,7 +1,3 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
 # To avoid potential conflicts between torch and torch_scatter,
 # I have directly copied the scatter operation code
 # from https://github.com/rusty1s/pytorch_scatter.
