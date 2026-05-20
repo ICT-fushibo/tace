@@ -318,6 +318,19 @@ class LightningWrapperModel(L.LightningModule):
                         f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
                     )
 
+    # Used for check unused params
+    # def on_after_backward(self):
+
+    #     for name, p in self.named_parameters():
+    #         if not p.requires_grad:
+    #             continue
+    #         if p.grad is None:
+    #             logging.warning(f"[NO_GRAD] {name}")
+    #         else:
+    #             grad_norm = p.grad.norm().item()
+    #             if grad_norm == 0:
+    #                 logging.warning(f"[ZERO_GRAD] {name}")
+
     def setup(self, stage: Union[str, None] = None):
         if self.trainer.world_size > 1:
             self.sync_dist = True

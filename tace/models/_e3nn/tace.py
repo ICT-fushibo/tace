@@ -113,6 +113,7 @@ class e3nnTACE(torch.nn.Module):
         )
 
         # === Readout ===
+        if self.representation.use_dens: assert self.use_alllayer == False
         for_scalar_readout = {
             'num_layers': cfg['num_layers'],
             'hidden_channel': cfg['readout_emlp']['hidden'],
@@ -297,20 +298,34 @@ class e3nnTACE(torch.nn.Module):
             e_node = e_base_node + e_node
             E = e_base_graph + e_graph
             # E = e_graph
+
         # === Direct Forces ===
         D_F = None
         if 'direct_forces' in self.target_property:
-            d_f_list = []
-            for ii, direct_forces_readout in enumerate(self.direct_forces_readouts):
-                if not self.use_alllayer:
-                    ii = -1
-                d_f_list.append(
-                    direct_forces_readout(
-                        descriptors[ii],
-                        node_fidelity,
-                    ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
-                )
-            D_F = torch.sum(torch.stack(d_f_list, dim=-1), dim=-1)
+            if from_representation['decouple_node_feats1'] is None:
+                d_f_list = []
+                for ii, direct_forces_readout in enumerate(self.direct_forces_readouts):
+                    if not self.use_alllayer:
+                        ii = -1
+                    d_f_list.append(
+                        direct_forces_readout(
+                            descriptors[ii],
+                            node_fidelity,
+                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                    )
+                D_F = torch.sum(torch.stack(d_f_list, dim=-1), dim=-1)
+            else:
+                d_f_list = []
+                for ii, direct_forces_readout in enumerate(self.direct_forces_readouts):
+                    if not self.use_alllayer:
+                        ii = -1
+                    d_f_list.append(
+                        direct_forces_readout(
+                            from_representation['decouple_node_feats1'],
+                            node_fidelity,
+                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                    )
+                D_F = torch.sum(torch.stack(d_f_list, dim=-1), dim=-1)
 
         # === Direct Dipole ===
         D = None
@@ -365,30 +380,56 @@ class e3nnTACE(torch.nn.Module):
         D_V = None
         D_S = None
         if 'direct_virials' in self.target_property or 'direct_stress' in self.target_property:
-            d_v0_list = []; d_v2_list = []
-            for ii, (direct_virials_readout0, direct_virials_readout2) in enumerate(
-                zip(self.direct_virials_readout0s, self.direct_virials_readout2s)
-            ):
-                if not self.use_alllayer:
-                    ii = -1
-                d_v0_list.append(
-                    direct_virials_readout0(
-                        descriptors[ii],
-                    )[num_atoms_arange, node_fidelity]
-                )
-                d_v2_list.append(
-                    direct_virials_readout2(
-                        descriptors[ii],
-                    ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
-                )
-            d_v0_node = torch.sum(torch.stack(d_v0_list, dim=-1), dim=-1)
-            d_v2_node = torch.sum(torch.stack(d_v2_list, dim=-1), dim=-1)
-            d_v0_graph = scatter_sum(d_v0_node, batch, dim=0, dim_size=num_graphs)
-            d_v2_graph = scatter_sum(d_v2_node,batch, dim=0, dim_size=num_graphs)
-            D_V = self.direct_virials_basis_change(d_v0_graph, d_v2_graph)
-            VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
-            D_S = -D_V / VOLUME.view(-1, 1, 1)
-            D_S = torch.where(torch.abs(D_S) < 1e10, D_S, torch.zeros_like(D_S))
+            if from_representation['decouple_node_feats1'] is None:
+                d_v0_list = []; d_v2_list = []
+                for ii, (direct_virials_readout0, direct_virials_readout2) in enumerate(
+                    zip(self.direct_virials_readout0s, self.direct_virials_readout2s)
+                ):
+                    if not self.use_alllayer:
+                        ii = -1
+                    d_v0_list.append(
+                        direct_virials_readout0(
+                            descriptors[ii],
+                        )[num_atoms_arange, node_fidelity]
+                    )
+                    d_v2_list.append(
+                        direct_virials_readout2(
+                            descriptors[ii],
+                        ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                    )
+                d_v0_node = torch.sum(torch.stack(d_v0_list, dim=-1), dim=-1)
+                d_v2_node = torch.sum(torch.stack(d_v2_list, dim=-1), dim=-1)
+                d_v0_graph = scatter_sum(d_v0_node, batch, dim=0, dim_size=num_graphs)
+                d_v2_graph = scatter_sum(d_v2_node,batch, dim=0, dim_size=num_graphs)
+                D_V = self.direct_virials_basis_change(d_v0_graph, d_v2_graph)
+                VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
+                D_S = -D_V / VOLUME.view(-1, 1, 1)
+                D_S = torch.where(torch.abs(D_S) < 1e10, D_S, torch.zeros_like(D_S))
+            else:
+                d_v0_list = []; d_v2_list = []
+                for ii, (direct_virials_readout0, direct_virials_readout2) in enumerate(
+                    zip(self.direct_virials_readout0s, self.direct_virials_readout2s)
+                ):
+                    if not self.use_alllayer:
+                        ii = -1
+                    d_v0_list.append(
+                        direct_virials_readout0(
+                            from_representation['decouple_node_feats1'],
+                        )[num_atoms_arange, node_fidelity]
+                    )
+                    d_v2_list.append(
+                        direct_virials_readout2(
+                            from_representation['decouple_node_feats1'],
+                        ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                    )
+                d_v0_node = torch.sum(torch.stack(d_v0_list, dim=-1), dim=-1)
+                d_v2_node = torch.sum(torch.stack(d_v2_list, dim=-1), dim=-1)
+                d_v0_graph = scatter_sum(d_v0_node, batch, dim=0, dim_size=num_graphs)
+                d_v2_graph = scatter_sum(d_v2_node,batch, dim=0, dim_size=num_graphs)
+                D_V = self.direct_virials_basis_change(d_v0_graph, d_v2_graph)
+                VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
+                D_S = -D_V / VOLUME.view(-1, 1, 1)
+                D_S = torch.where(torch.abs(D_S) < 1e10, D_S, torch.zeros_like(D_S))
 
          # === Charges === 
         CHARGES = None
@@ -528,7 +569,7 @@ class e3nnTACE(torch.nn.Module):
                     ii = -1
                 noise_list.append(
                     dens_noise_readout(
-                        descriptors[ii],
+                        from_representation['decouple_node_feats2'],
                         node_fidelity,
                     ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
                 )
