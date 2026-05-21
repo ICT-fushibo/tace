@@ -109,7 +109,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
-        num_hidden_channel: int,
+        edge_wise_hidden: int,
         num_head: int,
         use_graph_softmax: bool,
         is_so2_layout: bool,
@@ -127,7 +127,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
-        self.num_hidden_channel = num_hidden_channel or self.num_channel
+        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
         self.is_so2_layout = is_so2_layout
         self.edge_nonlinear = edge_nonlinear
         self.use_both_Bi_Bj = use_both_Bi_Bj
@@ -140,7 +140,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.num_head = num_head
         self.use_graph_softmax = use_graph_softmax
 
-        Cin = num_channel * 2 
+        Cin = num_channel * 2 if self.use_both_Bi_Bj else num_channel
         Cout = num_channel
 
         if self.is_so2_layout:
@@ -160,7 +160,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.ace = SO2EdgeProductBasis(
                 mmax, 
                 lmax, 
-                self.num_hidden_channel,
+                self.edge_wise_hidden,
                 num_elements=num_elements,
                 m1m2='<='
             )
@@ -168,20 +168,20 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 mmax,
                 lmax,
                 Cin,
-                self.num_hidden_channel,     
+                self.edge_wise_hidden,     
                 num_components_in=None,
                 num_components_out=[self.num_gates + lmax+1] + [lmax+1] * (lmax),
             )
             self.nonlinearity = SO2Gate(
                 mmax,
                 lmax,
-                self.num_hidden_channel,     
+                self.edge_wise_hidden,     
                 channel_wise=True,
             )
             self.linear_down = SO2Linear(
                 mmax,
                 lmax,
-                self.num_hidden_channel,     
+                self.edge_wise_hidden,     
                 Cout,     
                 num_components_in=[lmax+1] * (lmax+1),
                 num_components_out=None,
@@ -193,20 +193,20 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 mmax,
                 lmax,
                 Cin,
-                self.num_hidden_channel,    
+                self.edge_wise_hidden,    
                 num_components_in=None,
                 num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
             )
             self.nonlinearity = SO2Gate(
                 mmax,
                 lmax,
-                self.num_hidden_channel,    
+                self.edge_wise_hidden,    
                 channel_wise=False,
             )
             self.linear_down = SO2Linear(
                 mmax,
                 lmax,
-                self.num_hidden_channel,    
+                self.edge_wise_hidden,    
                 Cout,     
             )     
 
@@ -274,7 +274,6 @@ class SO2ScatterTensorProduct(torch.nn.Module):
 
         m_ij = self.nonlinearity(m_ij, gate) 
         m_ij = self.linear_down(m_ij)
-        m_ij = self.so2_angular_basis.rotate_inv(m_ij)
 
         if self.use_graph_softmax:
             alpha = alpha.reshape(num_edges, self.num_head, self.num_channel_per_head)
@@ -292,6 +291,8 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             if cutoff is not None:
                 m_ij = m_ij * cutoff.unsqueeze(-1)
 
+        m_ij = self.so2_angular_basis.rotate_inv(m_ij)
+        
         if self.scatter is None:
             return self.reshape_out.inverse(m_ij)
         
@@ -304,8 +305,156 @@ class SO2ScatterTensorProduct(torch.nn.Module):
 
         return self.reshape_out.inverse(m_i)
 
+
+
+# from tace.models.so2.so2 import ComplexActivation
+
+
     
 
+# class SO2ScatterTensorProduct(torch.nn.Module):
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channel: int,
+#         edge_wise_hidden: int,
+#         num_head: int,
+#         use_graph_softmax: bool,
+#         is_so2_layout: bool,
+#         use_both_Bi_Bj: bool,
+#         use_so2_edge_ace: bool,
+#         edge_nonlinear: Union[str, None],
+#         num_elements: int,
+#         so2_angular_basis: SO3Rotation,
+#         reshape_in: LayoutTransform,
+#         reshape_out: LayoutTransform,
+#         scatter: Union[str, None],
+#     ) -> None:
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_channel = num_channel
+#         self.edge_wise_hidden = edge_wise_hidden or self.num_channel
+#         self.is_so2_layout = is_so2_layout
+#         self.edge_nonlinear = edge_nonlinear
+#         self.use_both_Bi_Bj = use_both_Bi_Bj
+#         self.use_so2_edge_ace = use_so2_edge_ace
+#         self.scatter = scatter
+#         self.num_out_channel = num_channel
+#         self.so2_angular_basis = so2_angular_basis
+#         self.reshape_in = reshape_in
+#         self.reshape_out = reshape_out
+#         self.num_head = num_head
+#         self.use_graph_softmax = use_graph_softmax
+
+#         Cin = num_channel * 2 if self.use_both_Bi_Bj else num_channel
+#         Cout = num_channel
+
+#         if self.is_so2_layout:
+#             self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
+#             self.weight_numel = self.num_components * Cin
+#             self.register_buffer('expand_index', expand_index, persistent=False)
+#         else:
+#             self.num_components, expand_index = so3_expand_index(self.mmax, self.lmax)
+#             self.weight_numel = self.num_components * Cin
+#             self.register_buffer('expand_index', expand_index, persistent=False)
+
+#         self.num_gates = 0
+
+
+#         for m in range(mmax + 1):
+#             self.num_gates += lmax + 1 -m
+#         self.linear_up = SO2Linear(
+#             mmax,
+#             lmax,
+#             Cin,
+#             self.edge_wise_hidden,    
+#             # num_components_in=None,
+#             # num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
+#         )
+#         self.nonlinearity = ComplexActivation(
+#             mmax,
+#             lmax,
+#             self.edge_wise_hidden,    
+#         )
+#         self.linear_down = SO2Linear(
+#             mmax,
+#             lmax,
+#             self.edge_wise_hidden,    
+#             Cout,     
+#         )     
+
+#         if self.use_graph_softmax: 
+#             from ..softmax import GraphSoftmax
+#             from ..mlp import SmoothLeakyReLU
+#             self.linear_alpha = SO2Linear(
+#                 0,
+#                 lmax,
+#                 Cin,
+#                 self.num_channel,     
+#                 num_components_in=None,
+#                 num_components_out=[1],
+#             )
+#             self.num_channel_per_head = self.num_channel // self.num_head
+#             assert self.num_channel % self.num_head == 0
+#             self.alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
+#             self.alpha_act = SmoothLeakyReLU()
+#             self.alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
+#             std = 1.0 / math.sqrt(self.num_channel_per_head)
+#             torch.nn.init.uniform_(self.alpha_dot, -std, std)
+#             self.attn_softmax = GraphSoftmax()
+
+#     def forward(
+#             self, 
+#             x: torch.Tensor, 
+#             y: torch.Tensor,  # node_attrs here
+#             w: torch.Tensor, 
+#             edge_index: torch.Tensor,
+#             cutoff: torch.Tensor,
+#         ) -> torch.Tensor:
+
+#         num_nodes = x.size(0)
+#         num_edges = w.size(0)
+#         x = self.reshape_in(x) # [B, M, C]
+
+#         if self.use_both_Bi_Bj:
+#             x = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
+#         else:
+#             x = x[edge_index[0]]
+
+#         w = w.view(num_edges, self.num_components, -1)
+#         w = torch.index_select(w, dim=1, index=self.expand_index)
+
+#         if self.is_so2_layout:
+#             m_ij = self.so2_angular_basis.rotate(x)
+#             m_ij = m_ij * w
+#         else:
+#             m_ij =  x * w
+#             m_ij = self.so2_angular_basis.rotate(m_ij)
+
+#         if self.use_graph_softmax:
+#             alpha = self.linear_alpha(m_ij)
+
+#         m_ij = self.linear_up(m_ij)
+#         m_ij = self.nonlinearity(m_ij) 
+#         m_ij = self.linear_down(m_ij)
+
+#         m_ij = self.so2_angular_basis.rotate_inv(m_ij)
+        
+#         if self.scatter is None:
+#             return self.reshape_out.inverse(m_ij)
+        
+#         m_i = scatter_sum(
+#                 m_ij, 
+#                 edge_index[1], 
+#                 dim=0, 
+#                 dim_size=num_nodes,
+#         )
+
+#         return self.reshape_out.inverse(m_i)
+    
 
 class uuuTensorProduct(torch.nn.Module):
     def __init__(

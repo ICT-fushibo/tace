@@ -16,7 +16,6 @@ from .base import Product
 from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
 
-
 class CgtpACE(Product):
     """
     The most expressive ACE implementation based on Clebsch-Gordan tensor products.
@@ -91,7 +90,9 @@ class CgtpACE(Product):
             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 
-        # outs = self.nonlinearity(outs)
+        # if hasattr(self, "nonlinearity"):
+        #     outs = self.nonlinearity(outs, node_attrs)
+
         outs = self.linear(outs)
         
         if hasattr(self, "stochastic_depth"):

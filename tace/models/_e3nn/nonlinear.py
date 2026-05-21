@@ -62,5 +62,33 @@ class O3Gate(torch.nn.Module):
     @property
     def irreps_out(self):
         return self._irreps_out
+    
 
+class O3Norm(torch.nn.Module):
+    def __init__(
+        self,
+        irreps: o3.Irreps,
+        activation: torch.nn.Module,
+    ) -> None:
+        super().__init__()
 
+        self.irreps_in = o3.Irreps(irreps)
+        self.irreps_out = o3.Irreps(irreps)
+        self.norm_fn = o3.Norm(self.irreps_in, squared=True)
+        self.register_buffer(
+            "balance_degree_weight",
+            1.0 / torch.tensor([2*l+1 for l in self.irreps_in.ls]),
+            persistent=False,
+        )
+        self.activation = Activation(self.norm_fn.irreps_out.regroup(), [activation])
+        self.scalar_multiplier = ElementwiseTensorProduct(
+            irreps_in1=self.norm_fn.irreps_out,
+            irreps_in2=self.irreps_in,
+        )
+
+    def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
+        norm = self.norm_fn(x) * self.balance_degree_weight
+        norm = self.activation(norm)
+        if y is not None:
+            return self.scalar_multiplier(norm, y)
+        return self.scalar_multiplier(norm, x)

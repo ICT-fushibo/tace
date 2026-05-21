@@ -17,7 +17,7 @@ from ..layout import LayoutTransform
 from .base import Interaction
 from ..linear import e3nnLinear, e3nnElementLinear
 from .fused import O3ScatterTensorProduct, SO2ScatterTensorProduct
-from .nonlinear import O3Gate
+from .nonlinear import O3Gate, O3Norm
 from .layer_norm import get_normalization_layer
 
 
@@ -45,9 +45,10 @@ class CgtpInteraction(Interaction):
             l1l2=self.l1l2,
         )
 
-        if self.use_gate:
-            irreps_gated = self.irreps_out
-            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_out)
+        irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
+        if self.nonlinear_type == 'gate':
+            irreps_gated = irreps_node_wise_hidden
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_node_wise_hidden)
             self.nonlinearity = O3Gate(
                 irreps_gates=irreps_gates,
                 act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
@@ -55,12 +56,25 @@ class CgtpInteraction(Interaction):
             )
             linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
             self.linear_nonlinearity = e3nnLinear(
-                self.irreps_out, 
+                irreps_node_wise_hidden, 
+                self.irreps_out,  
+                bias=self.use_bias,
+            )
+        elif self.nonlinear_type == 'norm':
+            self.nonlinearity = O3Norm(
+                irreps=irreps_node_wise_hidden,
+                activation=[ACTIVATION[self.nonlinear_act]()],
+            )
+            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
+            self.linear_nonlinearity = e3nnLinear(
+                irreps_node_wise_hidden, 
                 self.irreps_out,  
                 bias=self.use_bias,
             )
         else:
-            linear_down_irreps_out = self.irreps_out
+            self.nonlinearity = torch.nn.Identity()
+            self.linear_nonlinearity = torch.nn.Identity()
+            linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
             self.rejector.irreps_out.simplify(),
@@ -157,8 +171,6 @@ class CgtpInteraction(Interaction):
         edge_index: torch.Tensor,
         cutoff: Optional[torch.Tensor],
         graph,
-        prev_feats: list[torch.Tensor],
-        batch: torch.Tensor,
     ):
     
         lmp_data = graph.lmp_data
@@ -217,9 +229,7 @@ class CgtpInteraction(Interaction):
         else:
             m_i = m_i / density
 
-        if hasattr(self, "nonlinearity"):
-            m_i = self.nonlinearity(m_i)
-            m_i = self.linear_nonlinearity(m_i)
+        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
             m_i = m_i + resBA
@@ -264,7 +274,7 @@ class SO2Interaction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
-            num_hidden_channel=self.num_hidden_channel,
+            edge_wise_hidden=self.edge_wise_hidden,
             num_head=self.num_head,
             use_graph_softmax=self.use_graph_softmax,
             is_so2_layout=self.is_so2_layout,
@@ -278,9 +288,11 @@ class SO2Interaction(Interaction):
             scatter='sum',
         )
 
-        if self.use_gate:
-            irreps_gated = self.irreps_out
-            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in self.irreps_out)
+        irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
+
+        if self.nonlinear_type == 'norm':  
+            irreps_gated = irreps_node_wise_hidden
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_node_wise_hidden)
             self.nonlinearity = O3Gate(
                 irreps_gates=irreps_gates,
                 act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
@@ -288,12 +300,25 @@ class SO2Interaction(Interaction):
             )
             linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
             self.linear_nonlinearity = e3nnLinear(
-                self.irreps_out, 
+                irreps_node_wise_hidden, 
+                self.irreps_out,  
+                bias=self.use_bias,
+            )
+        elif self.nonlinear_type == 'norm':
+            self.nonlinearity = O3Norm(
+                irreps=irreps_node_wise_hidden,
+                activation=[ACTIVATION[self.nonlinear_act]()],
+            )
+            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
+            self.linear_nonlinearity = e3nnLinear(
+                irreps_node_wise_hidden, 
                 self.irreps_out,  
                 bias=self.use_bias,
             )
         else:
-            linear_down_irreps_out = self.irreps_out
+            self.nonlinearity = torch.nn.Identity()
+            self.linear_nonlinearity = torch.nn.Identity()
+            linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
             o3.Irreps([(self.rejector.num_out_channel, ir) for _, ir in self.irreps_out]),
@@ -391,8 +416,6 @@ class SO2Interaction(Interaction):
         edge_index: torch.Tensor,
         cutoff: Optional[torch.Tensor],
         graph,
-        prev_feats: list[torch.Tensor],
-        batch: torch.Tensor,
     ):
     
         lmp_data = graph.lmp_data
@@ -452,9 +475,7 @@ class SO2Interaction(Interaction):
         else:
             m_i = m_i / density
 
-        if hasattr(self, "nonlinearity"):
-            m_i = self.nonlinearity(m_i)
-            m_i = self.linear_nonlinearity(m_i)
+        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
             m_i = m_i + resBA

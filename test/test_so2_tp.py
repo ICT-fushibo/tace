@@ -1,7 +1,7 @@
 import math
 import torch
 torch.set_default_dtype(torch.float64)
-torch.set_printoptions(sci_mode=False, precision=8)
+torch.set_printoptions(sci_mode=False, precision=16)
 torch.manual_seed(0)
 
 from tace.models.so2.utils import num_uuu_so2_components, rotate_uuu_so2_features

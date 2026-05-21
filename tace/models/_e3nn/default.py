@@ -55,12 +55,14 @@ DEFAULT_MODEL_CONFIG = {
         "nonlinear": "sigmoid_gate",
         "edge_nonlinear": 'so2_sigmoid_gate',
         "l1l2": None,
-        "num_channel": None,
         "is_so2_layout": True,
         "use_so2_edge_ace": False,
         "use_both_Bi_Bj": False,
         "num_head": None,
         "use_graph_softmax": False,
+        
+        "node_wise_hidden": None,
+        "edge_wise_hidden": None,
     },
     "resnet": {
         "type": "BB",

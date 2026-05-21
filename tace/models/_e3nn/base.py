@@ -170,7 +170,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         lmax: int,
         correlation: list[int],
         num_channel: int,
-        num_hidden_channel: Union[int, None],
         edge_feats_channel: int,
         target_irreps: list[str],
         num_radial_basis: int,
@@ -198,6 +197,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         parity: bool = False,
         num_head: Union[int, None] = None,
         use_graph_softmax: bool = False,
+        node_wise_hidden: Union[int, None] = None,
+        edge_wise_hidden: Union[int, None] = None,
     ) -> None:
         super().__init__()
 
@@ -213,7 +214,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.l1l2 = l1l2
         self.num_elements = num_elements
         self.num_channel = num_channel
-        self.num_hidden_channel = num_hidden_channel or num_channel
         self.target_irreps = target_irreps
         self.radial_mlp = radial_mlp
         self.radial_bias = radial_bias
@@ -230,13 +230,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
-        if self.nonlinear_type is not None:
-            if self.nonlinear_type == 'gate':
-                self.use_gate = True
-            else:
-                raise ValueError(f"Unsupported nonlinear_type: {self.nonlinear_type}")
-        else:
-            self.use_gate = False
         self.edge_info_type = edge_info_type
         if self.edge_info_type == 'mlp':
             self.radial_act = 'silu'
@@ -258,6 +251,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.parity = parity
         self.num_head = num_head or 1
         self.use_graph_softmax = use_graph_softmax
+
+        self.node_wise_hidden = node_wise_hidden or num_channel
+        self.edge_wise_hidden = edge_wise_hidden or num_channel
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)
