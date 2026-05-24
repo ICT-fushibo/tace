@@ -71,7 +71,7 @@ def generate_cueq_paths(
             l3 = ir_out.l
 
             if (
-                and satisfy(l1, l2, l1l2)
+                satisfy(l1, l2, l1l2)
                 and satisfy(l2, l3, l2l3)
                 and satisfy(l3, l1, l3l1)
             ):

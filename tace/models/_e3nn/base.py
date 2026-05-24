@@ -98,6 +98,7 @@ class EdgeUpdate(torch.nn.Module):
         num_radial_basis: int,
         num_channel: int,
         edge_embedding_channel: int,
+        separate_so2_radial: bool,
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -110,6 +111,7 @@ class EdgeUpdate(torch.nn.Module):
         self.num_radial_basis = num_radial_basis
         self.num_channel = num_channel
         self.edge_embedding_channel=edge_embedding_channel
+        self.separate_so2_radial = separate_so2_radial
         self.use_bias = bias
 
         self._setup()
@@ -199,6 +201,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
+        separate_so2_radial: bool = False,
     ) -> None:
         super().__init__()
 
@@ -251,6 +254,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.parity = parity
         self.num_head = num_head or 1
         self.use_graph_softmax = use_graph_softmax
+        self.separate_so2_radial = separate_so2_radial
 
         self.node_wise_hidden = node_wise_hidden or num_channel
         self.edge_wise_hidden = edge_wise_hidden or num_channel

@@ -82,11 +82,11 @@ class Representation(torch.nn.Module):
         )
 
         # === angular basis ===
-        self.use_so2 = 'so2' in atomic_basis['type'] or node_embedding["type"] == 'so2_tensor'
+        self.use_so2 = 'so2' in atomic_basis['type'] or node_embedding["type"] == 'so2_tensor' or atomic_basis["use_graph_softmax"]
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
-            assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
-            self.so2_angular_basis = SO3Rotation(lmax, mmax, use_rotation_mask=True)
+            # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
+            self.so2_angular_basis = SO3Rotation(Lmax, mmax, use_rotation_mask=True)
         if self.use_o3:
             self.o3_angular_basis = SphericalHarmonics(
                 o3.Irreps.spherical_harmonics(lmax, p=-1),
@@ -133,6 +133,7 @@ class Representation(torch.nn.Module):
                     num_radial_basis=self.radial_basis.num_basis,
                     edge_embedding_channel=self.edge_embedding.out_dim,
                     num_channel=num_channel,
+                    separate_so2_radial=atomic_basis["separate_so2_radial"][layer],
                 )
                 for layer in range(num_layers)
             ]
@@ -174,20 +175,6 @@ class Representation(torch.nn.Module):
             "edge_wise_hidden": atomic_basis["edge_wise_hidden"],
         }
 
-        # if 'direct_hessian' or 'hamilton' in target_property:
-        #     self.edge_interactions = torch.nn.ModuleList(
-        #         [
-        #             SO2EdgeInteraction(
-        #                 **for_interactions,
-        #                 layer=layer,
-        #                 edge_feats_channel=self.edge_updates[layer].out_dim,
-        #                 nonlinear=atomic_basis['nonlinear'][layer],
-        #                 edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-        #             )
-        #             for layer in range(num_layers-1, num_layers)
-        #         ]
-        #     )
-
         self.interactions = torch.nn.ModuleList()
         if len(self.equivariant_property) > 0:
             self.uee_embeddings = torch.nn.ModuleList()
@@ -204,7 +191,8 @@ class Representation(torch.nn.Module):
                     edge_feats_channel=self.edge_updates[layer].out_dim,
                     nonlinear=atomic_basis['nonlinear'][layer],
                     edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-                    irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out
+                    irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out,
+                    separate_so2_radial=atomic_basis["separate_so2_radial"][layer],
                 )
             )
             inter_irreps_out = self.interactions[layer].irreps_out
@@ -259,50 +247,53 @@ class Representation(torch.nn.Module):
                 self.interactions[0].irreps_out,
                 bias=True,
             )
-            self.decouple_edge_updates = torch.nn.ModuleList()
-            self.decouple_interactions = torch.nn.ModuleList()
-            self.decouple_products = torch.nn.ModuleList()
+            # self.decouple_edge_updates = torch.nn.ModuleList()
+            # self.decouple_interactions = torch.nn.ModuleList()
+            # self.decouple_products = torch.nn.ModuleList()
 
-            for idx in range(2):
-                self.decouple_edge_updates.append(
-                    EDGE_UPDATE[edge_update['type']](
-                        layer=num_layers-1,
-                        num_layers=num_layers,
-                        num_elements=self.num_elements,
-                        num_radial_basis=self.radial_basis.num_basis,
-                        edge_embedding_channel=self.edge_embedding.out_dim,
-                        num_channel=num_channel,
-                    )
-                )
-                self.decouple_interactions.append(
-                    INTERACTION['cgtp'](
-                        **for_interactions,
-                        layer=num_layers-1,
-                        edge_feats_channel=self.edge_updates[layer].out_dim,
-                        nonlinear=atomic_basis['nonlinear'][layer],
-                        edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-                        irreps_in=self.products[-1].irreps_out
-                    )
-                )
-                self.decouple_products.append(
-                    PRODUCT[product_basis['type'][layer]](
-                        layer=num_layers-1,
-                        num_layers=num_layers,
-                        num_elements=self.num_elements,
-                        Lmax=Lmax,
-                        lmax=lmax,
-                        num_channel=num_channel,
-                        num_hidden_channel=product_basis['num_channel'],
-                        target_irreps=target_irreps,
-                        correlation=product_basis['correlation'],
-                        l1l2=product_basis['l1l2'],     
-                        resolution=product_basis['resolution'],
-                        bias=True,
-                        stochastic_depth=0.0,
-                        parity=parity,
-                        irreps_in=self.decouple_interactions[idx].irreps_out,
-                    )
-                )
+            # for idx in range(2):
+            #     self.decouple_edge_updates.append(
+            #         EDGE_UPDATE[edge_update['type']](
+            #             layer=num_layers-1,
+            #             num_layers=num_layers,
+            #             num_elements=self.num_elements,
+            #             num_radial_basis=self.radial_basis.num_basis,
+            #             edge_embedding_channel=self.edge_embedding.out_dim,
+            #             num_channel=num_channel,
+            #             separate_so2_radial=False,
+            #         )
+            #     )
+            #     for_interactions["use_graph_softmax"] = False
+            #     self.decouple_interactions.append(
+            #         INTERACTION['cgtp'](
+            #             **for_interactions,
+            #             layer=num_layers-1,
+            #             edge_feats_channel=self.edge_updates[layer].out_dim,
+            #             nonlinear=atomic_basis['nonlinear'][layer],
+            #             edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
+            #             irreps_in=self.products[-1].irreps_out,
+            #             separate_so2_radial=atomic_basis["separate_so2_radial"][layer],
+            #         )
+            #     )
+            #     self.decouple_products.append(
+            #         PRODUCT[product_basis['type'][layer]](
+            #             layer=num_layers-1,
+            #             num_layers=num_layers,
+            #             num_elements=self.num_elements,
+            #             Lmax=Lmax,
+            #             lmax=lmax,
+            #             num_channel=num_channel,
+            #             num_hidden_channel=product_basis['num_channel'],
+            #             target_irreps=target_irreps,
+            #             correlation=product_basis['correlation'],
+            #             l1l2=product_basis['l1l2'],     
+            #             resolution=product_basis['resolution'],
+            #             bias=True,
+            #             stochastic_depth=0.0,
+            #             parity=parity,
+            #             irreps_in=self.decouple_interactions[idx].irreps_out,
+            #         )
+            #     )
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
@@ -343,7 +334,7 @@ class Representation(torch.nn.Module):
             data['edge_index'],
             cutoff,
         )
-
+  
         forces_embedding = None
         noise_mask_tensor = None
         dens_batch_mask_tensor = None
@@ -386,61 +377,47 @@ class Representation(torch.nn.Module):
                 node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
             prev_feats.append(node_feats)
 
-
-        # if hasattr(self, 'edge_interactions'):
-        #     edge_descriptors = self.edge_interactions[0](
+        decouple_node_feats1 = None
+        decouple_node_feats2 = None
+        # if self.use_dens:
+       
+        #     decouple_edge_feats1 = self.decouple_edge_updates[0](
+        #         node_feats,
+        #         node_attrs_total, 
+        #         edge_feats, 
+        #         data['edge_index'],
+        #         cutoff,
+        #     )
+        #     decouple_node_feats1, sc = self.decouple_interactions[0](
         #         node_feats,
         #         node_attrs_total, 
         #         node_attrs_slice, 
-        #         this_edge_feats, 
+        #         decouple_edge_feats1, 
         #         edge_attrs, 
         #         data['edge_index'],
         #         cutoff,
         #         graph,
-        #         prev_feats,   
         #     )
+        #     decouple_node_feats1 = self.decouple_products[0](decouple_node_feats1, node_attrs_slice, sc, data["batch"])
 
-        decouple_node_feats1 = None
-        decouple_node_feats2 = None
-        if self.use_dens:
-       
-            decouple_edge_feats1 = self.decouple_edge_updates[0](
-                node_feats,
-                node_attrs_total, 
-                edge_feats, 
-                data['edge_index'],
-                cutoff,
-            )
-            decouple_node_feats1, sc = self.decouple_interactions[0](
-                node_feats,
-                node_attrs_total, 
-                node_attrs_slice, 
-                decouple_edge_feats1, 
-                edge_attrs, 
-                data['edge_index'],
-                cutoff,
-                graph,
-            )
-            decouple_node_feats1 = self.decouple_products[0](decouple_node_feats1, node_attrs_slice, sc, data["batch"])
-
-            decouple_edge_feats2 = self.decouple_edge_updates[1](
-                node_feats,
-                node_attrs_total, 
-                edge_feats, 
-                data['edge_index'],
-                cutoff,
-            )
-            decouple_node_feats2, sc = self.decouple_interactions[1](
-                node_feats,
-                node_attrs_total, 
-                node_attrs_slice, 
-                decouple_edge_feats2, 
-                edge_attrs, 
-                data['edge_index'],
-                cutoff,
-                graph,
-            )
-            decouple_node_feats2 = self.decouple_products[1](decouple_node_feats2, node_attrs_slice, sc, data["batch"])
+        #     decouple_edge_feats2 = self.decouple_edge_updates[1](
+        #         node_feats,
+        #         node_attrs_total, 
+        #         edge_feats, 
+        #         data['edge_index'],
+        #         cutoff,
+        #     )
+        #     decouple_node_feats2, sc = self.decouple_interactions[1](
+        #         node_feats,
+        #         node_attrs_total, 
+        #         node_attrs_slice, 
+        #         decouple_edge_feats2, 
+        #         edge_attrs, 
+        #         data['edge_index'],
+        #         cutoff,
+        #         graph,
+        #     )
+        #     decouple_node_feats2 = self.decouple_products[1](decouple_node_feats2, node_attrs_slice, sc, data["batch"])
 
         return {
             "descriptors": prev_feats,

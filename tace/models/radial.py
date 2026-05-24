@@ -305,7 +305,7 @@ class jnSphericalBesselBasis(torch.nn.Module):
         # else:
         #     return self.jn_taylor[i](x)
 
-    def forward(self, r: torch.Tensor):  # [..., 1]
+    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
         orig_dtype = r.dtype
         r = r.to(torch.float64)
         cutoff = self.cutoff.to(torch.float64)

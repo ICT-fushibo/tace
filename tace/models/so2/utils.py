@@ -192,3 +192,4 @@ def rotate_uuu_so2_features(
     out = torch.cat(outputs, dim=1)
 
     return out
+

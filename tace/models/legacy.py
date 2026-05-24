@@ -1335,3 +1335,379 @@
 #         lines.append(f"  total_paths={total_paths}")
 #         lines.append(")")
 #         return "\n".join(lines)
+
+
+
+
+# from tace.models.so2.so2 import SO2Linear, SO2MLinear
+# from ..linear import torchLinear
+
+# class SO2EdgeProductBasis(torch.nn.Module):
+
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channels: int,
+#         num_elements: int,
+#         m1m2: Union[str, None] = '<=',
+#         agnostic: bool = True,
+#     ):
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_components = lmax+1
+#         self.num_channel = num_channels
+#         self.agnostic = agnostic
+
+#         self.tp = SO2TensorProduct(
+#             mmax, 
+#             lmax,
+#             num_channels, 
+#             m1m2=m1m2, 
+#         )
+
+#         self.linear = SO2Linear(
+#             mmax,
+#             lmax,
+#             self.num_channel,     
+#             self.num_channel,     
+#             num_components_in=[lmax+1 + count for count in self.tp.num_paths_for_m3],
+#             num_components_out=None,
+#         )
+        
+#         # self.linear = torch.nn.ModuleList()
+#         # self.linear.append(
+#         #     torchLinear(
+#         #         self.num_channel * (lmax+1) + self.num_channel * (lmax+1), 
+#         #         self.num_channel * (lmax+1), 
+#         #         bias=True,
+#         #     )
+#         # )
+#         # for m in range(1, mmax+1):
+#         #     self.linear.append(
+#         #         SO2MLinear(
+#         #             m,
+#         #             self.num_channel,
+#         #             self.num_channel*(lmax+1),
+#         #             1 + self.ace.num_paths_for_m3[m], 
+#         #             1, 
+#         #         )
+#         #     )
+
+#     def forward(self, x) -> torch.Tensor:
+
+#         B = x.size(0)
+#         n = self.lmax + 1
+
+
+#         corr_feats2 = self.tp(x, x)
+
+
+#         corr_feats1 = []
+#         offset = 0
+#         for m in range(self.mmax + 1):
+#             if m == 0:
+#                 xm = x.narrow(1, offset, n)
+#                 xm = xm.view(B, n, self.num_channel)
+#                 offset += n
+#             else:
+#                 xm = x.narrow(1, offset, n * 2)
+#                 xm = xm.view(B, 2, n, self.num_channel)
+#                 offset += 2 * n
+#             corr_feats1.append([xm])
+
+
+#         outputs = []
+#         outputs.extend(corr_feats1[0] + corr_feats2[0])
+
+#         for m, (z1s, z2s) in enumerate(zip(corr_feats1, corr_feats2)):
+#             if m == 0:
+#                 outputs.append(torch.cat(z1s+z2s, dim=1))
+#             else:
+#                 outputs.append(torch.cat(z1s+z2s, dim=2).view(B, -1, self.num_channel))
+#         outs2 = torch.cat(outputs, dim=1)
+
+
+#         # offset = 0
+#         # n = self.lmax + 1
+#         # xm = x[:, offset:offset + n]
+#         # xm = xm.view(B, 1, -1)
+#         # outs[0].append(xm)
+#         # offset += n
+
+#         # for m in range(1, self.mmax + 1):
+#         #     xm = x[:, offset:offset + 2 * n]
+#         #     xm = xm.view(B, 2, -1)
+#         #     outs[m].append(xm)
+#         #     offset += 2 * n
+
+#         # outputs = []
+#         # for m in range(self.mmax+1):
+#         #     if m == 0:
+#         #         xr = self.linear[m](torch.cat(outs[m], dim=-1))
+#         #         outputs.append(xr.view(B, -1, self.num_channel))
+#         #     else:
+#         #         xm = self.linear[m](torch.cat(outs[m], dim=-1), concat_outputs=False)
+#         #         xr, xi = xm[0], xm[1]
+#         #         xr = xr.view(B, -1, self.num_channel)
+#         #         xi = xi.view(B, -1, self.num_channel)
+#         #         outputs.append(xr)
+#         #         outputs.append(xi)
+        
+#         return self.linear(outs2)
+        
+#     def extra_repr(self) -> str:
+#         p = {
+#             0: 'e',
+#             1: 'o',
+#         }
+#         irreps = []
+#         for m in range(self.mmax + 1):
+#             irreps.append(f"{self.num_channel*(self.lmax+1)}x{m}{p[m % 2]}")
+#         num_weights = sum(
+#             p.numel() for p in self.parameters() if p.requires_grad
+#         )
+#         return (
+#             f"{self.__class__.__name__}"
+#             f"({'+'.join(irreps)} x {'+'.join(irreps)} -> "
+#             f"{'+'.join(irreps)} | "
+#             f"{num_weights} weights)"
+        # )
+
+
+
+# class SO2uuuTensorProduct(torch.nn.Module):
+#     """Plain TensorProduct, no weight"""
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channel: int,
+#         m1m2: Union[str, None] = None,
+#     ):
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_channel = num_channel
+#         self.m1m2 = m1m2
+#         self.cmul = self.cmul2
+#         self.instructions = []
+
+#         self.num_paths_for_m3 = []
+#         for m3 in range(mmax + 1):
+#             paths = self.enumerate_paths(m3)
+#             self.num_paths_for_m3.append(len(paths))
+#             self.instructions.append(paths)
+
+#     def enumerate_paths(self, m3: int) -> list[tuple[int, int, str]]:
+#         paths = []
+
+#         for m1 in range(self.mmax + 1):
+#             for m2 in range(self.mmax + 1):
+#                 if satisfy(m1, m2, self.m1m2):
+#                     # x1 * x2
+#                     if m1 + m2 == m3:
+#                         paths.append((m1, m2, "sum"))
+#                     # x1 * conj(x2)
+#                     elif abs(m1 - m2) == m3:
+#                         paths.append((m1, m2, "diff"))
+
+#         return paths
+
+#     def rmul(self, x, y): 
+#         # [B, n, C] * [B, n, C] =>  [B, n, C]
+#         z = x * y
+#         return z
+    
+#     def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
+#         '''Layout damei, should be 2 in last dim'''
+#         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
+#         x = x.permute(0,2,3,1).contiguous()
+#         y = y.permute(0,2,3,1).contiguous()
+#         x = torch.view_as_complex(x)
+#         y = torch.view_as_complex(y)
+#         if mode == "diff":
+#             y = y.conj()
+#         z = x * y
+#         B = z.size(0)
+#         C = self.num_channel
+#         z = z.reshape(B, -1, C)
+#         z = torch.view_as_real(z)
+#         z = z.permute(0,3,1,2)
+
+#         return z
+    
+#     def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
+#         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
+#         a = x[:, 0]
+#         b = x[:, 1]
+#         c = y[:, 0]
+#         d = y[:, 1]
+
+#         if mode == "sum":
+#             real = a * c - b * d
+#             imag = a * d + b * c
+#         else:
+#             real = a * c + b * d
+#             imag = b * c - a * d
+
+#         B = real.size(0)
+#         C = real.size(-1)
+
+#         real = real.reshape(B, -1, C)
+#         imag = imag.reshape(B, -1, C)
+
+#         out = torch.stack([real, imag], dim=1)
+
+#         return out
+    
+#     def to_list(self, x: torch.Tensor) -> torch.Tensor:
+#         B = x.size(0)
+#         out = []
+#         offset = 0
+#         n = self.lmax + 1
+#         # m = 0
+#         out.append(x[:, offset:offset+n])
+#         offset += n
+#         # m > 0
+#         for m in range(1, self.mmax + 1):
+#             xm = x[:, offset:offset+2*n]
+#             xm = xm.view(B, 2, n, self.num_channel)
+#             out.append(xm)
+#             offset += 2 * n
+#         return out
+
+#     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+
+#         B = x.size(0)
+
+#         xs = self.to_list(x) #  m = 0 [B, lmax+1, C]
+#         ys = self.to_list(y) #  m > 0 [B, 2, lmax+1, C]
+
+#         outputs: list[list[torch.Tensor]] = []
+#         for _ in range(self.mmax+1):
+#             outputs.append([])
+
+
+#         n = self.lmax + 1
+
+#         # m = 0
+#         for m1, m2, mode in self.instructions[0]:
+#             # 0 x 0
+#             if m1 == 0 and m2 == 0:
+#                 z = self.rmul(xs[0], ys[0])
+#             # m > 0 and m1 -m2 = 0
+#             elif m1 > 0 and m2 > 0:
+#                 z = self.cmul(xs[m1], ys[m2], "diff")
+#                 z = z[:, 0] # The imaginary part is 0
+#             outputs[0].append(z.view(B, n, -1))
+
+#         # m > 0
+#         for m3 in range(1, self.mmax + 1):
+#             for m1, m2, mode in self.instructions[m3]:
+#                 if m1 == 0:
+#                     z = xs[m1].unsqueeze(1) * ys[m2]
+#                 elif m2 == 0:
+#                     z = xs[m1] * ys[m2].unsqueeze(1)
+#                 else:
+#                     if m1 < m2 and mode == 'diff':
+#                         z = self.cmul(ys[m2], xs[m1], mode)
+#                     else:
+#                         z = self.cmul(xs[m1], ys[m2], mode)
+#                 outputs[m3].append(z)
+
+#         return outputs
+        
+#     def __repr__(self):
+#         lines = []
+#         lines.append(
+#             f"{self.__class__.__name__}("
+#         )
+#         lines.append(
+#             f"  mmax={self.mmax}, "
+#             f"lmax={self.lmax}, "
+#             f"channels={self.num_channel}, "
+#             f"weights={0}"
+#         )
+#         lines.append("")
+#         lines.append("  instructions:")
+#         total_paths = 0
+#         for m3, paths in enumerate(self.instructions):
+#             total_paths += len(paths)
+#             path_strs = []
+#             for m1, m2, mode in paths:
+#                 if mode == "sum":
+#                     expr = f"{m1}+{m2}"
+#                 else:
+#                     expr = f"{m1}-{m2}"
+#                 path_strs.append(expr)
+#             joined = ", ".join(path_strs)
+#             lines.append(
+#                 f"    m={m3:<2} : "
+#                 f"{len(paths):<2} paths | "
+#                 f"{joined}"
+#             )
+#         lines.append("")
+#         lines.append(f"  total_paths={total_paths}")
+#         lines.append(")")
+#         return "\n".join(lines)
+
+
+# # toy
+# from e3nn.o3 import FullyConnectedTensorProduct
+# class GeneralizedSphericalHarmonics(torch.nn.Module):
+#     def __init__(
+#             self, 
+#             irreps_in: Irreps, 
+#             irreps_out: Irreps, 
+#         ):
+#         super().__init__()
+
+#         self.irreps_in = Irreps(irreps_in)
+#         self.irreps_out = Irreps(irreps_out)
+#         self.tp = FullyConnectedTensorProduct(irreps_in, irreps_in, irreps_out)
+
+#     def forward(
+#             self, 
+#             node_attrs: torch.Tensor,
+#             edge_attrs: torch.Tensor, 
+#             edge_index: torch.Tensor,
+#         ):
+
+#         device = node_attrs.device
+#         row, col = edge_index 
+    
+#         sorted_idx = torch.argsort(col)
+#         edge_attrs = edge_attrs[sorted_idx]
+#         row = row[sorted_idx]
+#         col = col[sorted_idx]
+
+#         num_nodes = node_attrs.size(0)
+#         edge_counts = torch.bincount(col, minlength=num_nodes)
+#         edge_cumsum = torch.cumsum(edge_counts, dim=0)
+#         start_idx = torch.cat([torch.tensor([0], device=device), edge_cumsum[:-1]])
+#         end_idx = edge_cumsum
+
+#         pair_idx_i, pair_idx_j, pair_centers = [], [], []
+#         for s, e, c in zip(start_idx, end_idx, torch.arange(num_nodes, device=device)):
+#             n = e - s
+#             if n < 2:
+#                 continue
+#             idx = torch.arange(s, e, device=device)
+#             comb = torch.combinations(idx, r=2)
+#             pair_idx_i.append(comb[:,0])
+#             pair_idx_j.append(comb[:,1])
+#             pair_centers.append(torch.full((comb.shape[0],), c, device=device, dtype=torch.long))
+
+#         pair_idx_i = torch.cat(pair_idx_i)
+#         pair_idx_j = torch.cat(pair_idx_j)
+#         pair_centers = torch.cat(pair_centers)
+
+#         Y_i = edge_attrs[pair_idx_i]
+#         Y_j = edge_attrs[pair_idx_j]
+#         Y_pair = self.tp(Y_i, Y_j)
+
+#         return pair_centers, pair_idx_i, pair_idx_j, Y_pair

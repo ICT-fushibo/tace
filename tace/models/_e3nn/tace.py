@@ -563,17 +563,30 @@ class e3nnTACE(torch.nn.Module):
         # === DeNS noise ===
         dens_noise = None
         if hasattr(self, 'dens_noise_readouts'):
-            noise_list = []
-            for ii, dens_noise_readout in enumerate(self.dens_noise_readouts):
-                if not self.use_alllayer:
-                    ii = -1
-                noise_list.append(
-                    dens_noise_readout(
-                        from_representation['decouple_node_feats2'],
-                        node_fidelity,
-                    ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
-                )
-            dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
+            if from_representation['decouple_node_feats2'] is not None:
+                noise_list = []
+                for ii, dens_noise_readout in enumerate(self.dens_noise_readouts):
+                    if not self.use_alllayer:
+                        ii = -1
+                    noise_list.append(
+                        dens_noise_readout(
+                            from_representation['decouple_node_feats2'],
+                            node_fidelity,
+                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                    )
+                dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
+            else:
+                noise_list = []
+                for ii, dens_noise_readout in enumerate(self.dens_noise_readouts):
+                    if not self.use_alllayer:
+                        ii = -1
+                    noise_list.append(
+                        dens_noise_readout(
+                            descriptors[ii],
+                            node_fidelity,
+                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                    )
+                dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
 
         return {
             "energy": E,

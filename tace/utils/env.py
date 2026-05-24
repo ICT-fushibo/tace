@@ -44,3 +44,7 @@ def get_tace_dens_loss_ratio():
             "TACE_DENS_LOSS_RATIO must be positive"
         )
     return ratio
+
+def get_tace_use_matrix_weight():
+    return os.environ.get("TACE_USE_MATRIX_WEIGHT", '0')
+

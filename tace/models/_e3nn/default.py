@@ -63,6 +63,7 @@ DEFAULT_MODEL_CONFIG = {
         
         "node_wise_hidden": None,
         "edge_wise_hidden": None,
+        "separate_so2_radial": False,
     },
     "resnet": {
         "type": "BB",
@@ -249,6 +250,10 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
+    cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
+    for b in cfg['atomic_basis']["separate_so2_radial"]:
+        if b: cfg['edge_update']['type'] = 'element2'
+
     # if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
     components = cfg['product_basis']['return_components']
     if isinstance(components, list):

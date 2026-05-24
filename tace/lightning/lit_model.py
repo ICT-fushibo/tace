@@ -24,6 +24,7 @@ from tace.utils._global import DTYPE, DEVICE
 from tace.utils.loss.uncertainty import UncertaintyLoss
 from tace.dataset.quantity import get_target_property, get_embedding_property
 from tace.models.adapter import TensorModel
+from tace.utils.optimizer.hybrid_muon import HybridMuonOptimizer
 from .select_model import select_model
 from .skip import LossSkipController
 from .lora import to_lora_model
@@ -109,6 +110,19 @@ class LightningWrapperModel(L.LightningModule):
                 skip_large=cfg['misc']['LossSkipController'].get('skip_large', True),
             )
 
+
+        # from tace.utils.optimizer.hybrid_muon import get_adam_route, get_effective_shape, get_matrix_view_shape
+        # for name, param in model.named_parameters():
+        #     route = get_adam_route(name) 
+        #     eff_shape = get_effective_shape(param.shape)
+        #     if route == "muon":
+        #         mat_view = get_matrix_view_shape(eff_shape, muon_mode="slice")
+        #         logging.info(f"{name:40s} shape={str(param.shape):15s} -> Muon {mat_view}")
+        #     else:
+        #         logging.info(f"{name:40s} shape={str(param.shape):15s} -> {route}")
+        # import sys 
+        # sys.exit()
+
     def _create_metrics(self, prefix):
         metric_collection = MetricCollection(build_metrics(prefix, self.loss_property))
         setattr(self, f"{prefix}_metrics", metric_collection)
@@ -139,10 +153,10 @@ class LightningWrapperModel(L.LightningModule):
             if get_tace_use_dens() == '1':
                     batch = add_gaussian_noise_to_position(batch)
 
-        # batch['direct_forces'] = batch['forces']
-        # batch['direct_forces_weight'] = batch['forces_weight']
-        # batch['direct_stress'] = batch['stress']
-        # batch['direct_stress_weight'] = batch['stress_weight']
+        batch['direct_forces'] = batch['forces']
+        batch['direct_forces_weight'] = batch['forces_weight']
+        batch['direct_stress'] = batch['stress']
+        batch['direct_stress_weight'] = batch['stress_weight']
 
         if self.force_dtype is not None:
             batch = batch.apply(
@@ -318,7 +332,7 @@ class LightningWrapperModel(L.LightningModule):
                         f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
                     )
 
-    # Used for check unused params
+    # # Used for check unused params
     # def on_after_backward(self):
 
     #     for name, p in self.named_parameters():
@@ -347,6 +361,122 @@ class LightningWrapperModel(L.LightningModule):
     #                 group["weight_decay"] = 1e-8
 
 
+    # def configure_optimizers(self):
+
+    #     optimizer_cfg = self.cfg["optimizer"]
+
+    #     optimizer_target = optimizer_cfg.pop("_target_")
+    #     weight_decay = float(optimizer_cfg.pop("weight_decay", 0.0))
+
+    #     optimizer_cfg.pop("extra", None)
+    #     optimizer_cfg.pop("params", None)
+
+    #     decay_params = []
+    #     no_decay_params = []
+    #     no_decay_names = []
+
+    #     for module_name, module in self.named_modules():
+    #         for param_name, param in module.named_parameters(recurse=False):
+    #             if not param.requires_grad:
+    #                 continue
+
+    #             full_name = f"{module_name}.{param_name}" if module_name else param_name
+
+    #             if (
+    #                 param_name.endswith("bias")
+    #                 or "_readout" in full_name
+    #                 or "_readouts" in full_name
+    #                 or ".node_embedding." in full_name
+    #                 or ".source_embedding." in full_name
+    #                 or ".target_embedding." in full_name
+    #                 or ".uie." in full_name
+    #                 or ".uee." in full_name
+    #                 or ".embedding." in full_name
+    #                 or ".router." in full_name
+    #                 or ".radial_basis" in full_name
+    #                 or isinstance(module, torch.nn.LayerNorm)
+    #                 or isinstance(module, torch.nn.RMSNorm)
+    #                 or isinstance(module, torch.nn.Embedding)
+    #             ):
+    #                 no_decay_params.append(param)
+    #                 no_decay_names.append(full_name)
+    #             else:
+    #                 decay_params.append(param)
+
+
+    #     if weight_decay > 0 and len(no_decay_names) > 0:
+    #         logging.debug("Parameters excluded from weight decay:")
+    #         for name in no_decay_names:
+    #             logging.debug(f"  {name}")
+    #     else:
+    #         logging.debug("All parameters use same weight decay")
+
+
+    #     decay_ids = set(map(id, decay_params))
+    #     no_decay_ids = set(map(id, no_decay_params))
+    #     overlap = decay_ids.intersection(no_decay_ids)
+    #     if len(overlap) > 0:
+    #         raise RuntimeError("Some parameters appear in both decay and no_decay groups")
+
+    #     param_groups = [
+    #         {"params": decay_params, "weight_decay": weight_decay},
+    #         {"params": no_decay_params, "weight_decay": 0.0},
+    #     ]
+
+    #     module_path, class_name = optimizer_target.rsplit(".", 1)
+    #     module = importlib.import_module(module_path)
+    #     OptimizerClass = getattr(module, class_name)
+
+    #     optimizer = OptimizerClass(
+    #         params=param_groups,
+    #         **optimizer_cfg,
+    #     )
+
+    #     if "scheduler" not in self.cfg:
+    #         return {"optimizer": optimizer}
+
+
+    #     scheduler_cfg = self.cfg["scheduler"]
+
+    #     scheduler_target = scheduler_cfg.pop("_target_")
+
+    #     scheduler_extra = scheduler_cfg.pop("extra", {})
+    #     scheduler_cfg.pop("optimizer", None)
+
+    #     monitor = scheduler_extra.get("monitor", "val/loss")
+    #     interval = scheduler_extra.get("interval", "epoch")
+    #     frequency = scheduler_extra.get("frequency", 1)
+
+    #     module_path, class_name = scheduler_target.rsplit(".", 1)
+    #     module = importlib.import_module(module_path)
+    #     SchedulerClass = getattr(module, class_name)
+
+    #     scheduler = SchedulerClass(
+    #         optimizer=optimizer,
+    #         **scheduler_cfg,
+    #     )
+
+    #     if getattr(self, "no_valid_set", False):
+    #         return {
+    #             "optimizer": optimizer,
+    #             "lr_scheduler": {
+    #                 "scheduler": scheduler,
+    #                 "interval": interval,
+    #                 "frequency": frequency,
+    #             },
+    #         }
+    #     else:
+    #         return {
+    #             "optimizer": optimizer,
+    #             "lr_scheduler": {
+    #                 "scheduler": scheduler,
+    #                 "monitor": monitor,
+    #                 "interval": interval,
+    #                 "frequency": frequency,
+    #             },
+    #         }
+        
+
     def configure_optimizers(self):
 
         optimizer_cfg = self.cfg["optimizer"]
@@ -361,12 +491,15 @@ class LightningWrapperModel(L.LightningModule):
         no_decay_params = []
         no_decay_names = []
 
+        all_named_params = []    
+
         for module_name, module in self.named_modules():
             for param_name, param in module.named_parameters(recurse=False):
                 if not param.requires_grad:
                     continue
 
                 full_name = f"{module_name}.{param_name}" if module_name else param_name
+                all_named_params.append((full_name, param))
 
                 if (
                     param_name.endswith("bias")
@@ -379,6 +512,7 @@ class LightningWrapperModel(L.LightningModule):
                     or ".uee." in full_name
                     or ".embedding." in full_name
                     or ".router." in full_name
+                    or ".radial_basis" in full_name
                     or isinstance(module, torch.nn.LayerNorm)
                     or isinstance(module, torch.nn.RMSNorm)
                     or isinstance(module, torch.nn.Embedding)
@@ -412,10 +546,17 @@ class LightningWrapperModel(L.LightningModule):
         module = importlib.import_module(module_path)
         OptimizerClass = getattr(module, class_name)
 
-        optimizer = OptimizerClass(
-            params=param_groups,
-            **optimizer_cfg,
-        )
+        if optimizer_target == "tace.utils.optimizer.HybridMuonOptimizer":
+            optimizer = OptimizerClass(
+                params=param_groups,
+                named_parameters=all_named_params, 
+                **optimizer_cfg,
+            )
+        else:
+            optimizer = OptimizerClass(
+                params=param_groups,
+                **optimizer_cfg,
+            )
 
         if "scheduler" not in self.cfg:
             return {"optimizer": optimizer}
@@ -460,7 +601,6 @@ class LightningWrapperModel(L.LightningModule):
                     "frequency": frequency,
                 },
             }
-        
 
     @classmethod
     def load_from_checkpoint(
