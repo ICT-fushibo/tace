@@ -21,9 +21,8 @@ from .paths import generate_paths
 from .edge_prod import SO2EdgeProductBasis
 
 
-from ..mlp import ScaledSigmoid, SmoothLeakyReLU
+from ..mlp import SmoothLeakyReLU
 from ..softmax import GraphSoftmax
-
 
 
 class O3ScatterTensorProduct(torch.nn.Module):
@@ -170,8 +169,6 @@ class uuuTensorProduct(torch.nn.Module):
             return self.tp(x, y, ws)
     
 
-
-# modSwiGLU-SO2
 class SO2ScatterTensorProduct(torch.nn.Module):
     def __init__(
         self,
@@ -184,17 +181,12 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
 
-        separate_so2_radial: bool,
         num_head: int,
         use_so2_edge_ace: bool,
         use_graph_softmax: bool,
 
-
-
     ) -> None:
         super().__init__()
-
-        edge_wise_hidden = 32
 
         self.mmax = mmax
         self.lmax = lmax
@@ -205,32 +197,13 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
    
-        self.num_out_channel = 64
-        
-        self.separate_so2_radial = separate_so2_radial
         self.use_so2_edge_ace = use_so2_edge_ace
         self.num_head = num_head
         self.use_graph_softmax = use_graph_softmax
-
-
         self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
-        # if self.separate_so2_radial:
-        #     self.num_components = self.num_components * 2 - (lmax+1)
-        #     self.complex_mul = SO2ComplexMul(mmax, lmax, num_channel * 2, channel_wise=False)
         self.weight_numel = (self.num_components * self.num_channel * 2)
         self.register_buffer('expand_index', expand_index, persistent=False)
-
-   
         self.num_gates = sum(lmax+1 for _ in range(mmax+1))
-
-        self.ace = SO2EdgeProductBasis(
-            mmax, 
-            lmax, 
-            self.edge_wise_hidden,
-            num_elements=num_elements,
-            m1m2='<=',
-            agnostic=True,
-        )
 
         self.linear_up = SO2Linear(
             mmax,
@@ -240,17 +213,15 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             num_components_out=[self.num_gates + lmax+1] + [lmax+1 for m in range(1, mmax+1)],
         )
         self.split_list = [self.num_gates, (lmax+1) + (lmax+1) * mmax * 2]
-
-        # if self.use_so2_edge_ace:    
-        #     self.ace = SO2EdgeProductBasis(
-        #         mmax, 
-        #         lmax, 
-        #         self.edge_wise_hidden,
-        #         num_elements=num_elements,
-        #         m1m2='<=',
-        #         agnostic=True,
-        #     )
-
+        if self.use_so2_edge_ace:    
+            self.ace = SO2EdgeProductBasis(
+                mmax, 
+                lmax, 
+                self.edge_wise_hidden,
+                num_elements=num_elements,
+                m1m2='<=',
+                agnostic=True,
+            )
         self.nonlinearity = SO2Gate(
             mmax,
             lmax,
@@ -261,15 +232,13 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             mmax,
             lmax,
             self.edge_wise_hidden,     
-            64,      
+            self.edge_wise_hidden,     
             num_components_in=[lmax+1] * (mmax+1),
         )
-
 
         if self.use_graph_softmax:
             self.num_channel_per_head = self.edge_wise_hidden // self.num_head
             assert self.num_channel % self.num_head == 0
-
             self.linear_alpha = SO2Linear(
                 0,
                 lmax,
@@ -280,11 +249,9 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             std = 1.0 / math.sqrt(self.num_channel_per_head)
             self.graph_softmax = GraphSoftmax()
             self.alpha_act = SmoothLeakyReLU()
-
             self.real_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
             self.real_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
             torch.nn.init.uniform_(self.real_alpha_dot, -std, std)
-
             # self.imag_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
             # self.imag_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
             # torch.nn.init.uniform_(self.imag_alpha_dot, -std, std)
@@ -301,20 +268,9 @@ class SO2ScatterTensorProduct(torch.nn.Module):
 
         num_nodes = x.size(0)
         num_edges = w.size(0)
-        x = self.reshape_in(x) # [B, M, C]
+        x = self.reshape_in(x)
         m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
         m_ij = self.so2_angular_basis.rotate(m_ij)
-
-
-        # if self.separate_so2_radial:
-        #     w = w.view(num_edges, self.num_components, -1)
-        #     m_ij = self.complex_mul(w, m_ij, scale=False)
-        # else:
-        #     w = w.view(num_edges, self.num_components, -1)
-        #     w = torch.index_select(w, dim=1, index=self.expand_index)
-        #     m_ij = w * m_ij
-
-
         w = w.view(num_edges, self.num_components, -1)
         w = torch.index_select(w, dim=1, index=self.expand_index)
         m_ij = w * m_ij
@@ -325,7 +281,6 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         m_ij = self.linear_up(m_ij) 
         gate = m_ij.narrow(1, 0, self.split_list[0])
         m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
-
 
         if self.use_so2_edge_ace:
             m_ij = self.ace(m_ij, node_attrs, edge_index)
@@ -361,85 +316,3 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         )
     
 
-from ..mlp import MLP
-
-class SO2Attention(torch.nn.Module):
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channel: int,
-        edge_wise_hidden: int,
-        so2_angular_basis: SO3Rotation,
-        reshape_in: LayoutTransform,
-        num_head: int,
-        weights_shape: int, 
-    ) -> None:
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
-        self.so2_angular_basis = so2_angular_basis
-        self.reshape_in = reshape_in
-        self.num_out_channel = self.edge_wise_hidden
-        self.num_head = num_head
-        self.weights_shape = weights_shape
-
-        self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
-        self.weight_numel = (self.num_components * self.num_channel * 2)
-        self.register_buffer('expand_index', expand_index, persistent=False)
-
-        self.num_channel_per_head = self.edge_wise_hidden // self.num_head
-        assert self.num_channel % self.num_head == 0
-
-        self.linear_alpha = SO2Linear(
-            0,
-            lmax,
-            self.num_channel * 2,
-            self.edge_wise_hidden,     
-            num_components_out=[1],
-        )
-        std = 1.0 / math.sqrt(self.num_channel_per_head)
-        self.graph_softmax = GraphSoftmax()
-        self.alpha_act = SmoothLeakyReLU()
-
-        self.real_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
-        self.real_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
-        torch.nn.init.uniform_(self.real_alpha_dot, -std, std)
-
-
-    def forward(
-            self, 
-            x: torch.Tensor, 
-            w: torch.Tensor, 
-            edge_index: torch.Tensor,
-            cutoff: torch.Tensor,
-            conv_weights: torch.Tensor,
-        ) -> torch.Tensor:
-
-        num_nodes = x.size(0)
-        num_edges = conv_weights.size(0)
-        x = self.reshape_in(x)
-        m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        m_ij = self.so2_angular_basis.rotate(m_ij)
-        w = w.view(num_edges, self.num_components, -1)
-        w = torch.index_select(w, dim=1, index=self.expand_index)
-        m_ij = w * m_ij
-        real_alpha = self.linear_alpha(m_ij)
-        real_alpha = real_alpha.reshape(num_edges, self.num_head, self.num_channel_per_head)
-        real_alpha = self.real_alpha_norm(real_alpha)
-        real_alpha = self.alpha_act(real_alpha)
-        real_alpha = torch.einsum('bik, ik -> bi', real_alpha, self.real_alpha_dot)
-        real_alpha = self.graph_softmax(real_alpha, edge_index[1], num_nodes=num_nodes, exp_rescale=cutoff).unsqueeze(-1) # [edge, head, 1]
-
-        offset = 0
-        new_conv_weights = []
-        for shape in self.weights_shape:
-            this_w = conv_weights[:, offset:offset+self.num_channel]
-            this_w = this_w.view(num_edges, self.num_head, -1) * real_alpha
-            new_conv_weights.append(this_w.view(num_edges, -1))
-            offset += self.num_channel
-
-        return torch.cat(new_conv_weights, dim=-1)

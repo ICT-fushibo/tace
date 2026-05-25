@@ -7,7 +7,7 @@ import argparse
 import logging
 import sys
 
-from ..foundations import tace_foundations
+from tace.foundations import tace_foundations
 
 
 def download_one(registry, name: str):

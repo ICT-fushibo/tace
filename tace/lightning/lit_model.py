@@ -24,7 +24,6 @@ from tace.utils._global import DTYPE, DEVICE
 from tace.utils.loss.uncertainty import UncertaintyLoss
 from tace.dataset.quantity import get_target_property, get_embedding_property
 from tace.models.adapter import TensorModel
-from tace.utils.optimizer.hybrid_muon import HybridMuonOptimizer
 from .select_model import select_model
 from .skip import LossSkipController
 from .lora import to_lora_model
@@ -153,10 +152,10 @@ class LightningWrapperModel(L.LightningModule):
             if get_tace_use_dens() == '1':
                     batch = add_gaussian_noise_to_position(batch)
 
-        batch['direct_forces'] = batch['forces']
-        batch['direct_forces_weight'] = batch['forces_weight']
-        batch['direct_stress'] = batch['stress']
-        batch['direct_stress_weight'] = batch['stress_weight']
+        # batch['direct_forces'] = batch['forces']
+        # batch['direct_forces_weight'] = batch['forces_weight']
+        # batch['direct_stress'] = batch['stress']
+        # batch['direct_stress_weight'] = batch['stress_weight']
 
         if self.force_dtype is not None:
             batch = batch.apply(

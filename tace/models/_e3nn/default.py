@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Any, Union
+from typing import Any
 
 
 from ...dataset.quantity import PROPERTY
@@ -55,21 +55,16 @@ DEFAULT_MODEL_CONFIG = {
         "nonlinear": "sigmoid_gate",
         "edge_nonlinear": 'so2_sigmoid_gate',
         "l1l2": None,
-        "is_so2_layout": True,
         "use_so2_edge_ace": False,
-        "use_both_Bi_Bj": False,
         "num_head": None,
         "use_graph_softmax": False,
-        
         "node_wise_hidden": None,
         "edge_wise_hidden": None,
-        "separate_so2_radial": False,
     },
     "resnet": {
         "type": "BB",
         "linear_type": 'aware',
         "use_first_resnet": False,
-        "window": None,
     },
     "layer_norm": {
         "pre_norm_type": None,
@@ -87,7 +82,7 @@ DEFAULT_MODEL_CONFIG = {
     "readout_emlp": {
         "bias": False,
         "hidden": [16],
-        "use_alllayer": True,
+        "use_alllayer": False,
         "use_uie": False,
     },
     "scale_shift": {
@@ -150,9 +145,9 @@ DEFAULT_MODEL_CONFIG = {
         },
     },
     "special": {
-        "hessian": {
-            "num_samples": 2
-        },
+        # "hessian": {
+        #     "num_samples": 2
+        # },
         "charges": {
             "method": "lagrangian",
         },
@@ -250,9 +245,9 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
-    cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
-    for b in cfg['atomic_basis']["separate_so2_radial"]:
-        if b: cfg['edge_update']['type'] = 'element2'
+    # cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
+    # for b in cfg['atomic_basis']["separate_so2_radial"]:
+    #     if b: cfg['edge_update']['type'] = 'element2'
 
     # if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
     components = cfg['product_basis']['return_components']

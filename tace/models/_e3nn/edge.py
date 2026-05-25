@@ -230,12 +230,6 @@ class ElementEdgeUpdate(EdgeUpdate):
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
-        if self.separate_so2_radial:
-            edge_feats_list = []
-            edge_feats_list.append(self.source_embedding(node_attrs[edge_index[0]]))
-            edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))
-            return [edge_feats, torch.cat(edge_feats_list, dim=-1)]
-
         edge_feats_list = [edge_feats]
         edge_feats_list.append(self.source_embedding(node_attrs[edge_index[0]]))
         edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))
@@ -258,12 +252,6 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
-        if self.separate_so2_radial:
-            edge_feats_list = []
-            edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))
-            edge_feats_list.append(self.source_embedding(node_attrs[edge_index[0]]))
-            return [edge_feats, torch.cat(edge_feats_list, dim=-1)]
         
         edge_feats_list = [edge_feats]
         edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))

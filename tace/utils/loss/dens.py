@@ -1,3 +1,4 @@
+import logging
 import dataclasses
 from typing import Union
 
@@ -25,7 +26,9 @@ class DenoisingPosParams:
     loss_ratio: float = get_tace_dens_loss_ratio()
 
 DeNS = DenoisingPosParams()
-print(DeNS.loss_ratio)
+
+logging.info("DeNS Loss Ratio: ", DeNS.loss_ratio)
+
 def add_gaussian_noise_to_position(
     batch, 
     prob = DeNS.prob,

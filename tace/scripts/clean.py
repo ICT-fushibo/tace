@@ -6,7 +6,9 @@
 import shutil
 from pathlib import Path
 
-MAX_SIZE_BYTES = 1 * 1024**3  # 1 GB
+
+GB = 1
+MAX_SIZE_BYTES = GB * 1024**3  # 1 GB
 
 
 def get_size(path: Path) -> int:
@@ -33,7 +35,7 @@ def all_under_limit(paths) -> bool:
         size = get_size(path)
         if size > MAX_SIZE_BYTES:
             size_gb = size / 1024**3
-            print(f"⛔ Skipped: {path} size {size_gb:.2f} GB exceeds 5GB limit.")
+            print(f"⛔ Skipped: {path} size {size_gb:.2f} GB exceeds {GB} GB limit.")
             return False
     return True
 

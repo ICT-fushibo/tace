@@ -13,27 +13,27 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 
 
-from ..lightning.trainer import train
-from ..lightning.lit_model import finetune, load_tace
-from ..lightning.select_model import select_model
-from ..dataset.dataloader import build_atomsList, compute_statistics
-from ..dataset.datamodule import build_datamodule
-from ..utils.hydra_resolver import register_resolvers
-from ..utils.logger import set_logger
-from ..utils.utils import (
+from tace.lightning.trainer import train
+from tace.lightning.lit_model import finetune, load_tace
+from tace.lightning.select_model import select_model
+from tace.dataset.dataloader import build_atomsList, compute_statistics
+from tace.dataset.datamodule import build_datamodule
+from tace.utils.hydra_resolver import register_resolvers
+from tace.utils.logger import set_logger
+from tace.utils.utils import (
     set_global_seed,
     set_precision,
     save_full_cfg,
     deep_convert,
 )
-from ..utils.env import set_env
-from ..dataset.quantity import (
+from tace.utils.env import set_env
+from tace.dataset.quantity import (
     KEYS,
     KeySpecification,
     update_keyspec_from_kwargs,
     get_target_property,
 )
-from ..dataset.quantity import get_embedding_property
+from tace.dataset.quantity import get_embedding_property
 
 
 register_resolvers()

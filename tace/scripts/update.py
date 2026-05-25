@@ -12,8 +12,8 @@ from pathlib import Path
 import torch
 
 
-from ..lightning import load_tace
-from ..dataset.element import atomic_numbers
+from tace.lightning import load_tace
+from tace.dataset.element import atomic_numbers
 
 
 def parse_args():

@@ -8,9 +8,9 @@ import argparse
 
 import torch
 
-from ..lightning import load_tace
-from ..lightning.lora import from_lora_to_merged_model
-from ..utils._global import DTYPE
+from tace.lightning import load_tace
+# from tace.lightning.lora import from_lora_to_merged_model
+from tace.utils._global import DTYPE
 
 ALLOWED_TYPE = ["merged_lora"]
 
@@ -62,7 +62,8 @@ def main():
     model.to(dtype=args_dtype)
     if args.type == "merge_lora":
         total_before = count_parameters(model)
-        model = from_lora_to_merged_model(model)
+        assert False, "SphTACE not support LoRA now"
+        # model = from_lora_to_merged_model(model)
         total_after = count_parameters(model)
         if bool(args.debug):
             print(model)

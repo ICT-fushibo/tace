@@ -6,9 +6,9 @@
 import argparse
 import torch
 
-from ..lightning import load_tace
-from ..lightning.select_model import select_model
-from ..utils._global import DTYPE
+from tace.lightning import load_tace
+from tace.lightning.select_model import select_model
+from tace.utils._global import DTYPE
 
 
 def parse_args():

@@ -7,7 +7,7 @@ import argparse
 import yaml
 
 
-from ..lightning import load_tace
+from tace.lightning import load_tace
 
 
 def parse_args():

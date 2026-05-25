@@ -16,13 +16,13 @@ from torch_geometric.loader import DataLoader
 from e3nn.util.jit import compile
 
 
-from ..lightning import load_tace
-from ..dataset.graph import from_atoms
-from ..utils.metrics import build_metrics, update_metrics
-from ..utils._global import DTYPE
-from ..utils.utils import num_params
-from ..dataset.quantity import KeySpecification, update_keyspec_from_kwargs, PROPERTY
-from ..dataset.read import check_keys
+from tace.lightning import load_tace
+from tace.dataset.graph import from_atoms
+from tace.utils.metrics import build_metrics, update_metrics
+from tace.utils._global import DTYPE
+from tace.utils.utils import num_params
+from tace.dataset.quantity import KeySpecification, update_keyspec_from_kwargs, PROPERTY
+from tace.dataset.read import check_keys
 
 def parse_args():
     parser = argparse.ArgumentParser(

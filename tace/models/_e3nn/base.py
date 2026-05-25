@@ -98,7 +98,6 @@ class EdgeUpdate(torch.nn.Module):
         num_radial_basis: int,
         num_channel: int,
         edge_embedding_channel: int,
-        separate_so2_radial: bool,
         bias: bool = False,
     ) -> None:
         super().__init__()
@@ -111,7 +110,6 @@ class EdgeUpdate(torch.nn.Module):
         self.num_radial_basis = num_radial_basis
         self.num_channel = num_channel
         self.edge_embedding_channel=edge_embedding_channel
-        self.separate_so2_radial = separate_so2_radial
         self.use_bias = bias
 
         self._setup()
@@ -120,45 +118,6 @@ class EdgeUpdate(torch.nn.Module):
     def _setup(self) -> None:
         raise NotImplementedError
 
-
-# TODO
-class Residual(torch.nn.Module):
-    def __init__(
-        self,
-        layer: int,
-        num_layers: int,
-        irreps_in: o3.Irreps,
-        irreps_out: o3.Irreps,
-        num_channel: int,
-        num_elements: int,
-        liner_type: Union[str, list[str]],
-        bias: bool = True,
-        window: Union[int, None] = None,
-    ) -> None:
-        super().__init__()
-
-        self.layer = layer
-        self.num_layers = num_layers
-        self.first_layer = (layer == 0)
-        self.last_layer = (layer == num_layers - 1)
-        self.irreps_in = irreps_in
-        self.irreps_out = irreps_out
-        self.num_channel = num_channel
-        self.num_elements = num_elements
-        self.use_bias = bias
-        self.window = min(window or layer+1, layer+1)
-
-        if isinstance(liner_type, list):
-            self.linear_type = liner_type[layer]
-        else:
-            self.linear_type = liner_type
-
-        self._setup()
-    
-    @abc.abstractmethod
-    def _setup(self) -> None:
-        raise NotImplementedError
-    
 
 class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
     def __init__(
@@ -186,13 +145,10 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         edge_info_type: str = 'mlp',
         resnet_type: str = 'BB',
         resnet_linear_type: str = 'aware',
-        resnet_window: Union[int, None] = None,
         use_first_resnet: bool = False,
         pre_norm_type: Union[str, None] = None,
         use_first_pre_norm: bool = False,
         so2_angular_basis: Union[SO3Rotation, None] = None,
-        is_so2_layout: bool = False,
-        use_both_Bi_Bj: bool = False,
         use_so2_edge_ace: bool = False,
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
@@ -201,7 +157,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
-        separate_so2_radial: bool = False,
     ) -> None:
         super().__init__()
 
@@ -238,14 +193,12 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'silu'
         else:
             self.radial_act = 'sigmoid'
+
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
-        self.is_so2_layout = is_so2_layout
-        self.use_both_Bi_Bj = use_both_Bi_Bj
         self.use_so2_edge_ace = use_so2_edge_ace
         self.use_first_dropout = use_first_dropout 
         self.resnet_linear_type = resnet_linear_type
-        self.resnet_window = resnet_window
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
@@ -254,8 +207,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.parity = parity
         self.num_head = num_head or 1
         self.use_graph_softmax = use_graph_softmax
-        self.separate_so2_radial = separate_so2_radial
-
         self.node_wise_hidden = node_wise_hidden or num_channel
         self.edge_wise_hidden = edge_wise_hidden or num_channel
 
@@ -278,6 +229,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
+
 
 class Product(torch.nn.Module):
     def __init__(
@@ -365,7 +317,7 @@ class ReadOut(torch.nn.Module):
     ) -> None:
         super().__init__()
 
-        self.scalar_act = 'tanh' if '0o' in irreps_out else 'silu' # 0o's act may change
+        self.scalar_act = 'tanh' if '0o' in irreps_out else 'silu'
         self.tensor_act = 'sigmoid'
         self.layer = layer
         self.num_layers = num_layers
