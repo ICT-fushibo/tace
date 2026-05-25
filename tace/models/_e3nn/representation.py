@@ -166,7 +166,6 @@ class Representation(torch.nn.Module):
             "edge_wise_hidden": atomic_basis["edge_wise_hidden"],
             "stochastic_depth": dropout['stochastic_depth'],
 
-            "use_graph_softmax": atomic_basis["use_graph_softmax"],  
             "num_head": atomic_basis["num_head"],
             "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
@@ -189,6 +188,7 @@ class Representation(torch.nn.Module):
                     nonlinear=atomic_basis['nonlinear'][layer],
                     edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
                     irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out,
+                    use_graph_softmax=atomic_basis["use_graph_softmax"][layer],  
                 )
             )
             inter_irreps_out = self.interactions[layer].irreps_out
@@ -258,7 +258,6 @@ class Representation(torch.nn.Module):
                         num_channel=num_channel,
                     )
                 )
-                for_interactions["use_graph_softmax"] = False
                 self.decouple_interactions.append(
                     INTERACTION['cgtp'](
                         **for_interactions,
@@ -267,6 +266,7 @@ class Representation(torch.nn.Module):
                         nonlinear=atomic_basis['nonlinear'][layer],
                         edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
                         irreps_in=self.products[-1].irreps_out,
+                        use_graph_softmax=False,  
                     )
                 )
                 self.decouple_products.append(

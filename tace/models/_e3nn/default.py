@@ -245,6 +245,7 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
+    cfg['atomic_basis']['use_graph_softmax'] = _to_list(cfg['atomic_basis']['use_graph_softmax'])
     # cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
     # for b in cfg['atomic_basis']["separate_so2_radial"]:
     #     if b: cfg['edge_update']['type'] = 'element2'

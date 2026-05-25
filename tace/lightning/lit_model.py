@@ -707,6 +707,20 @@ def load_tace(
 
     return model
 
+def export_tace(
+    model: torch.nn.Module,
+    name: str,
+) -> None:
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "cfg": model.readout_fn.model_config,
+            "target_property": model.get_target_property(),
+            "embedding_property": model.get_embedding_property(),
+            "statistics": model.readout_fn.statistics,
+        }, 
+        name if name.endswith(".pt") else name + ".pt"
+    )
 
 def finetune(cfg: Dict) -> torch.nn.Module:
 

@@ -1,3 +1,5 @@
+# TODO, refactor
+################################################################################
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
@@ -24,8 +26,6 @@ class SO2EdgeProductBasis(torch.nn.Module):
         agnostic: bool = True,
     ):
         super().__init__()
-
-        agnostic = False
 
         self.mmax = mmax
         self.lmax = lmax
