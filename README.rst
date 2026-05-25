@@ -108,18 +108,18 @@ If you use TACE, please cite our papers:
          url={https://arxiv.org/abs/2509.14961}, 
    }
 
-If you use Cartesian-3j or Cartesian-nj, please cite our papers:
+If you use Cartesian-3j, please cite our papers:
 
 .. code-block:: bibtex
 
    @misc{xu2025cartesiannjextendinge3nnirreducible,
-         title={Cartesian-nj: Extending e3nn to Irreducible Cartesian Tensor Product and Contracion}, 
-         author={Zemin Xu and Chenyu Wu and Wenbo Xie and Daiqian Xie and P. Hu},
-         year={2025},
+         title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials}, 
+         author={Zemin Xu and Chenyu Wu and Wenbo Xie and P. Hu},
+         year={2026},
          eprint={2512.16882},
          archivePrefix={arXiv},
          primaryClass={physics.chem-ph},
-         url={https://arxiv.org/abs/2512.16882}, 
+         url={https://arxiv.org/abs/2512.16882v2}, 
    }
 
 Contact

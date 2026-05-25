@@ -6,21 +6,15 @@ config:
   cutoff: 6.0 # (float), recommend 6.0
   max_neighbors: null # (null, int) if you want to use tace in lammps, do not use max_neighbors
   atomic_numbers: null # (null, list), null = read from dataset.
-  # fidelity:
-  #   - {
-  #     name: PBE, # (str) custom name
-  #     # (null, Dict[int, float])
-  #     atomic_energy: {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
-  #   }
 
   fidelity:
     - {
-      name: PBE, 
-      atomic_energy: null
+      name: PBE, # (str) custom name
+      atomic_energy: null # # (null, Dict[int, float]), {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
     }
 
   node_embedding: 
-    type: linear    # [linear, nonlinear, group, tensor, so2_tensor], linear is safer
+    type: linear    # [linear, nonlinear, tensor, so2_tensor], linear is safer
 
   edge_embedding: 
     type: nonlinear # identity  # [identity, linear, nonlinear, element2], identity is safer
@@ -63,8 +57,16 @@ config:
     edge_nonlinear: so2_sigmoid_gate # [null, so2_sigmoid_gate]
     edge_info_type: mlp # [mlp, glu]
       
+    # in test, not use
+    node_wise_hidden: null
+    edge_wise_hidden: null
+    num_head: null
+    use_graph_softmax: false
+    use_so2_edge_ace: false
+
+
   product_basis:
-    # We currently don't think there is much improvement in adding nonlinearity to product basis
+    # We currently don't think there is much improvement in adding node-nonlinearity after product basis
     type: cgtp  # [cgtp, gtp]
     # type: [cgtp, gtp, cgtp, gtp ...]
     l1l2: null  # [null, <=]

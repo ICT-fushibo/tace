@@ -18,7 +18,3 @@ If higher accuracy is desired and increased computational cost is acceptable, ``
 .. autoclass:: tace.models._e3nn.edge.Element2EdgeUpdate
    :no-members:
    :show-inheritance:
-
-.. autoclass:: tace.models._e3nn.edge.TensorDotEdgeUpdate
-   :no-members:
-   :show-inheritance:
