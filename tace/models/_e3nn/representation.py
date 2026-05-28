@@ -169,6 +169,7 @@ class Representation(torch.nn.Module):
             "num_head": atomic_basis["num_head"],
             "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
+            "so2_linear_type": atomic_basis["so2_linear_type"],
         }
 
         self.interactions = torch.nn.ModuleList()

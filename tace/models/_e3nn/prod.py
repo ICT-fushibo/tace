@@ -3,18 +3,20 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import math
 from typing import Dict
 
 
 import torch
 
-
+from ..mlp import ScaledSigmoid
 from ..layout import LayoutTransform, LayoutTransform2
-from ..so2 import SO3Grid
-from ..linear import e3nnLinear, e3nnElementLinear
+from ..linear import e3nnLinear, e3nnElementLinear, torchLinear
+from ..so2 import SO3Grid, SO3Linear, SO3VstpGrid
 from .base import Product
 from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
+
 
 class CgtpACE(Product):
     """
@@ -196,6 +198,10 @@ class GtpACE(Product):
 
 
 class MACE(Product):
+    """
+    An ACE implementation from MACE.
+    https://github.com/ACEsuit/mace
+    """
     def _setup(self):
 
         self.linear_up = e3nnLinear(
@@ -261,67 +267,87 @@ class MACE(Product):
         return outs
 
 
-class OamACE(Product):
-    def _setup(self):
 
-        self.linear_up = e3nnLinear(
-            self.irreps_in,
-            self.irreps_hidden,
-            bias=self.use_bias,
-        ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
 
-        self.ace = uuuTensorProduct(
-            irreps_in1=self.irreps_hidden,
-            irreps_in2=self.irreps_hidden[:1] + self.irreps_hidden,
-            irreps_out=self.irreps_coefs_out,
-            l1l2=self.l1l2,
-            trainable=True,
-        ) 
-        self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
+# class VstpACE(Product):
+#     def _setup(self):
 
-        self.linear = e3nnLinear(
-            self.ace.irreps_out.simplify(),
-            self.irreps_out,
-            bias=self.use_bias
-        )    
+#         assert self.parity == False, "GtpACE not support O(3) group now"
 
-        if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
-        
-    def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-            batch: torch.Tensor,
-        ) -> torch.Tensor:
+#         self.linear_up = e3nnLinear(
+#             self.irreps_in,
+#             self.irreps_hidden * 2,
+#             bias=self.use_bias,
+#         )
 
-        node_feats = self.linear_up(node_feats)
-        ones = node_feats.new_ones(node_feats.size(0), self.num_hidden_channel)
+#         self.reshape1 = LayoutTransform(self.irreps_hidden)
+ 
+#         self.grid = SO3Grid(
+#             lmax=self.irreps_in.lmax,
+#             mmax=self.irreps_in.lmax,
+#             resolution_list=self.resolution,
+#             use_m_primary=False,
+#         )
 
-        outs = self.ace(
-            node_feats, 
-            torch.cat(
-                [
-                    ones,
-                    node_feats,
-                ],
-                dim=-1,
-            ), 
-            torch.einsum('bz, zi -> bi', node_attrs, self.coef),
-        )
+#         for_coefs = {
+#             "irreps_in": self.irreps_hidden,
+#             "irreps_out": self.irreps_coefs_out,
+#             "bias": self.use_bias,
+#             "num_elements": self.num_elements,
+#         }
+#         coefs_cls = e3nnElementLinear
+#         self.coefs = torch.nn.ModuleList()
+#         for _ in range(1, self.correlation+1):
+#             self.coefs.append(coefs_cls(**for_coefs))
 
-        outs = self.linear(outs)
+#         self.linear = e3nnLinear(
+#             self.irreps_coefs_out,
+#             self.irreps_out,
+#             bias=self.use_bias
+#         )
 
-        if hasattr(self, "stochastic_depth"):
-            outs = self.stochastic_depth(outs, batch)
+#         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
 
-        if sc is not None:
-            outs = outs + sc
+#     def forward(
+#             self, 
+#             node_feats: torch.Tensor, 
+#             node_attrs: torch.Tensor,
+#             sc: torch.Tensor,
+#             batch: torch.Tensor,
+#         ) -> torch.Tensor:
 
-        return outs
+#         node_feats = self.linear_up(node_feats) # double channel
+#         node_feats = self.reshape1(node_feats)
+
+#         node_feats_1, node_feats = torch.split(node_feats, self.num_hidden_channel, dim=-1)
+
+
+#         outs = self.coefs[0](node_feats, node_attrs)
+
+#         base_grid = self.grid.to_grid(node_feats)
+
+#         corr_feats_list = []
+#         grid_prev = base_grid
+#         for nu in range(2, self.correlation + 1):
+#             grid_prev = grid_prev * base_grid
+#             corr_feats_list.append(grid_prev)
+
+#         for nu in range(2, self.correlation + 1):
+#             this_corr_feats = self.reshape1.inverse(self.grid.from_grid(corr_feats_list[nu-2]))
+#             outs = outs + self.coefs[nu-1](this_corr_feats, node_attrs)
+           
+#         outs = self.linear(outs)
+
+#         if hasattr(self, "stochastic_depth"):
+#             outs = self.stochastic_depth(outs, batch)
+
+#         if sc is not None:
+#             outs = outs + sc
+
+#         return outs   
+
     
-
 PRODUCT: Dict[str, torch.nn.Module] = {
     "spatial": CgtpACE,
     "coupled": CgtpACE,
@@ -334,6 +360,5 @@ PRODUCT: Dict[str, torch.nn.Module] = {
 
     "mace": MACE,
 
-    "oam": OamACE,
-
+    # "vstp": VstpACE,
 }

@@ -157,6 +157,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
+        so2_linear_type: str = 'w1_w2',
     ) -> None:
         super().__init__()
 
@@ -209,6 +210,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.use_graph_softmax = use_graph_softmax
         self.node_wise_hidden = node_wise_hidden or num_channel
         self.edge_wise_hidden = edge_wise_hidden or num_channel
+        self.so2_linear_type = so2_linear_type
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)

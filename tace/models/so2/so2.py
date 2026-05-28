@@ -126,6 +126,7 @@ class SO2Linear(torch.nn.Module):
         self.lmax = lmax
         self.num_channel_in = num_channel_in
         self.num_channel_out = num_channel_out
+        self.weight_type = weight_type
 
         if num_components_in is None:
             self.num_components_in = [lmax + 1 -m for m in range(mmax + 1)]
@@ -209,6 +210,7 @@ class SO2Linear(torch.nn.Module):
             f"({'+'.join(ins)} -> "
             f"{'+'.join(outs)} | "
             f"{num_weights} weights)"
+            f"(weight_type={self.weight_type})"
             f"(bias={True})"
         )
 
@@ -254,7 +256,7 @@ class SO2Gate(torch.nn.Module):
         return g * x 
     
 
-class SO2Norm(torch.nn.Module):
+class SO2Norm(torch.nn.Module): # TODO
 
     def __init__(
         self,
@@ -730,3 +732,61 @@ class SO2uuuTensorProduct(torch.nn.Module):
         lines.append(f"  total_paths={total_paths}")
         lines.append(")")
         return "\n".join(lines)
+
+
+
+class SORot90(torch.nn.Module):
+
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channel: int,
+        channel_wise: bool = False,
+    ):
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+
+        self.ns = [
+            self.lmax + 1
+            if channel_wise
+            else self.lmax + 1 - m
+            for m in range(mmax + 1)
+        ]
+
+        self.slices = []
+        offset = 0
+        for m, n in zip(range(mmax + 1), self.ns):
+            if m == 0:
+                self.slices.append(slice(offset, offset + n))
+                offset += n
+            else:
+                self.slices.append(slice(offset, offset + 2 * n))
+                offset += 2 * n
+
+    def forward(
+        self,
+        xs: torch.Tensor,
+    ) -> torch.Tensor:
+
+        B = xs.size(0)
+        out = []
+        for m, s in enumerate(self.slices):
+            x = xs[:, s]
+            n = self.ns[m]
+            # m = 0
+            if m == 0:
+                z = x
+            # m > 0
+            else:
+                x = x.view(B, 2, n, self.num_channel)
+                r = x.narrow(1, 1, 1) * (-1.0)
+                i = x.narrow(1, 0, 1)
+                z = torch.cat([r, i], dim=1)
+                z = z.reshape(B, 2 * n, self.num_channel)
+            out.append(z)
+
+        return torch.cat(out, dim=1)

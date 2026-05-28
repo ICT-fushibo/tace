@@ -55,6 +55,7 @@ DEFAULT_MODEL_CONFIG = {
         "nonlinear": "sigmoid_gate",
         "edge_nonlinear": 'so2_sigmoid_gate',
         "l1l2": None,
+        "so2_linear_type": 'w1_w2',
         "use_so2_edge_ace": False,
         "num_head": None,
         "use_graph_softmax": False,

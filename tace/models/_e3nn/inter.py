@@ -325,6 +325,7 @@ class SO2Interaction(Interaction):
             num_head=self.num_head,
             use_graph_softmax=self.use_graph_softmax,
             use_so2_edge_ace=self.use_so2_edge_ace,
+            so2_linear_type=self.so2_linear_type,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])

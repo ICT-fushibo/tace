@@ -184,7 +184,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         num_head: int,
         use_so2_edge_ace: bool,
         use_graph_softmax: bool,
-
+        so2_linear_type: str,
     ) -> None:
         super().__init__()
 
@@ -196,7 +196,8 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.so2_angular_basis = so2_angular_basis
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
-   
+        self.so2_linear_type = so2_linear_type
+
         self.use_so2_edge_ace = use_so2_edge_ace
         self.num_head = num_head
         self.use_graph_softmax = use_graph_softmax
@@ -211,6 +212,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.num_channel * 2,
             self.edge_wise_hidden,     
             num_components_out=[self.num_gates + lmax+1] + [lmax+1 for m in range(1, mmax+1)],
+            weight_type=self.so2_linear_type,
         )
         self.split_list = [self.num_gates, (lmax+1) + (lmax+1) * mmax * 2]
         if self.use_so2_edge_ace:    
@@ -234,6 +236,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.edge_wise_hidden,     
             self.edge_wise_hidden,     
             num_components_in=[lmax+1] * (mmax+1),
+            weight_type=self.so2_linear_type,
         )
 
         if self.use_graph_softmax:
@@ -245,6 +248,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 self.num_channel * 2,
                 self.edge_wise_hidden,     
                 num_components_out=[1],
+                weight_type=self.so2_linear_type,
             )
             std = 1.0 / math.sqrt(self.num_channel_per_head)
             self.graph_softmax = GraphSoftmax()
@@ -255,7 +259,6 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             # self.imag_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
             # self.imag_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
             # torch.nn.init.uniform_(self.imag_alpha_dot, -std, std)
-
 
     def forward(
             self, 
@@ -279,6 +282,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             real_alpha = self.linear_alpha(m_ij)
 
         m_ij = self.linear_up(m_ij) 
+
         gate = m_ij.narrow(1, 0, self.split_list[0])
         m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
 

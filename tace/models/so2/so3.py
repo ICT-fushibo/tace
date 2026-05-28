@@ -32,6 +32,10 @@ import copy
 from e3nn import o3
 from e3nn.o3 import FromS2Grid, ToS2Grid
 
+
+from .utils import so3_expand_index
+
+
 # Borrowed from e3nn @ 0.4.0:
 # https://github.com/e3nn/e3nn/blob/0.4.0/e3nn/o3/_wigner.py#L10
 # _Jd is a list of tensors of shape (2l+1, 2l+1)
@@ -583,31 +587,21 @@ class SO3Grid(torch.nn.Module):
 
 class SO3Linear(torch.nn.Module):
     def __init__(self, in_features, out_features, lmax, bias=True):
-        '''
-            1.  Use `torch.einsum` to prevent slicing and concatenation
-            2.  Need to specify some behaviors in `no_weight_decay` and weight initialization.
-        '''
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.lmax = lmax
 
         self.weight = torch.nn.Parameter(torch.randn((self.lmax + 1), out_features, in_features))
-        bound = 1 / math.sqrt(self.in_features)
-        torch.nn.init.uniform_(self.weight, -bound, bound)
         self.bias = torch.nn.Parameter(torch.zeros(1, 1, out_features)) if bias else None
-
-        expand_index = torch.zeros([(lmax + 1) ** 2]).long()
-        for l in range(lmax + 1):
-            start_idx = l ** 2
-            length = 2 * l + 1
-            expand_index[start_idx : (start_idx + length)] = l
-        self.register_buffer('expand_index', expand_index)
-
+        _, expand_index = so3_expand_index(lmax, lmax)
+        self.register_buffer('expand_index', expand_index, persistent=False)
+        self.alpha = 1.0 / math.sqrt(self.in_features)
 
     def forward(self, inputs):
-        weight = torch.index_select(self.weight, dim=0, index=self.expand_index)        # [(L_max + 1) ** 2, C_out, C_in]
-        outputs = torch.einsum('bmi, moi -> bmo', inputs, weight)                       # [N, (L_max + 1) ** 2, C_out]
+        weight = self.weight * self.alpha
+        weight = torch.index_select(weight, dim=0, index=self.expand_index) # [so3_m, C_out, C_in]
+        outputs = torch.einsum('bmi, moi -> bmo', inputs, weight)      
         if self.bias is not None:
             outputs[:, 0:1, :] = outputs.narrow(1, 0, 1) + self.bias
         return outputs
@@ -686,10 +680,7 @@ class SO3VstpGrid(torch.nn.Module):
             from_grid.shb,
         ).detach()
 
-        d_beta_mat, d_alpha_mat, sin_beta = self._build_derivative_matrices(
-            to_grid=to_grid,
-            mapping=mapping,
-        )
+        d_beta_mat, d_alpha_mat, sin_beta = self._build_derivative_matrices(to_grid)
 
         if self.lmax != self.mmax:
             for l in range(self.lmax + 1):

@@ -2020,3 +2020,64 @@ The contents of this file are all historical artifacts from TACE development and
 #     )
 
 #     print(out.shape)
+
+# class OamACE(Product):
+#     ''
+#     def _setup(self):
+
+#         self.linear_up = e3nnLinear(
+#             self.irreps_in,
+#             self.irreps_hidden,
+#             bias=self.use_bias,
+#         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+#         self.ace = uuuTensorProduct(
+#             irreps_in1=self.irreps_hidden,
+#             irreps_in2=self.irreps_hidden[:1] + self.irreps_hidden,
+#             irreps_out=self.irreps_coefs_out,
+#             l1l2=self.l1l2,
+#             trainable=True,
+#         ) 
+#         self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
+
+#         self.linear = e3nnLinear(
+#             self.ace.irreps_out.simplify(),
+#             self.irreps_out,
+#             bias=self.use_bias
+#         )    
+
+#         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+        
+#     def forward(
+#             self, 
+#             node_feats: torch.Tensor, 
+#             node_attrs: torch.Tensor,
+#             sc: torch.Tensor,
+#             batch: torch.Tensor,
+#         ) -> torch.Tensor:
+
+#         node_feats = self.linear_up(node_feats)
+#         ones = node_feats.new_ones(node_feats.size(0), self.num_hidden_channel)
+
+#         outs = self.ace(
+#             node_feats, 
+#             torch.cat(
+#                 [
+#                     ones,
+#                     node_feats,
+#                 ],
+#                 dim=-1,
+#             ), 
+#             torch.einsum('bz, zi -> bi', node_attrs, self.coef),
+#         )
+
+#         outs = self.linear(outs)
+
+#         if hasattr(self, "stochastic_depth"):
+#             outs = self.stochastic_depth(outs, batch)
+
+#         if sc is not None:
+#             outs = outs + sc
+
+#         return outs
