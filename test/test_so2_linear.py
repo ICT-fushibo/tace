@@ -6,7 +6,7 @@ torch.set_printoptions(sci_mode=False, precision=8)
 torch.manual_seed(0)
 
 from tace.models.so2.utils import num_so2_components, rotate_so2_features
-from tace.models.so2 import SO2Linear
+from tace.models.so2 import uvSO2Linear
 
 B = 8
 
@@ -18,7 +18,7 @@ Cout = 7
 
 theta = 0.731
 
-layer = SO2Linear(
+layer = uvSO2Linear(
     mmax=mmax,
     lmax=lmax,
     num_channel_in=Cin,

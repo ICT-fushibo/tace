@@ -11,7 +11,7 @@ from typing import Union
 import torch
 
 
-from ..so2 import SO2TensorProduct
+from ..so2 import LegacyuuSO2TensorProduct, uuSO2TensorProduct
 
 
 class SO2EdgeProductBasis(torch.nn.Module):
@@ -33,7 +33,7 @@ class SO2EdgeProductBasis(torch.nn.Module):
         self.num_channel = num_channels
         self.agnostic = agnostic
 
-        self.ace = SO2TensorProduct(
+        self.ace = LegacyuuSO2TensorProduct(
             mmax, 
             lmax,
             num_channels, 
@@ -123,3 +123,49 @@ class SO2EdgeProductBasis(torch.nn.Module):
             f"{'+'.join(irreps)} | "
             f"{num_weights} weights)"
         )
+
+
+# class SO2EdgeProductBasis(torch.nn.Module):
+
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channels: int,
+#         num_elements: int,
+#         m1m2: Union[str, None] = '<=',
+#         agnostic: bool = True,
+#         tp_version: Union[str, None] = "v2",
+#         use_triton: Union[bool, None] = False,
+#         weight_type: str = "w1_w2",
+#     ):
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_components = lmax+1
+#         self.num_channel = num_channels
+#         self.agnostic = agnostic
+#         self.tp_version = tp_version
+#         self.use_triton = use_triton
+#         self.weight_type = weight_type
+
+#         self.ace = uuSO2TensorProduct(
+#             mmax,
+#             lmax,
+#             num_channels,
+#             m1m2=m1m2,
+#             internal_weights=agnostic,
+#             use_triton=use_triton,
+#             weight_type=weight_type,
+#         )
+
+#         self.weight_numel = self.ace.weight_numel
+
+
+#     def forward(
+#             self, 
+#             x, 
+#         ) -> torch.Tensor:
+
+#         return x + self.ace(x, x)

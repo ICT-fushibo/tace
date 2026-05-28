@@ -14,8 +14,8 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 from ..so2 import (
-    SO3Rotation, SO2Linear, SO2Gate, SO2Norm, SO2ComplexMul,
-    so2_expand_index, so3_expand_index,
+    SO3Rotation, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear, uuSO2TensorProduct,
+    so2_expand_index, so3_expand_index, 
 )
 from .paths import generate_paths
 from .edge_prod import SO2EdgeProductBasis
@@ -169,7 +169,7 @@ class uuuTensorProduct(torch.nn.Module):
             return self.tp(x, y, ws)
     
 
-class SO2ScatterTensorProduct(torch.nn.Module):
+class uvSO2TensorProduct(torch.nn.Module):
     def __init__(
         self,
         mmax: int,
@@ -206,7 +206,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         self.register_buffer('expand_index', expand_index, persistent=False)
         self.num_gates = sum(lmax+1 for _ in range(mmax+1))
 
-        self.linear_up = SO2Linear(
+        self.linear_up = uvSO2Linear(
             mmax,
             lmax,
             self.num_channel * 2,
@@ -230,7 +230,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
             self.edge_wise_hidden,   
             channel_wise=True,
         )
-        self.linear_down = SO2Linear(
+        self.linear_down = uvSO2Linear(
             mmax,
             lmax,
             self.edge_wise_hidden,     
@@ -242,7 +242,7 @@ class SO2ScatterTensorProduct(torch.nn.Module):
         if self.use_graph_softmax:
             self.num_channel_per_head = self.edge_wise_hidden // self.num_head
             assert self.num_channel % self.num_head == 0
-            self.linear_alpha = SO2Linear(
+            self.linear_alpha = uvSO2Linear(
                 0,
                 lmax,
                 self.num_channel * 2,
@@ -318,5 +318,89 @@ class SO2ScatterTensorProduct(torch.nn.Module):
                 dim_size=num_nodes,
             )
         )
-    
 
+
+class uuSO2ScatterTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channel: int,
+        num_elements: int,
+        edge_wise_hidden: int,
+        so2_angular_basis: SO3Rotation,
+        reshape_in: LayoutTransform,
+        reshape_out: LayoutTransform,
+
+        num_head: int,
+        use_so2_edge_ace: bool,
+        use_graph_softmax: bool,
+
+        weight_type: str = "w1",
+        path_mode: str = 'sum'
+
+    ) -> None:
+        super().__init__()
+
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+        self.num_elements = num_elements
+        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
+        self.edge_wise_hidden = self.edge_wise_hidden
+        self.so2_angular_basis = so2_angular_basis
+        self.reshape_in = reshape_in
+        self.reshape_out = reshape_out
+
+        self.use_so2_edge_ace = use_so2_edge_ace
+        self.num_head = num_head
+        self.use_graph_softmax = use_graph_softmax
+        # assert self.edge_wise_hidden == self.num_channel
+        self.weight_type = weight_type
+        self.path_mode = path_mode
+
+        self.linear_up = uuSO2Linear(
+            self.mmax,
+            self.lmax,
+            self.edge_wise_hidden,
+            weight_type=self.weight_type,
+            path_mode=self.path_mode,
+            path_norm=self.path_mode=='sum',
+        )
+        self.weight_numel = self.linear_up.weight_numel
+
+        self.nonlinearity = SO2Norm(
+            mmax,
+            lmax,
+            self.edge_wise_hidden,   
+            channel_wise=False,
+        )
+
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            w: torch.Tensor, 
+            edge_index: torch.Tensor,
+            cutoff: torch.Tensor,
+        ) -> torch.Tensor:
+
+        num_nodes = x.size(0)
+
+        x = self.reshape_in(x)
+        m_ij = x[edge_index[0]]
+        m_ij = self.so2_angular_basis.rotate(m_ij)
+        m_ij = self.linear_up(m_ij, w)
+        m_ij = self.nonlinearity(m_ij)
+        # if cutoff is not None:
+        #     m_ij = m_ij * cutoff.unsqueeze(-1)
+        m_ij = self.so2_angular_basis.rotate_inv(m_ij)
+
+        return self.reshape_out.inverse(
+            scatter_sum(
+                m_ij, 
+                edge_index[1], 
+                dim=0, 
+                dim_size=num_nodes,
+            )
+        )

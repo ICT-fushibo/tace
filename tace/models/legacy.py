@@ -142,7 +142,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             assert edge_nonlinear is not None, "We force to use SO2 edge nonlinear in TACE"
 
 #             if self.use_transformer: # TODO
-#                 self.linear_alpha = SO2Linear(
+#                 self.linear_alpha = uvSO2Linear(
 #                     0, 
 #                     lmax, 
 #                     Cin, 
@@ -163,7 +163,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                     self.num_hidden_channel,
 #                     num_elements=num_elements,
 #                 )
-#                 self.linear_up = SO2Linear(
+#                 self.linear_up = uvSO2Linear(
 #                     mmax,
 #                     lmax,
 #                     Cin,
@@ -177,7 +177,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                     self.num_hidden_channel,     
 #                     channel_wise=True
 #                 )
-#                 self.linear_down = SO2Linear(
+#                 self.linear_down = uvSO2Linear(
 #                     mmax,
 #                     lmax,
 #                     self.num_hidden_channel,     
@@ -186,7 +186,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                     num_components_out=None,
 #                 )
 #             else:
-#                 self.linear_up = SO2Linear(
+#                 self.linear_up = uvSO2Linear(
 #                     mmax,
 #                     lmax,
 #                     Cin,
@@ -200,7 +200,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                     self.num_hidden_channel,    
 #                     channel_wise=False
 #                 )
-#                 self.linear_down = SO2Linear(
+#                 self.linear_down = uvSO2Linear(
 #                     mmax,
 #                     lmax,
 #                     self.num_hidden_channel,    
@@ -387,7 +387,7 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         assert edge_nonlinear is not None, "We force to use SO2 edge nonlinear in TACE"
 
-#         self.linear_gate = SO2Linear(
+#         self.linear_gate = uvSO2Linear(
 #             0,
 #             lmax,
 #             Cin,
@@ -395,7 +395,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             num_components_in=None,
 #             num_components_out=[self.num_gates], 
 #         )
-#         self.linear_up = SO2Linear(
+#         self.linear_up = uvSO2Linear(
 #             mmax,
 #             lmax,
 #             Cin,
@@ -417,7 +417,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             Cin // 2, 
 #             channel_wise=True
 #         )
-#         self.linear_down = SO2Linear(
+#         self.linear_down = uvSO2Linear(
 #             mmax,
 #             lmax,
 #             Cin // 2,
@@ -1342,7 +1342,7 @@ The contents of this file are all historical artifacts from TACE development and
 
 
 
-# from tace.models.so2.so2 import SO2Linear, SO2MLinear
+# from tace.models.so2.so2 import uvSO2Linear, SO2MLinear
 # from ..linear import torchLinear
 
 # class SO2EdgeProductBasis(torch.nn.Module):
@@ -1371,7 +1371,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             m1m2=m1m2, 
 #         )
 
-#         self.linear = SO2Linear(
+#         self.linear = uvSO2Linear(
 #             mmax,
 #             lmax,
 #             self.num_channel,     
