@@ -82,7 +82,11 @@ class Representation(torch.nn.Module):
         )
         
         # === angular basis ===
-        self.use_so2 = 'so2' in atomic_basis['type'] or node_embedding["type"] == 'so2_tensor' or True in atomic_basis["use_graph_softmax"]
+        self.use_so2 = (
+            any(t.endswith('so2') for t in atomic_basis['type'])
+            or node_embedding["type"] == 'so2_tensor' 
+            or True in atomic_basis["use_graph_softmax"]
+        )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
             # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"

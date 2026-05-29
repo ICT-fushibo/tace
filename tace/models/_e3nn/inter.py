@@ -298,12 +298,12 @@ class CgtpInteraction(Interaction):
 class uvSO2Interaction(Interaction):
     def _setup(self) -> None:
 
-        assert self.parity == False, "SO2Interaction not support O(3) group"
+        assert self.parity == False, "uvSO2Interaction not support O(3) group"
         assert self.irreps_in.lmax > 0, (
-            "SO2Interaction's irreps_in.lmax must > 0, "
-            "use SO2Interaction from the second layer or use other node_embedding with l > 0"
+            "uvSO2Interaction's irreps_in.lmax must > 0, "
+            "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
         )
-        assert self.edge_nonlinear is not None, "SO2Interaction forces to use edge nonlinear"
+        assert self.edge_nonlinear == 'so2_sigmoid_gate'
         if self.use_graph_softmax: self.scatter_norm = None
 
         self.linear_up = e3nnLinear(
@@ -486,8 +486,6 @@ class uvSO2Interaction(Interaction):
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
 
         conv_weights = self.edge_info(edge_feats)
-        if cutoff is not None:
-            conv_weights = conv_weights * cutoff
 
         m_i = self.linear_down(
             self.truncate_ghosts(
@@ -537,17 +535,16 @@ class uvSO2Interaction(Interaction):
         return m_i, self.truncate_ghosts(sc, nlocal)
 
 
-
 class uuSO2Interaction(Interaction):
     def _setup(self) -> None:
 
-        assert self.parity == False, "SO2Interaction not support O(3) group"
+        assert self.parity == False, "uuSO2Interaction not support O(3) group"
         assert self.irreps_in.lmax > 0, (
-            "SO2Interaction's irreps_in.lmax must > 0, "
-            "use SO2Interaction from the second layer or use other node_embedding with l > 0"
-        )
-        assert self.edge_nonlinear is not None, "SO2Interaction forces to use edge nonlinear"
-        if self.use_graph_softmax: self.scatter_norm = None
+            "uuSO2Interaction's irreps_in.lmax must > 0, "
+            "use uuSO2Interaction from the second layer or use other node_embedding with l > 0"
+        ) 
+        assert self.edge_nonlinear == 'so2_sigmoid_gate'
+        self.use_graph_softmax = False
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -560,15 +557,10 @@ class uuSO2Interaction(Interaction):
             lmax=self.lmax,
             num_channel=self.num_channel,
             edge_wise_hidden=self.edge_wise_hidden,
-            num_elements=self.num_elements,
             so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
-
-            num_head=self.num_head,
-            use_graph_softmax=self.use_graph_softmax,
-            use_so2_edge_ace=self.use_so2_edge_ace,
-
+            weight_type=self.so2_linear_type,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -729,8 +721,6 @@ class uuSO2Interaction(Interaction):
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
 
         conv_weights = self.edge_info(edge_feats)
-        if cutoff is not None:
-            conv_weights = conv_weights * cutoff
 
         m_i = self.linear_down(
             self.truncate_ghosts(
@@ -778,6 +768,7 @@ class uuSO2Interaction(Interaction):
 
 
         return m_i, self.truncate_ghosts(sc, nlocal)
+
 
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,

@@ -36,7 +36,6 @@ def test_path_uu_so2_tensor_product_identity():
     tp = uuSO2TensorProduct(
         mmax=2,
         num_channels=7,
-        num_components_per_m=components,
         correlation=1,
     )
     torch.testing.assert_close(tp(x), x)
@@ -49,7 +48,6 @@ def test_path_uu_so2_tensor_product_correlation2_shapes_and_grad():
         tp = uuSO2TensorProduct(
             mmax=2,
             num_channels=7,
-            num_components_per_m=components,
             correlation=2,
             weight_type=weight_type,
         )

@@ -5,14 +5,14 @@ torch.set_printoptions(sci_mode=False, precision=16)
 torch.manual_seed(0)
 
 from tace.models.so2.utils import num_uuu_so2_components, rotate_uuu_so2_features
-from tace.models.so2 import SO2TensorProduct
+from tace.models.so2 import uuSO2TensorProduct
 
 B = 4
 mmax = 2
 lmax = 3
 C = 1
 
-tp = SO2TensorProduct(
+tp = uuSO2TensorProduct(
     mmax=mmax,
     lmax=lmax,
     num_channels=C,
