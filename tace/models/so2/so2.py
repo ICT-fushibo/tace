@@ -800,7 +800,24 @@ class uuLinearInstruction(NamedTuple):
     weight_mode: str
     output_slice: slice
 
-
+def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
+    if restriction == None:
+        return True
+    elif restriction == "<":
+        return l1 < l2
+    elif restriction == "<=":
+        return l1 <= l2
+    elif restriction == ">":
+        return l1 > l2
+    elif restriction == ">=":
+        return l1 >= l2
+    elif restriction == "==":
+        return l1 == l2
+    elif restriction == "!=":
+        return l1 != l2
+    else:
+        raise ValueError(f"Unknown restriction: {restriction}")
+    
 class uuSO2Linear(torch.nn.Module):
     def __init__(
         self,
@@ -810,6 +827,7 @@ class uuSO2Linear(torch.nn.Module):
         weight_type: str = "w1",
         path_mode: str = "sum", # TODO, concat may be have bug
         path_norm: bool = True,
+        l1l3: Union[str, None] = None,
     ) -> None:
         super().__init__()
         self.mmax = mmax
@@ -860,98 +878,100 @@ class uuSO2Linear(torch.nn.Module):
 
         for lout in range(self.lmax + 1):
             for lin in range(self.lmax + 1):
-                for m in range(min(lout, lin, self.mmax) + 1):
-                    path_count[(lout, m)] = path_count.get((lout, m), 0) + 1
+                if satisfy(lin, lout, l1l3):
+                    for m in range(min(lout, lin, self.mmax) + 1):
+                        path_count[(lout, m)] = path_count.get((lout, m), 0) + 1
 
         for m in range(self.mmax + 1):
             for lout in range(m, self.lmax + 1):
                 for lin in range(m, self.lmax + 1):
-                    if m == 0:
-                        path_weight = (
-                            1.0 / math.sqrt(path_count[(lout, 0)])
-                            if self.path_norm else 1.0
-                        )
-                        weight_index = add_instruction(lin, lout, m, path_weight)
-                        concat_out = instructions[-1].output_slice.start
-                        path_specs.append((
-                            self._component_index(lout, 0, False),
-                            self._component_index(lin, 0, False),
-                            weight_index,
-                            path_weight,
-                        ))
-                        concat_path_specs.append((
-                            concat_out,
-                            self._component_index(lin, 0, False),
-                            weight_index,
-                            path_weight,
-                        ))
-                    elif self.weight_type == "w1_w2":
-                        path_weight = (
-                            1.0 / math.sqrt(2 * path_count[(lout, m)])
-                            if self.path_norm else 1.0
-                        )
-                        weight_index = add_instruction(lin, lout, m, path_weight)
-                        concat_out = instructions[-1].output_slice.start
-                        w_real = weight_index
-                        w_imag = weight_index + 1
-                        out_r = self._component_index(lout, m, False)
-                        out_i = self._component_index(lout, m, True)
-                        in_r = self._component_index(lin, m, False)
-                        in_i = self._component_index(lin, m, True)
-                        path_specs.extend([
-                            (out_r, in_r, w_real, path_weight),
-                            (out_i, in_i, w_real, path_weight),
-                            (out_r, in_i, w_imag, -path_weight),
-                            (out_i, in_r, w_imag, path_weight),
-                        ])
-                        concat_path_specs.extend([
-                            (concat_out, in_r, w_real, path_weight),
-                            (concat_out + 1, in_i, w_real, path_weight),
-                            (concat_out, in_i, w_imag, -path_weight),
-                            (concat_out + 1, in_r, w_imag, path_weight),
-                        ])
-                    elif self.weight_type == "w1_w1":
-                        path_weight = (
-                            1.0 / math.sqrt(2 * path_count[(lout, m)])
-                            if self.path_norm else 1.0
-                        )
-                        weight_index = add_instruction(lin, lout, m, path_weight)
-                        concat_out = instructions[-1].output_slice.start
-                        out_r = self._component_index(lout, m, False)
-                        out_i = self._component_index(lout, m, True)
-                        in_r = self._component_index(lin, m, False)
-                        in_i = self._component_index(lin, m, True)
-                        path_specs.extend([
-                            (out_r, in_r, weight_index, path_weight),
-                            (out_i, in_i, weight_index, path_weight),
-                            (out_r, in_i, weight_index, -path_weight),
-                            (out_i, in_r, weight_index, path_weight),
-                        ])
-                        concat_path_specs.extend([
-                            (concat_out, in_r, weight_index, path_weight),
-                            (concat_out + 1, in_i, weight_index, path_weight),
-                            (concat_out, in_i, weight_index, -path_weight),
-                            (concat_out + 1, in_r, weight_index, path_weight),
-                        ])
-                    else:
-                        path_weight = (
-                            1.0 / math.sqrt(path_count[(lout, m)])
-                            if self.path_norm else 1.0
-                        )
-                        weight_index = add_instruction(lin, lout, m, path_weight)
-                        concat_out = instructions[-1].output_slice.start
-                        out_r = self._component_index(lout, m, False)
-                        out_i = self._component_index(lout, m, True)
-                        in_r = self._component_index(lin, m, False)
-                        in_i = self._component_index(lin, m, True)
-                        path_specs.extend([
-                            (out_r, in_r, weight_index, path_weight),
-                            (out_i, in_i, weight_index, path_weight),
-                        ])
-                        concat_path_specs.extend([
-                            (concat_out, in_r, weight_index, path_weight),
-                            (concat_out + 1, in_i, weight_index, path_weight),
-                        ])
+                    if satisfy(lin, lout, l1l3):
+                        if m == 0:
+                            path_weight = (
+                                1.0 / math.sqrt(path_count[(lout, 0)])
+                                if self.path_norm else 1.0
+                            )
+                            weight_index = add_instruction(lin, lout, m, path_weight)
+                            concat_out = instructions[-1].output_slice.start
+                            path_specs.append((
+                                self._component_index(lout, 0, False),
+                                self._component_index(lin, 0, False),
+                                weight_index,
+                                path_weight,
+                            ))
+                            concat_path_specs.append((
+                                concat_out,
+                                self._component_index(lin, 0, False),
+                                weight_index,
+                                path_weight,
+                            ))
+                        elif self.weight_type == "w1_w2":
+                            path_weight = (
+                                1.0 / math.sqrt(2 * path_count[(lout, m)])
+                                if self.path_norm else 1.0
+                            )
+                            weight_index = add_instruction(lin, lout, m, path_weight)
+                            concat_out = instructions[-1].output_slice.start
+                            w_real = weight_index
+                            w_imag = weight_index + 1
+                            out_r = self._component_index(lout, m, False)
+                            out_i = self._component_index(lout, m, True)
+                            in_r = self._component_index(lin, m, False)
+                            in_i = self._component_index(lin, m, True)
+                            path_specs.extend([
+                                (out_r, in_r, w_real, path_weight),
+                                (out_i, in_i, w_real, path_weight),
+                                (out_r, in_i, w_imag, -path_weight),
+                                (out_i, in_r, w_imag, path_weight),
+                            ])
+                            concat_path_specs.extend([
+                                (concat_out, in_r, w_real, path_weight),
+                                (concat_out + 1, in_i, w_real, path_weight),
+                                (concat_out, in_i, w_imag, -path_weight),
+                                (concat_out + 1, in_r, w_imag, path_weight),
+                            ])
+                        elif self.weight_type == "w1_w1":
+                            path_weight = (
+                                1.0 / math.sqrt(2 * path_count[(lout, m)])
+                                if self.path_norm else 1.0
+                            )
+                            weight_index = add_instruction(lin, lout, m, path_weight)
+                            concat_out = instructions[-1].output_slice.start
+                            out_r = self._component_index(lout, m, False)
+                            out_i = self._component_index(lout, m, True)
+                            in_r = self._component_index(lin, m, False)
+                            in_i = self._component_index(lin, m, True)
+                            path_specs.extend([
+                                (out_r, in_r, weight_index, path_weight),
+                                (out_i, in_i, weight_index, path_weight),
+                                (out_r, in_i, weight_index, -path_weight),
+                                (out_i, in_r, weight_index, path_weight),
+                            ])
+                            concat_path_specs.extend([
+                                (concat_out, in_r, weight_index, path_weight),
+                                (concat_out + 1, in_i, weight_index, path_weight),
+                                (concat_out, in_i, weight_index, -path_weight),
+                                (concat_out + 1, in_r, weight_index, path_weight),
+                            ])
+                        else:
+                            path_weight = (
+                                1.0 / math.sqrt(path_count[(lout, m)])
+                                if self.path_norm else 1.0
+                            )
+                            weight_index = add_instruction(lin, lout, m, path_weight)
+                            concat_out = instructions[-1].output_slice.start
+                            out_r = self._component_index(lout, m, False)
+                            out_i = self._component_index(lout, m, True)
+                            in_r = self._component_index(lin, m, False)
+                            in_i = self._component_index(lin, m, True)
+                            path_specs.extend([
+                                (out_r, in_r, weight_index, path_weight),
+                                (out_i, in_i, weight_index, path_weight),
+                            ])
+                            concat_path_specs.extend([
+                                (concat_out, in_r, weight_index, path_weight),
+                                (concat_out + 1, in_i, weight_index, path_weight),
+                            ])
 
         self.instructions = instructions
         self.num_weights = weight_offset

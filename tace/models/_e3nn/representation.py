@@ -174,6 +174,7 @@ class Representation(torch.nn.Module):
             "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
+            "so2_l1l3": atomic_basis["so2_l1l3"],
         }
 
         self.interactions = torch.nn.ModuleList()

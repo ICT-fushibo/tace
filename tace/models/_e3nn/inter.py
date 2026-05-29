@@ -561,6 +561,7 @@ class uuSO2Interaction(Interaction):
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
             weight_type=self.so2_linear_type,
+            l1l3=self.so2_l1l3,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])

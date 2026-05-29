@@ -321,6 +321,89 @@ class uvSO2TensorProduct(torch.nn.Module):
         )
 
 
+# class uuSO2ScatterTensorProduct(torch.nn.Module):
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channel: int,
+#         edge_wise_hidden: int,
+#         so2_angular_basis: SO3Rotation,
+#         reshape_in: LayoutTransform,
+#         reshape_out: LayoutTransform,
+#         weight_type: str = "w1",
+#         path_mode: str = 'sum'
+#     ) -> None:
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_channel = num_channel
+#         self.edge_wise_hidden = edge_wise_hidden or self.num_channel
+#         self.edge_wise_hidden = self.edge_wise_hidden
+#         self.so2_angular_basis = so2_angular_basis
+#         self.reshape_in = reshape_in
+#         self.reshape_out = reshape_out
+#         self.weight_type = weight_type
+#         self.path_mode = path_mode
+
+#         self.linear_up = uuSO2Linear(
+#             self.mmax,
+#             self.lmax,
+#             self.num_channel,
+#             weight_type=self.weight_type,
+#             path_mode=self.path_mode,
+#             path_norm=self.path_mode=='sum',
+#         )
+#         self.weight_numel = self.linear_up.weight_numel
+#         self.num_gates = sum(lmax+1-m for m in range(mmax+1))
+#         self.split_list = [self.num_gates, lmax+1 + sum((lmax+1-m)*2 for m in range(1, mmax+1))]
+#         self.linear_down = uvSO2Linear(
+#             mmax,
+#             lmax,
+#             self.num_channel,
+#             self.edge_wise_hidden,     
+#             num_components_in=self.linear_up.num_components_per_m,
+#             num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
+#             weight_type=self.weight_type,
+#         )
+#         self.nonlinearity = SO2Gate(
+#             mmax,
+#             lmax,
+#             self.edge_wise_hidden,   
+#             channel_wise=False,
+#         )
+
+#     def forward(
+#             self, 
+#             x: torch.Tensor, 
+#             w: torch.Tensor, 
+#             edge_index: torch.Tensor,
+#             cutoff: torch.Tensor,
+#         ) -> torch.Tensor:
+#         num_nodes = x.size(0)
+#         x = self.reshape_in(x)
+#         m_ij = x[edge_index[0]]
+#         m_ij = self.so2_angular_basis.rotate(m_ij)
+#         m_ij = self.linear_up(m_ij, w)
+#         m_ij = self.linear_down(m_ij)
+#         gate = m_ij.narrow(1, 0, self.split_list[0])
+#         m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
+#         m_ij = self.nonlinearity(m_ij, gate) 
+#         m_ij = self.so2_angular_basis.rotate_inv(m_ij)
+#         if cutoff is not None:
+#             m_ij = m_ij * cutoff.unsqueeze(-1)
+#         return self.reshape_out.inverse(
+#             scatter_sum(
+#                 m_ij, 
+#                 edge_index[1], 
+#                 dim=0, 
+#                 dim_size=num_nodes,
+#             )
+#         )
+
+
+
 class uuSO2ScatterTensorProduct(torch.nn.Module):
     def __init__(
         self,
@@ -331,6 +414,7 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
+        l1l3: Union[str, None],
         weight_type: str = "w1",
         path_mode: str = 'sum'
     ) -> None:
@@ -346,6 +430,7 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.reshape_out = reshape_out
         self.weight_type = weight_type
         self.path_mode = path_mode
+        self.l1l3 = l1l3
 
         self.linear_up = uuSO2Linear(
             self.mmax,
@@ -354,6 +439,7 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
             weight_type=self.weight_type,
             path_mode=self.path_mode,
             path_norm=self.path_mode=='sum',
+            l1l3=self.l1l3,
         )
         self.weight_numel = self.linear_up.weight_numel
         self.num_gates = sum(lmax+1-m for m in range(mmax+1))
