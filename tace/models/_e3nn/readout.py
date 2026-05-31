@@ -7,13 +7,13 @@ from typing import List, Union
 
 
 import torch
-from e3nn.nn import Activation
 from e3nn import o3
+from e3nn.nn import Activation
 
 
 from ..mlp import ACTIVATION
-from .base import ReadOut
 from ..linear import e3nnLinear
+from .base import ReadOut
 from .nonlinear import O3Gate
 
 

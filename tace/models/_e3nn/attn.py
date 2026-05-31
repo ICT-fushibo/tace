@@ -1,3 +1,6 @@
+'''
+Legacy file, not delete now
+'''
 ################################################################################
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
@@ -16,13 +19,6 @@ from ..linear import torchLinear
 
 
 class SO2Attention(torch.nn.Module):
-    """
-    SO2 Attention for e3nn model.
-    Leverage information from all SO(3) l to compute attention scores, 
-    fully exploiting the lossless expressive and extrapolative capability of CGTP. 
-    By combining oeq and cueq, this method avoids edge-level SO2 operations 
-    typically required in conventional SO2 attention mechanisms, while preserving strong representation power.
-    """
     def __init__(
         self,
         mmax: int,

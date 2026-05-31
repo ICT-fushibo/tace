@@ -250,7 +250,7 @@ class ComplexProductBasis(torch.nn.Module):
             self.num_channel, 
             m1m2=self.m1m2, 
             internal_weights=agnostic,
-        )
+        )   # TODO, rename to tp
         self.weight_numel = self.ace.weight_numel
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

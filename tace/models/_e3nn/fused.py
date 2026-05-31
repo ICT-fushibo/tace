@@ -704,22 +704,16 @@ class uvSO2TensorProduct(torch.nn.Module):
             )
         )
 
-# SwiGLU version
 class uuSO2ScatterTensorProduct(torch.nn.Module):
     def __init__(
         self,
         mmax: int,
         lmax: int,
         num_channel: int,
-        edge_wise_hidden: int,
         so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
         l1l3: Union[str, None],
-        num_head: int,
-        use_so2_edge_ace: bool,
-        use_graph_softmax: bool,
-        resolution: list[int],
         weight_type: str = "w1",
         path_mode: str = 'sum',
     ) -> None:
@@ -728,160 +722,36 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
-        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
-        self.edge_wise_hidden = self.edge_wise_hidden
         self.so2_angular_basis = so2_angular_basis
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
         self.weight_type = weight_type
         self.path_mode = path_mode
         self.l1l3 = l1l3
-        self.resolution = resolution
-        self.use_so2_edge_ace = use_so2_edge_ace
-        self.num_head = num_head
-        self.use_graph_softmax = use_graph_softmax
-        # self.linear_up = uuSO2Linear(
-        #     self.mmax,
-        #     self.lmax,
-        #     self.num_channel * 2 if (self.use_graph_softmax or self.use_so2_edge_ace) else self.num_channel,
-        #     weight_type=self.weight_type,
-        #     path_mode=self.path_mode,
-        #     path_norm=self.path_mode=='sum',
-        #     l1l3=self.l1l3,
-        # )
-        # self.weight_numel = self.linear_up.weight_numel
-
-        self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
-        self.weight_numel = (self.num_components * self.num_channel * 2) # TODO
-        self.register_buffer('expand_index', expand_index, persistent=False)
-
-
-        if self.use_so2_edge_ace:
-            # self.linear_down = SO3Linear(
-            #     mmax,
-            #     lmax,
-            #     self.num_channel * 2 if (self.use_graph_softmax or self.use_so2_edge_ace) else self.num_channel,
-            #     self.edge_wise_hidden,     
-            #     bias=True,
-            #     use_m_primary=True,
-            # )
-            self.linear_gate = uvSO2Linear(
-                0,
-                lmax,
-                self.num_channel * 2,
-                # self.edge_wise_hidden,
-                self.edge_wise_hidden * 3,   
-                # num_components_in=self.linear_up.num_components_per_m,
-                num_components_out=[1],
-                weight_type=self.weight_type,
-            )
-            self.linear_up2 = uvSO2Linear(
-                mmax,
-                lmax,
-                self.num_channel * 2,
-                # self.edge_wise_hidden,     
-                self.edge_wise_hidden * 2,     
-                num_components_out=[lmax+1] * (mmax+1),
-                weight_type=self.weight_type,
-            )   
-            self.ace = ComplexSwiGLU(
-                mmax, 
-                lmax, 
-                self.edge_wise_hidden,
-                m1m2=None,
-            )
-            self.linear_down2 = uvSO2Linear(
-                mmax,
-                lmax,
-                self.edge_wise_hidden,     
-                self.edge_wise_hidden,     
-                num_components_in=[lmax+1] * (mmax+1),
-                weight_type=self.weight_type,
-            )
-            # self.ace = ComplexSwiGLU(
-            #     mmax,
-            #     lmax,
-            #     self.num_channel,
-            #     resolution=self.resolution,
-            #     use_m_primary=True,
-            # ) 
-            # self.ace = VectorSwiGLU(
-            #     mmax,
-            #     lmax,
-            #     self.num_channel,
-            #     resolution=self.resolution,
-            #     use_m_primary=True,
-            # )
-     
-        if self.use_graph_softmax:
-            self.num_channel_per_head = self.edge_wise_hidden // self.num_head
-            assert self.num_channel % self.num_head == 0
-            self.linear_alpha = uvSO2Linear(
-                0,
-                lmax,
-                self.num_channel * 2,
-                self.edge_wise_hidden,     
-                num_components_out=[1],
-                weight_type=self.weight_type,
-            )
-            std = 1.0 / math.sqrt(self.num_channel_per_head)
-            self.graph_softmax = GraphSoftmax()
-            self.alpha_act = SmoothLeakyReLU()
-            self.real_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
-            self.real_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
-            torch.nn.init.uniform_(self.real_alpha_dot, -std, std)
-
+        self.linear_up = uuSO2Linear(
+            self.mmax,
+            self.lmax,
+            self.num_channel,
+            weight_type=self.weight_type,
+            path_mode=self.path_mode,
+            path_norm=self.path_mode=='sum',
+            l1l3=self.l1l3,
+        )
+        self.weight_numel = self.linear_up.weight_numel
 
     def forward(
             self, 
             x: torch.Tensor, 
             w: torch.Tensor, 
             edge_index: torch.Tensor,
-            cutoff: torch.Tensor,
         ) -> torch.Tensor:
         
         num_nodes = x.size(0)
-        num_edges = edge_index.size(1)
 
         x = self.reshape_in(x)
-        if self.use_graph_softmax or self.use_so2_edge_ace:
-            m_ij = torch.cat([x[edge_index[0]], x[edge_index[1]]], dim=-1)
-        else:
-            m_ij = x[edge_index[0]]
-
+        m_ij = x[edge_index[0]]
         m_ij = self.so2_angular_basis.rotate(m_ij)
-
-        # m_ij = self.linear_up(m_ij, w)
-        w = w.view(num_edges, self.num_components, -1)
-        w = torch.index_select(w, dim=1, index=self.expand_index)
-        m_ij = w * m_ij
-
-        if self.use_graph_softmax:
-            real_alpha = self.linear_alpha(m_ij)
-
-        if self.use_so2_edge_ace:
-            # m_ij = self.linear_down(m_ij)
-            gate = self.linear_gate(m_ij)
-            m_ij = self.linear_up2(m_ij)
-            m_ij = self.ace(m_ij, gate) 
-            m_ij = self.linear_down2(m_ij)
-
-        if self.use_graph_softmax:
-            real_alpha = real_alpha.reshape(num_edges, self.num_head, self.num_channel_per_head)
-            real_alpha = self.real_alpha_norm(real_alpha)
-            real_alpha = self.alpha_act(real_alpha)
-            real_alpha = torch.einsum('bik, ik -> bi', real_alpha, self.real_alpha_dot)
-            real_alpha = self.graph_softmax(real_alpha, edge_index[1], num_nodes=num_nodes, exp_rescale=cutoff) # [edge, head]
-            if cutoff is not None:
-                real_alpha = real_alpha * cutoff
-            real_alpha = real_alpha.view(num_edges, 1, self.num_head, 1)
-            m_ij = m_ij.view(num_edges, -1, self.num_head, self.num_channel_per_head)
-            m_ij = real_alpha * m_ij 
-            m_ij = m_ij.view(num_edges, -1, self.edge_wise_hidden)
-        else:
-            if cutoff is not None:
-                m_ij = m_ij * cutoff.unsqueeze(-1)
-
+        m_ij = self.linear_up(m_ij, w) # tensor product here
         m_ij = self.so2_angular_basis.rotate_inv(m_ij)
 
         return self.reshape_out.inverse(
