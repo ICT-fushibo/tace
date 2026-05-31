@@ -256,8 +256,7 @@ class SO2Gate(torch.nn.Module):
         return g * x 
     
 
-class SO2Norm(torch.nn.Module): # TODO
-
+class SO2Norm(torch.nn.Module):
     def __init__(
         self,
         mmax: int,
@@ -501,239 +500,6 @@ class SO2ComplexMul(torch.nn.Module):
         return torch.cat(out, dim=1)
  
 
-class LegacyuuSO2TensorProduct(torch.nn.Module):
-    """
-    The results of all paths are directly summed.
-    """
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channels: int,
-        m1m2: Union[str, None] = None,
-        internal_weights: bool = True,
-    ):
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channels = num_channels
-        self.m1m2 = m1m2
-        self.cmul = self.cmul2
-        self.instructions = []
-
-        weight_numel = 0
-        for m3 in range(mmax + 1):
-            paths = self.enumerate_paths(m3)
-            self.instructions.append(paths)
-            weight_numel += num_channels * (lmax+1) * len(paths) 
-            
-        self.weight_numel = weight_numel
-        if internal_weights:
-            self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
-        else:
-            self.register_buffer("weight", None)
-        self.internal_weights = internal_weights   
-
-        output_scales = []
-        n = lmax + 1
-        # m = 0
-        scale0 = torch.full((n,), 1.0 / math.sqrt(len(self.instructions[0])))
-        output_scales.append(scale0)
-        # m > 0
-        for m3 in range(1, mmax + 1):
-            scale = 1.0 / math.sqrt(len(self.instructions[m3]))
-            output_scales.append(torch.full((2 * n,), scale))
-        output_scales = torch.cat(output_scales)
-        self.register_buffer("output_scales", output_scales, persistent=False)
-
-    def enumerate_paths(self, m3: int) -> list[tuple[int, int, str]]:
-        paths = []
-
-        for m1 in range(self.mmax + 1):
-            for m2 in range(self.mmax + 1):
-                if satisfy(m1, m2, self.m1m2):
-                    # x1 * x2
-                    if m1 + m2 == m3:
-                        paths.append((m1, m2, "sum"))
-                    # x1 * conj(x2)
-                    elif abs(m1 - m2) == m3:
-                        paths.append((m1, m2, "diff"))
-
-        return paths
-
-    def rmul(self, x, y): 
-        # [B, n, C] * [B, n, C] =>  [B, n, C]
-        z = x * y
-        return z
-    
-    def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
-        '''Layout damei, should be 2 in last dim'''
-        # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
-        x = x.permute(0,2,3,1).contiguous()
-        y = y.permute(0,2,3,1).contiguous()
-        x = torch.view_as_complex(x)
-        y = torch.view_as_complex(y)
-        if mode == "diff":
-            y = y.conj()
-        z = x * y
-        B = z.size(0)
-        C = self.num_channels
-        z = z.reshape(B, -1, C)
-        z = torch.view_as_real(z)
-        z = z.permute(0,3,1,2)
-
-        return z
-    
-    def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
-        # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
-        a = x[:, 0]
-        b = x[:, 1]
-        c = y[:, 0]
-        d = y[:, 1]
-
-        if mode == "sum":
-            real = a * c - b * d
-            imag = a * d + b * c
-        else:
-            real = a * c + b * d
-            imag = b * c - a * d
-
-        B = real.size(0)
-        C = real.size(-1)
-
-        real = real.reshape(B, -1, C)
-        imag = imag.reshape(B, -1, C)
-
-        out = torch.stack([real, imag], dim=1)
-
-        return out
-    
-    def to_list(self, x: torch.Tensor) -> torch.Tensor:
-        B = x.size(0)
-        out = []
-        offset = 0
-        n = self.lmax + 1
-        # m = 0
-        out.append(x[:, offset:offset+n])
-        offset += n
-        # m > 0
-        for m in range(1, self.mmax + 1):
-            xm = x[:, offset:offset+2*n]
-            xm = xm.view(B, 2, n, self.num_channels)
-            out.append(xm)
-            offset += 2 * n
-        return out
-
-    def forward(
-            self, 
-            x: torch.Tensor, 
-            y: torch.Tensor, 
-            weight: Union[torch.Tensor, None] = None,
-        ) -> torch.Tensor:
-
-        xs = self.to_list(x) #  m = 0 [B, lmax+1, C]
-        ys = self.to_list(y) #  m > 0 [B, 2, lmax+1, C]
-        if self.internal_weights:
-            ws = self.weight
-        else:
-            ws = weight
-
-
-        C = self.num_channels
-
-        outputs = []
-        w_offset = 0
-
-        # m = 0
-        n = self.lmax + 1
-        m0 = 0.0
-        w_numel = C * n
-
-        for m1, m2, mode in self.instructions[0]:
-            w = ws[:, w_offset:w_offset+w_numel] # [B, C] or [1, C]
-            w = w.view(-1, n, C)
-            w_offset += w_numel
-
-            # 0 x 0
-            if m1 == 0 and m2 == 0:
-                z = self.rmul(xs[0], ys[0])
-                out = z * w
-                m0 = m0 + out
-
-            # m > 0 and m1 -m2 = 0
-            elif m1 > 0 and m2 > 0:
-                z = self.cmul(xs[m1], ys[m2], "diff")
-                out = z[:, 0] * w # imag is also invariant, but nod add here
-                m0 = m0 + out
-
-        outputs.append(m0)
-
-        # m > 0
-        for m3 in range(1, self.mmax + 1):
-            real = 0.0
-            imag = 0.0
-            for m1, m2, mode in self.instructions[m3]:
-                w = ws[:, w_offset:w_offset+w_numel]
-                w_offset += w_numel
-                w = w.view(-1, 1, n, C)
-
-                if m1 == 0:
-                    z = xs[m1].unsqueeze(1) * ys[m2]
-                elif m2 == 0:
-                    z = xs[m1] * ys[m2].unsqueeze(1)
-                else:
-                    if m1 < m2 and mode == 'diff':
-                        z = self.cmul(ys[m2], xs[m1], mode)
-                    else:
-                        z = self.cmul(xs[m1], ys[m2], mode)
-
-                out = z * w
-                real = real + out[:, 0]
-                imag = imag + out[:, 1]
-
-            outputs.append(real)
-            outputs.append(imag)
-
-        out = torch.cat(outputs, dim=1)
-        out = out * self.output_scales.view(1, -1, 1)
-        return out
-        
-    def __repr__(self):
-        lines = []
-        lines.append(
-            f"{self.__class__.__name__}("
-        )
-        lines.append(
-            f"  mmax={self.mmax}, "
-            f"lmax={self.lmax}, "
-            f"channels={self.num_channels}, "
-            f"weights={self.weight_numel}"
-        )
-        lines.append("")
-        lines.append("  instructions:")
-        total_paths = 0
-        for m3, paths in enumerate(self.instructions):
-            total_paths += len(paths)
-            path_strs = []
-            for m1, m2, mode in paths:
-                if mode == "sum":
-                    expr = f"{m1}+{m2}"
-                else:
-                    expr = f"{m1}-{m2}"
-                path_strs.append(expr)
-            joined = ", ".join(path_strs)
-            lines.append(
-                f"    m={m3:<2} : "
-                f"{len(paths):<2} paths | "
-                f"{joined}"
-            )
-        lines.append("")
-        lines.append(f"  total_paths={total_paths}")
-        lines.append(")")
-        return "\n".join(lines)
-
-
 class SO2Rot90(torch.nn.Module):
 
     def __init__(
@@ -800,24 +566,7 @@ class uuLinearInstruction(NamedTuple):
     weight_mode: str
     output_slice: slice
 
-def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
-    if restriction == None:
-        return True
-    elif restriction == "<":
-        return l1 < l2
-    elif restriction == "<=":
-        return l1 <= l2
-    elif restriction == ">":
-        return l1 > l2
-    elif restriction == ">=":
-        return l1 >= l2
-    elif restriction == "==":
-        return l1 == l2
-    elif restriction == "!=":
-        return l1 != l2
-    else:
-        raise ValueError(f"Unknown restriction: {restriction}")
-    
+
 class uuSO2Linear(torch.nn.Module):
     def __init__(
         self,
@@ -1138,293 +887,294 @@ class uuSO2Linear(torch.nn.Module):
         )
     
 
-class uuSO2TensorProductInstruction(NamedTuple):
-    i_in1: int
-    i_in2: int
-    i_out: int
-    connection_mode: str
-    path_shape: tuple[int, ...]
-    path_weight: float
-    output_slice: slice
+# class uuSO2TensorProductInstruction(NamedTuple):
+#     i_in1: int
+#     i_in2: int
+#     i_out: int
+#     connection_mode: str
+#     path_shape: tuple[int, ...]
+#     path_weight: float
+#     output_slice: slice
 
 
-class uuSO2TensorProduct(torch.nn.Module):
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channels: int,
-        m1m2: Union[str, None] = None,
-        weight_type: str = "w1",
-        path_norm: bool = True,
-    ) -> None:
-        super().__init__()
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channels = num_channels
-        self.num_components_per_m = [lmax + 1 - m for m in range(mmax + 1)]
-        self.m1m2 = m1m2
-        self.weight_type = weight_type
-        self.path_norm = path_norm
-        if self.weight_type not in {"w1_w2", "w1_w1", "w1"}:
-            raise ValueError(
-                f"Unknown uuSO2TensorProduct weight_type={weight_type!r}; "
-                "expected 'w1_w2', 'w1_w1', or 'w1'."
-            )
+# BUG, use edge_prod directly
+# class uuSO2TensorProduct(torch.nn.Module):
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channels: int,
+#         m1m2: Union[str, None] = None,
+#         weight_type: str = "w1",
+#         path_norm: bool = True,
+#     ) -> None:
+#         super().__init__()
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_channels = num_channels
+#         self.num_components_per_m = [lmax + 1 - m for m in range(mmax + 1)]
+#         self.m1m2 = m1m2
+#         self.weight_type = weight_type
+#         self.path_norm = path_norm
+#         if self.weight_type not in {"w1_w2", "w1_w1", "w1"}:
+#             raise ValueError(
+#                 f"Unknown uuSO2TensorProduct weight_type={weight_type!r}; "
+#                 "expected 'w1_w2', 'w1_w1', or 'w1'."
+#             )
 
-        self.num_input_components = sum(
-            n if m == 0 else 2 * n
-            for m, n in enumerate(self.num_components_per_m)
-        )
-        self.instructions = []
-        self.num_output_components_per_m = list(self.num_components_per_m)
-        self.num_output_components = self.num_input_components
-        self.weight_numel = 0
-        self.output_weight = torch.ones(self.num_output_components)
+#         self.num_input_components = sum(
+#             n if m == 0 else 2 * n
+#             for m, n in enumerate(self.num_components_per_m)
+#         )
+#         self.instructions = []
+#         self.num_output_components_per_m = list(self.num_components_per_m)
+#         self.num_output_components = self.num_input_components
+#         self.weight_numel = 0
+#         self.output_weight = torch.ones(self.num_output_components)
 
-        self._setup_correlation2()
-        self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
-        # self.register_buffer("weight", torch.ones(1, self.weight_numel))
-        # if self.weight_type in {"w1_w2", "w1_w1"}:
-        #     self.weight.data.mul_(1.0 / math.sqrt(2.0))
+#         self._setup_correlation2()
+#         self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
+#         # self.register_buffer("weight", torch.ones(1, self.weight_numel))
+#         # if self.weight_type in {"w1_w2", "w1_w1"}:
+#         #     self.weight.data.mul_(1.0 / math.sqrt(2.0))
 
-    def _setup_correlation2(self) -> None:
-        grouped_paths = [self._enumerate_m_paths(m3) for m3 in range(self.mmax + 1)]
-        instructions = []
-        weight_offset = 0
-        output_path_counts = torch.zeros(self.num_output_components)
+#     def _setup_correlation2(self) -> None:
+#         grouped_paths = [self._enumerate_m_paths(m3) for m3 in range(self.mmax + 1)]
+#         instructions = []
+#         weight_offset = 0
+#         output_path_counts = torch.zeros(self.num_output_components)
 
-        for m3, paths in enumerate(grouped_paths):
-            for m1, m2, mode in paths:
-                min_l = max(m1, m2, m3)
-                n_out = self.lmax + 1 - min_l
-                if n_out <= 0:
-                    continue
-                out_start = self._component_index(min_l, m3, False)
-                output_slice = slice(out_start, out_start + n_out)
+#         for m3, paths in enumerate(grouped_paths):
+#             for m1, m2, mode in paths:
+#                 min_l = max(m1, m2, m3)
+#                 n_out = self.lmax + 1 - min_l
+#                 if n_out <= 0:
+#                     continue
+#                 out_start = self._component_index(min_l, m3, False)
+#                 output_slice = slice(out_start, out_start + n_out)
 
-                if self.weight_type == "w1_w2" and not (m1 == 0 and m2 == 0):
-                    path_shape = (2, n_out, self.num_channels)
-                else:
-                    path_shape = (n_out, self.num_channels)
-                instructions.append(
-                    uuSO2TensorProductInstruction(
-                        i_in1=m1,
-                        i_in2=m2,
-                        i_out=m3,
-                        connection_mode=mode,
-                        path_shape=path_shape,
-                        path_weight=1.0,
-                        output_slice=output_slice,
-                    )
-                )
-                weight_offset += math.prod(path_shape)
-                output_path_counts[output_slice] += 1.0
-                if m3 > 0:
-                    imag_start = self._component_index(min_l, m3, True)
-                    output_path_counts[imag_start:imag_start + n_out] += 1.0
+#                 if self.weight_type == "w1_w2" and not (m1 == 0 and m2 == 0):
+#                     path_shape = (2, n_out, self.num_channels)
+#                 else:
+#                     path_shape = (n_out, self.num_channels)
+#                 instructions.append(
+#                     uuSO2TensorProductInstruction(
+#                         i_in1=m1,
+#                         i_in2=m2,
+#                         i_out=m3,
+#                         connection_mode=mode,
+#                         path_shape=path_shape,
+#                         path_weight=1.0,
+#                         output_slice=output_slice,
+#                     )
+#                 )
+#                 weight_offset += math.prod(path_shape)
+#                 output_path_counts[output_slice] += 1.0
+#                 if m3 > 0:
+#                     imag_start = self._component_index(min_l, m3, True)
+#                     output_path_counts[imag_start:imag_start + n_out] += 1.0
 
-        self.instructions = instructions
-        self.weight_numel = weight_offset
-        if self.path_norm:
-            output_weight = torch.where(
-                output_path_counts > 0,
-                output_path_counts.rsqrt(),
-                torch.zeros_like(output_path_counts),
-            )
-        else:
-            output_weight = torch.ones_like(output_path_counts)
-        self.output_weight = output_weight
+#         self.instructions = instructions
+#         self.weight_numel = weight_offset
+#         if self.path_norm:
+#             output_weight = torch.where(
+#                 output_path_counts > 0,
+#                 output_path_counts.rsqrt(),
+#                 torch.zeros_like(output_path_counts),
+#             )
+#         else:
+#             output_weight = torch.ones_like(output_path_counts)
+#         self.output_weight = output_weight
 
-    def _enumerate_m_paths(self, m3: int) -> list[tuple[int, int, str]]:
-        paths = []
-        for m1 in range(self.mmax + 1):
-            for m2 in range(self.mmax + 1):
-                if satisfy(m1, m2, self.m1m2):
-                    if m1 + m2 == m3:
-                        paths.append((m1, m2, "sum"))
-                    elif abs(m1 - m2) == m3:
-                        paths.append((m1, m2, "diff"))
-        return paths
+#     def _enumerate_m_paths(self, m3: int) -> list[tuple[int, int, str]]:
+#         paths = []
+#         for m1 in range(self.mmax + 1):
+#             for m2 in range(self.mmax + 1):
+#                 if satisfy(m1, m2, self.m1m2):
+#                     if m1 + m2 == m3:
+#                         paths.append((m1, m2, "sum"))
+#                     elif abs(m1 - m2) == m3:
+#                         paths.append((m1, m2, "diff"))
+#         return paths
 
-    def _to_list(self, x: torch.Tensor) -> list[torch.Tensor]:
-        parts = []
-        offset = 0
-        parts.append(x[:, offset:offset + self.num_components_per_m[0]])
-        offset += self.num_components_per_m[0]
-        for m in range(1, self.mmax + 1):
-            n = self.num_components_per_m[m]
-            xm = x[:, offset:offset + 2 * n]
-            parts.append(xm.view(x.size(0), 2, n, self.num_channels))
-            offset += 2 * n
-        return parts
+#     def _to_list(self, x: torch.Tensor) -> list[torch.Tensor]:
+#         parts = []
+#         offset = 0
+#         parts.append(x[:, offset:offset + self.num_components_per_m[0]])
+#         offset += self.num_components_per_m[0]
+#         for m in range(1, self.mmax + 1):
+#             n = self.num_components_per_m[m]
+#             xm = x[:, offset:offset + 2 * n]
+#             parts.append(xm.view(x.size(0), 2, n, self.num_channels))
+#             offset += 2 * n
+#         return parts
 
-    def _component_index(self, l: int, m: int, imag: bool) -> int:
-        if m == 0:
-            return l
-        offset = self.lmax + 1
-        for mm in range(1, m):
-            offset += 2 * (self.lmax + 1 - mm)
-        n = self.lmax + 1 - m
-        index = offset + (l - m)
-        if imag:
-            index += n
-        return index
+#     def _component_index(self, l: int, m: int, imag: bool) -> int:
+#         if m == 0:
+#             return l
+#         offset = self.lmax + 1
+#         for mm in range(1, m):
+#             offset += 2 * (self.lmax + 1 - mm)
+#         n = self.lmax + 1 - m
+#         index = offset + (l - m)
+#         if imag:
+#             index += n
+#         return index
 
-    def _complex_product_parts(
-        self,
-        x: torch.Tensor,
-        y: torch.Tensor,
-        mode: str,
-        reverse_diff: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        xr = x[:, 0]
-        xi = x[:, 1]
-        yr = y[:, 0]
-        yi = y[:, 1]
-        if mode == "sum":
-            real = xr * yr - xi * yi
-            imag = xr * yi + xi * yr
-        else:
-            real = xr * yr + xi * yi
-            if reverse_diff:
-                imag = xr * yi - xi * yr
-            else:
-                imag = xi * yr - xr * yi
-        return real, imag
+#     def _complex_product_parts(
+#         self,
+#         x: torch.Tensor,
+#         y: torch.Tensor,
+#         mode: str,
+#         reverse_diff: bool = False,
+#     ) -> tuple[torch.Tensor, torch.Tensor]:
+#         xr = x[:, 0]
+#         xi = x[:, 1]
+#         yr = y[:, 0]
+#         yi = y[:, 1]
+#         if mode == "sum":
+#             real = xr * yr - xi * yi
+#             imag = xr * yi + xi * yr
+#         else:
+#             real = xr * yr + xi * yi
+#             if reverse_diff:
+#                 imag = xr * yi - xi * yr
+#             else:
+#                 imag = xi * yr - xr * yi
+#         return real, imag
 
-    def _path_weight(
-        self,
-        weight: torch.Tensor,
-        offset: int,
-        ins: uuSO2TensorProductInstruction,
-    ) -> tuple[torch.Tensor, Union[torch.Tensor, None], int]:
-        flat_size = math.prod(ins.path_shape)
-        view = weight.narrow(-1, offset, flat_size).view(weight.shape[:-1] + ins.path_shape)
-        if self.weight_type == "w1_w2" and len(ins.path_shape) == 3:
-            return view[:, 0], view[:, 1], offset + flat_size
-        return view, None, offset + flat_size
+#     def _path_weight(
+#         self,
+#         weight: torch.Tensor,
+#         offset: int,
+#         ins: uuSO2TensorProductInstruction,
+#     ) -> tuple[torch.Tensor, Union[torch.Tensor, None], int]:
+#         flat_size = math.prod(ins.path_shape)
+#         view = weight.narrow(-1, offset, flat_size).view(weight.shape[:-1] + ins.path_shape)
+#         if self.weight_type == "w1_w2" and len(ins.path_shape) == 3:
+#             return view[:, 0], view[:, 1], offset + flat_size
+#         return view, None, offset + flat_size
 
-    def _weight_real_output(
-        self,
-        real: torch.Tensor,
-        imag: torch.Tensor,
-        wr: torch.Tensor,
-        wi: Union[torch.Tensor, None],
-    ) -> torch.Tensor:
-        if self.weight_type == "w1_w2" and wi is not None:
-            return real * wr - imag * wi
-        if self.weight_type == "w1_w1":
-            return (real - imag) * wr
-        return real * wr
+#     def _weight_real_output(
+#         self,
+#         real: torch.Tensor,
+#         imag: torch.Tensor,
+#         wr: torch.Tensor,
+#         wi: Union[torch.Tensor, None],
+#     ) -> torch.Tensor:
+#         if self.weight_type == "w1_w2" and wi is not None:
+#             return real * wr - imag * wi
+#         if self.weight_type == "w1_w1":
+#             return (real - imag) * wr
+#         return real * wr
 
-    def _weight_complex_output(
-        self,
-        real: torch.Tensor,
-        imag: torch.Tensor,
-        wr: torch.Tensor,
-        wi: Union[torch.Tensor, None],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.weight_type == "w1_w2" and wi is not None:
-            return real * wr - imag * wi, real * wi + imag * wr
-        if self.weight_type == "w1_w1":
-            return (real - imag) * wr, (imag + real) * wr
-        return real * wr, imag * wr
+#     def _weight_complex_output(
+#         self,
+#         real: torch.Tensor,
+#         imag: torch.Tensor,
+#         wr: torch.Tensor,
+#         wi: Union[torch.Tensor, None],
+#     ) -> tuple[torch.Tensor, torch.Tensor]:
+#         if self.weight_type == "w1_w2" and wi is not None:
+#             return real * wr - imag * wi, real * wi + imag * wr
+#         if self.weight_type == "w1_w1":
+#             return (real - imag) * wr, (imag + real) * wr
+#         return real * wr, imag * wr
 
-    def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
-        if x.size(-1) != self.num_channels:
-            raise ValueError(
-                f"uuSO2TensorProduct expected {self.num_channels} channels, "
-                f"got {x.size(-1)}"
-            )
-        if x.size(1) != self.num_input_components:
-            raise ValueError(
-                f"uuSO2TensorProduct expected {self.num_input_components} "
-                f"SO2 components, got {x.size(1)}"
-            )
+#     def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
+#         if x.size(-1) != self.num_channels:
+#             raise ValueError(
+#                 f"uuSO2TensorProduct expected {self.num_channels} channels, "
+#                 f"got {x.size(-1)}"
+#             )
+#         if x.size(1) != self.num_input_components:
+#             raise ValueError(
+#                 f"uuSO2TensorProduct expected {self.num_input_components} "
+#                 f"SO2 components, got {x.size(1)}"
+#             )
 
-        xs = self._to_list(x)
-        if y is None:
-            ys = xs
-        else:
-            ys = self._to_list(y)
+#         xs = self._to_list(x)
+#         if y is None:
+#             ys = xs
+#         else:
+#             ys = self._to_list(y)
 
-        out = x.new_zeros(x.size(0), self.num_output_components, self.num_channels)
-        weight = self.weight
-        w_offset = 0
-        for ins in self.instructions:
-            m1 = ins.i_in1
-            m2 = ins.i_in2
-            m3 = ins.i_out
-            min_l = max(m1, m2, m3)
-            n_out = self.lmax + 1 - min_l
-            out_start = self._component_index(min_l, m3, False)
-            in1_start = min_l - m1
-            in2_start = min_l - m2
-            wr, wi, w_offset = self._path_weight(weight, w_offset, ins)
+#         out = x.new_zeros(x.size(0), self.num_output_components, self.num_channels)
+#         weight = self.weight
+#         w_offset = 0
+#         for ins in self.instructions:
+#             m1 = ins.i_in1
+#             m2 = ins.i_in2
+#             m3 = ins.i_out
+#             min_l = max(m1, m2, m3)
+#             n_out = self.lmax + 1 - min_l
+#             out_start = self._component_index(min_l, m3, False)
+#             in1_start = min_l - m1
+#             in2_start = min_l - m2
+#             wr, wi, w_offset = self._path_weight(weight, w_offset, ins)
 
-            if m3 == 0:
-                if m1 == 0 and m2 == 0:
-                    real = (
-                        xs[0][:, in1_start:in1_start + n_out]
-                        * ys[0][:, in2_start:in2_start + n_out]
-                    )
-                    imag = torch.zeros_like(real)
-                else:
-                    real, imag = self._complex_product_parts(
-                        xs[m1][:, :, in1_start:in1_start + n_out],
-                        ys[m2][:, :, in2_start:in2_start + n_out],
-                        "diff",
-                    )
-                out[:, out_start:out_start + n_out] = (
-                    out[:, out_start:out_start + n_out]
-                    + self._weight_real_output(real, imag, wr, wi)
-                )
-                continue
+#             if m3 == 0:
+#                 if m1 == 0 and m2 == 0:
+#                     real = (
+#                         xs[0][:, in1_start:in1_start + n_out]
+#                         * ys[0][:, in2_start:in2_start + n_out]
+#                     )
+#                     imag = torch.zeros_like(real)
+#                 else:
+#                     real, imag = self._complex_product_parts(
+#                         xs[m1][:, :, in1_start:in1_start + n_out],
+#                         ys[m2][:, :, in2_start:in2_start + n_out],
+#                         "diff",
+#                     )
+#                 out[:, out_start:out_start + n_out] = (
+#                     out[:, out_start:out_start + n_out]
+#                     + self._weight_real_output(real, imag, wr, wi)
+#                 )
+#                 continue
 
-            if m1 == 0:
-                real = (
-                    xs[m1][:, in1_start:in1_start + n_out]
-                    * ys[m2][:, 0, in2_start:in2_start + n_out]
-                )
-                imag = (
-                    xs[m1][:, in1_start:in1_start + n_out]
-                    * ys[m2][:, 1, in2_start:in2_start + n_out]
-                )
-            elif m2 == 0:
-                real = (
-                    xs[m1][:, 0, in1_start:in1_start + n_out]
-                    * ys[m2][:, in2_start:in2_start + n_out]
-                )
-                imag = (
-                    xs[m1][:, 1, in1_start:in1_start + n_out]
-                    * ys[m2][:, in2_start:in2_start + n_out]
-                )
-            else:
-                real, imag = self._complex_product_parts(
-                    xs[m1][:, :, in1_start:in1_start + n_out],
-                    ys[m2][:, :, in2_start:in2_start + n_out],
-                    ins.connection_mode,
-                    reverse_diff=(m1 < m2 and ins.connection_mode == "diff"),
-                )
+#             if m1 == 0:
+#                 real = (
+#                     xs[m1][:, in1_start:in1_start + n_out]
+#                     * ys[m2][:, 0, in2_start:in2_start + n_out]
+#                 )
+#                 imag = (
+#                     xs[m1][:, in1_start:in1_start + n_out]
+#                     * ys[m2][:, 1, in2_start:in2_start + n_out]
+#                 )
+#             elif m2 == 0:
+#                 real = (
+#                     xs[m1][:, 0, in1_start:in1_start + n_out]
+#                     * ys[m2][:, in2_start:in2_start + n_out]
+#                 )
+#                 imag = (
+#                     xs[m1][:, 1, in1_start:in1_start + n_out]
+#                     * ys[m2][:, in2_start:in2_start + n_out]
+#                 )
+#             else:
+#                 real, imag = self._complex_product_parts(
+#                     xs[m1][:, :, in1_start:in1_start + n_out],
+#                     ys[m2][:, :, in2_start:in2_start + n_out],
+#                     ins.connection_mode,
+#                     reverse_diff=(m1 < m2 and ins.connection_mode == "diff"),
+#                 )
 
-            out_real, out_imag = self._weight_complex_output(real, imag, wr, wi)
-            imag_start = self._component_index(min_l, m3, True)
-            out[:, out_start:out_start + n_out] = (
-                out[:, out_start:out_start + n_out] + out_real
-            )
-            out[:, imag_start:imag_start + n_out] = (
-                out[:, imag_start:imag_start + n_out] + out_imag
-            )
+#             out_real, out_imag = self._weight_complex_output(real, imag, wr, wi)
+#             imag_start = self._component_index(min_l, m3, True)
+#             out[:, out_start:out_start + n_out] = (
+#                 out[:, out_start:out_start + n_out] + out_real
+#             )
+#             out[:, imag_start:imag_start + n_out] = (
+#                 out[:, imag_start:imag_start + n_out] + out_imag
+#             )
 
-        return out * self.output_weight.to(dtype=x.dtype, device=x.device).view(1, -1, 1)
+#         return out * self.output_weight.to(dtype=x.dtype, device=x.device).view(1, -1, 1)
 
-    def extra_repr(self) -> str:
-        return (
-            f"mmax={self.mmax}, lmax={self.lmax}, channels={self.num_channels}, "
-            f"weight_type={self.weight_type}, "
-            f"path_norm={self.path_norm}, "
-            f"num_components_per_m={self.num_components_per_m}, "
-            f"weight_numel={self.weight_numel}"
-        )
+#     def extra_repr(self) -> str:
+#         return (
+#             f"mmax={self.mmax}, lmax={self.lmax}, channels={self.num_channels}, "
+#             f"weight_type={self.weight_type}, "
+#             f"path_norm={self.path_norm}, "
+#             f"num_components_per_m={self.num_components_per_m}, "
+#             f"weight_numel={self.weight_numel}"
+#         )
 
