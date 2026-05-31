@@ -487,6 +487,9 @@ class uvSO2Interaction(Interaction):
 
         conv_weights = self.edge_info(edge_feats)
 
+        if cutoff is not None:
+            conv_weights = conv_weights * cutoff
+            
         m_i = self.linear_down(
             self.truncate_ghosts(
                 self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index, cutoff), 
@@ -544,7 +547,7 @@ class uuSO2Interaction(Interaction):
             "use uuSO2Interaction from the second layer or use other node_embedding with l > 0"
         ) 
         assert self.edge_nonlinear == 'so2_sigmoid_gate'
-        self.use_graph_softmax = False
+        if self.use_graph_softmax: self.scatter_norm = None
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -562,6 +565,10 @@ class uuSO2Interaction(Interaction):
             reshape_out=LayoutTransform(self.irreps_out),
             weight_type=self.so2_linear_type,
             l1l3=self.so2_l1l3,
+            resolution=self.resolution,
+            num_head=self.num_head,
+            use_graph_softmax=self.use_graph_softmax,
+            use_so2_edge_ace=self.use_so2_edge_ace,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -722,6 +729,8 @@ class uuSO2Interaction(Interaction):
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
 
         conv_weights = self.edge_info(edge_feats)
+        # if cutoff is not None:
+        #     conv_weights = conv_weights * cutoff
 
         m_i = self.linear_down(
             self.truncate_ghosts(

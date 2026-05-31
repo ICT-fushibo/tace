@@ -159,6 +159,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         edge_wise_hidden: Union[int, None] = None,
         so2_linear_type: str = 'w1_w2',
         so2_l1l3: Union[str, None] = None,
+        resolution: Union[list[int], None] = None,
     ) -> None:
         super().__init__()
 
@@ -213,6 +214,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.edge_wise_hidden = edge_wise_hidden or num_channel
         self.so2_linear_type = so2_linear_type
         self.so2_l1l3 = so2_l1l3
+        self.resolution = resolution
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)

@@ -46,6 +46,7 @@ def so2_expand_index(mmax: int, lmax: int, start: int = 0) -> tuple[int, torch.T
 
 
 def so3_expand_index(mmax: int, lmax: int) -> tuple[int, torch.Tensor]:
+    assert mmax == lmax
     expand_index = torch.zeros([((lmax + 1) ** 2)]).long()
     start_idx = 0
     for l in range(lmax + 1):

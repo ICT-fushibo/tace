@@ -1129,11 +1129,11 @@ class uuSO2Linear(torch.nn.Module):
         return (
             f"mmax={self.mmax}, lmax={self.lmax}, "
             f"num_channel={self.num_channel}, mode=uu, path_norm={self.path_norm}, "
-            f"weight_type={self.weight_type}, path_mode={self.path_mode}, "
-            f"num_weights={self.num_weights}, "
+            f"weight_type={self.weight_type}, "
+            # f"num_weights={self.num_weights}, "
             f"num_paths={self.path_out.numel()}, "
-            f"num_components_per_m={self.num_components_per_m}, "
-            f"num_output_components={self.num_output_components}, "
+            # f"num_components_per_m={self.num_components_per_m}, "
+            # f"num_output_components={self.num_output_components}}"
             f"weight_numel={self.weight_numel}"
         )
     
@@ -1149,24 +1149,13 @@ class uuSO2TensorProductInstruction(NamedTuple):
 
 
 class uuSO2TensorProduct(torch.nn.Module):
-    """
-    SO(2) u-u tensor product for the reduced ``linear_up(path_mode="sum")``
-    layout.
-
-    The number of complex components is fixed by ``mmax`` and ``lmax``:
-    ``num_components_per_m[m] = lmax + 1 - m``. Correlation 1 is an identity
-    branch. Correlation 2 uses internal, non-edge-dependent weights and sums all
-    valid paths back into the same SO(2) layout.
-    """
-
     def __init__(
         self,
         mmax: int,
         lmax: int,
         num_channels: int,
-        m1m2: Union[str, None] = "<=",
+        m1m2: Union[str, None] = None,
         weight_type: str = "w1",
-        correlation: int = 2,
         path_norm: bool = True,
     ) -> None:
         super().__init__()
@@ -1175,11 +1164,8 @@ class uuSO2TensorProduct(torch.nn.Module):
         self.num_channels = num_channels
         self.num_components_per_m = [lmax + 1 - m for m in range(mmax + 1)]
         self.m1m2 = m1m2
-        self.correlation = correlation
         self.weight_type = weight_type
         self.path_norm = path_norm
-        if self.correlation not in {1, 2}:
-            raise ValueError("uuSO2TensorProduct only supports correlation=1 or 2")
         if self.weight_type not in {"w1_w2", "w1_w1", "w1"}:
             raise ValueError(
                 f"Unknown uuSO2TensorProduct weight_type={weight_type!r}; "
@@ -1196,13 +1182,11 @@ class uuSO2TensorProduct(torch.nn.Module):
         self.weight_numel = 0
         self.output_weight = torch.ones(self.num_output_components)
 
-        if self.correlation == 2:
-            self._setup_correlation2()
-            self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
-            if self.weight_type in {"w1_w2", "w1_w1"}:
-                self.weight.data.mul_(1.0 / math.sqrt(2.0))
-        else:
-            self.register_parameter("weight", None)
+        self._setup_correlation2()
+        self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
+        # self.register_buffer("weight", torch.ones(1, self.weight_numel))
+        # if self.weight_type in {"w1_w2", "w1_w1"}:
+        #     self.weight.data.mul_(1.0 / math.sqrt(2.0))
 
     def _setup_correlation2(self) -> None:
         grouped_paths = [self._enumerate_m_paths(m3) for m3 in range(self.mmax + 1)]
@@ -1347,7 +1331,7 @@ class uuSO2TensorProduct(torch.nn.Module):
             return (real - imag) * wr, (imag + real) * wr
         return real * wr, imag * wr
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
         if x.size(-1) != self.num_channels:
             raise ValueError(
                 f"uuSO2TensorProduct expected {self.num_channels} channels, "
@@ -1358,14 +1342,16 @@ class uuSO2TensorProduct(torch.nn.Module):
                 f"uuSO2TensorProduct expected {self.num_input_components} "
                 f"SO2 components, got {x.size(1)}"
             )
-        if self.correlation == 1:
-            return x
 
         xs = self._to_list(x)
+        if y is None:
+            ys = xs
+        else:
+            ys = self._to_list(y)
+
         out = x.new_zeros(x.size(0), self.num_output_components, self.num_channels)
         weight = self.weight
         w_offset = 0
-
         for ins in self.instructions:
             m1 = ins.i_in1
             m2 = ins.i_in2
@@ -1381,13 +1367,13 @@ class uuSO2TensorProduct(torch.nn.Module):
                 if m1 == 0 and m2 == 0:
                     real = (
                         xs[0][:, in1_start:in1_start + n_out]
-                        * xs[0][:, in2_start:in2_start + n_out]
+                        * ys[0][:, in2_start:in2_start + n_out]
                     )
                     imag = torch.zeros_like(real)
                 else:
                     real, imag = self._complex_product_parts(
                         xs[m1][:, :, in1_start:in1_start + n_out],
-                        xs[m2][:, :, in2_start:in2_start + n_out],
+                        ys[m2][:, :, in2_start:in2_start + n_out],
                         "diff",
                     )
                 out[:, out_start:out_start + n_out] = (
@@ -1399,25 +1385,25 @@ class uuSO2TensorProduct(torch.nn.Module):
             if m1 == 0:
                 real = (
                     xs[m1][:, in1_start:in1_start + n_out]
-                    * xs[m2][:, 0, in2_start:in2_start + n_out]
+                    * ys[m2][:, 0, in2_start:in2_start + n_out]
                 )
                 imag = (
                     xs[m1][:, in1_start:in1_start + n_out]
-                    * xs[m2][:, 1, in2_start:in2_start + n_out]
+                    * ys[m2][:, 1, in2_start:in2_start + n_out]
                 )
             elif m2 == 0:
                 real = (
                     xs[m1][:, 0, in1_start:in1_start + n_out]
-                    * xs[m2][:, in2_start:in2_start + n_out]
+                    * ys[m2][:, in2_start:in2_start + n_out]
                 )
                 imag = (
                     xs[m1][:, 1, in1_start:in1_start + n_out]
-                    * xs[m2][:, in2_start:in2_start + n_out]
+                    * ys[m2][:, in2_start:in2_start + n_out]
                 )
             else:
                 real, imag = self._complex_product_parts(
                     xs[m1][:, :, in1_start:in1_start + n_out],
-                    xs[m2][:, :, in2_start:in2_start + n_out],
+                    ys[m2][:, :, in2_start:in2_start + n_out],
                     ins.connection_mode,
                     reverse_diff=(m1 < m2 and ins.connection_mode == "diff"),
                 )
@@ -1436,8 +1422,9 @@ class uuSO2TensorProduct(torch.nn.Module):
     def extra_repr(self) -> str:
         return (
             f"mmax={self.mmax}, lmax={self.lmax}, channels={self.num_channels}, "
-            f"correlation={self.correlation}, weight_type={self.weight_type}, "
+            f"weight_type={self.weight_type}, "
             f"path_norm={self.path_norm}, "
             f"num_components_per_m={self.num_components_per_m}, "
             f"weight_numel={self.weight_numel}"
         )
+

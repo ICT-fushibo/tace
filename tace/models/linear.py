@@ -158,8 +158,8 @@ class e3nnLinear(torch.nn.Module):
 
         return out
 
-    # def __repr__(self):
-    #     return repr(self.linear) + f"(bias={self.bias is not None})"
+    def __repr__(self):
+        return repr(self.linear) + f"(bias={self.bias is not None})"
 
 
 class e3nnElementLinear(torch.nn.Module):
@@ -240,7 +240,7 @@ class e3nnElementLinear(torch.nn.Module):
                 out[:, sl] = out[:, sl] + bias[:, bias_sl]
         return out
 
-    # def __repr__(self):
-    #     return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
+    def __repr__(self):
+        return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
     
 

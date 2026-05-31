@@ -175,6 +175,7 @@ class Representation(torch.nn.Module):
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
             "so2_l1l3": atomic_basis["so2_l1l3"],
+            "resolution": atomic_basis["resolution"],
         }
 
         self.interactions = torch.nn.ModuleList()

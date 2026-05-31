@@ -1,27 +1,9 @@
+################################################################################
+# Authors: Zemin Xu
+# License: MIT, see LICENSE.md
+################################################################################
 ''''
-Copy from EquiformerV3.
-
-MIT License
-
-Copyright (c) 2026 The Atomic Architects
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Some components are from eqv3 and Fair.
 '''
 
 import os
@@ -33,7 +15,7 @@ from e3nn import o3
 from e3nn.o3 import FromS2Grid, ToS2Grid
 
 
-from .utils import so3_expand_index
+from .utils import so2_expand_index, so3_expand_index
 
 
 # Borrowed from e3nn @ 0.4.0:
@@ -545,9 +527,6 @@ class SO3Grid(torch.nn.Module):
             temp = CoefficientMappingModule(self.lmax, self.mmax, False)
             to_grid_mat = torch.einsum('ai, ji -> aj', to_grid_mat, temp.to_m)
             from_grid_mat = torch.einsum('ia, ji -> ja', from_grid_mat, temp.to_m)
-            #from_grid_mat = torch.einsum('ai, ji -> aj', from_grid_mat, temp.to_m)
-            #to_grid_mat = torch.einsum('bai, ji -> baj', to_grid_mat, temp.to_m)
-            #from_grid_mat = torch.einsum('bai, ji -> baj', from_grid_mat, temp.to_m)
 
         # save tensors and they will be moved to GPU
         self.register_buffer('to_grid_mat',   to_grid_mat)
@@ -586,15 +565,31 @@ class SO3Grid(torch.nn.Module):
 
 
 class SO3Linear(torch.nn.Module):
-    def __init__(self, in_features, out_features, lmax, bias=True):
+    def __init__(
+            self, 
+            mmax: int,
+            lmax: int, 
+            in_features: int,
+            out_features: int,
+            bias: bool = True, # only so3 l=0 or so2 m=0 can have bias
+            use_m_primary: bool = False,
+        ):
         super().__init__()
+        self.mmax = mmax
+        self.lmax = lmax
         self.in_features = in_features
         self.out_features = out_features
-        self.lmax = lmax
-
+        self.use_m_primary = use_m_primary
         self.weight = torch.nn.Parameter(torch.randn((self.lmax + 1), out_features, in_features))
         self.bias = torch.nn.Parameter(torch.zeros(1, 1, out_features)) if bias else None
         _, expand_index = so3_expand_index(lmax, lmax)
+        if self.use_m_primary:
+            temp = CoefficientMappingModule(self.lmax, self.lmax, False)
+            expand_index = torch.einsum('i, ji -> j', expand_index.to(temp.to_m.dtype), temp.to_m).long()
+            _sum = lmax+1
+            for m in range(1, mmax+1):
+                _sum += 2*(lmax+1-m)
+            expand_index = expand_index[:_sum]
         self.register_buffer('expand_index', expand_index, persistent=False)
         self.alpha = 1.0 / math.sqrt(self.in_features)
 
@@ -1051,7 +1046,7 @@ class SO3VstpGrid(torch.nn.Module):
     ):
         sym = self.symmetric_grid_product(x_grid, y_grid)
         anti = self.antisymmetric_grid_product(x_grid, y_grid)
-        return symmetric_scale * sym + antisym_scale * anti
+        return sym + anti
 
     def symmetric_product(self, x, y):
         """
@@ -1099,7 +1094,7 @@ class SO3VstpGrid(torch.nn.Module):
         sym = self.symmetric_product(x, y)
         anti = self.antisymmetric_product(x, y)
 
-        return sym + anti
+        return sym + anti # TODO
 
         # return symmetric_scale * sym + antisym_scale * anti
 

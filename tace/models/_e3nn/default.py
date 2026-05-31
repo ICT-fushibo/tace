@@ -62,6 +62,7 @@ DEFAULT_MODEL_CONFIG = {
         "use_graph_softmax": False,
         "node_wise_hidden": None,
         "edge_wise_hidden": None,
+        "resolution": None,
     },
     "resnet": {
         "type": "BB",
@@ -80,6 +81,7 @@ DEFAULT_MODEL_CONFIG = {
         "resolution": None,
         "num_channel": None,
         "return_components": None,
+        "nonlinear": None,
     },
     "readout_emlp": {
         "bias": False,
@@ -248,6 +250,8 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
     cfg['atomic_basis']['use_graph_softmax'] = _to_list(cfg['atomic_basis']['use_graph_softmax'])
+    # cfg['product_basis']['nonlinear'] = _to_list(cfg['product_basis']['nonlinear'])
+    # cfg['resnet']['type'] = _to_list(cfg['resnet']['type'])
     # cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
     # for b in cfg['atomic_basis']["separate_so2_radial"]:
     #     if b: cfg['edge_update']['type'] = 'element2'
