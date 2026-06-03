@@ -236,7 +236,6 @@ class ComplexProductBasis(torch.nn.Module):
         agnostic: bool = True,
     ):
         super().__init__()
-        assert agnostic
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
@@ -253,9 +252,51 @@ class ComplexProductBasis(torch.nn.Module):
         )   # TODO, rename to tp
         self.weight_numel = self.ace.weight_numel
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.ace(x, x)
+        if not agnostic:
+            self.nu1_weight_numel = (mmax+1) * (lmax+1) * num_channel
+            self.weight_numel += self.nu1_weight_numel
+            self.source_coefs = torch.nn.Parameter(torch.randn(num_elements, self.weight_numel))
+            self.target_coefs = torch.nn.Parameter(torch.randn(num_elements, self.weight_numel))
+            self.source_coefs.data.mul_(1 / math.sqrt(2)) # TODO
+            self.target_coefs.data.mul_(1 / math.sqrt(2)) # TODO
 
+            expand_index = []
+            offset = 0
+            for m in range(mmax + 1):
+                index = torch.arange((lmax + 1))
+                index = index + offset
+                expand_index.append(index)
+                if m > 0:
+                    expand_index.append(index)    # +- m
+                offset = offset + len(index)
+            expand_index = torch.cat(expand_index, dim=0)
+            expand_index = expand_index.long()
+            self.num_components = offset
+            self.register_buffer('expand_index', expand_index, persistent=False)
+            
+    def forward(self, x: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
+        if self.agnostic:
+            return x + self.ace(x, x)
+        
+        B = x.size(0)
+        C = self.num_channel
+        node_type = node_attrs.argmax(dim=-1)
+        src_type = node_type[edge_index[0]]
+        dst_type = node_type[edge_index[1]]
+        source_coefs = self.source_coefs[src_type]
+        target_coefs = self.target_coefs[dst_type]
+        
+        # nu = 1
+        w1 = source_coefs[:, :self.nu1_weight_numel] + target_coefs[:, :self.nu1_weight_numel]
+        w1 = w1.view(B, -1, C)
+        w1 = torch.index_select(w1, dim=1, index=self.expand_index)
+        corr_feats1 = x * w1
+
+        # nu = 2
+        w2 = source_coefs[:, self.nu1_weight_numel:] + target_coefs[:, self.nu1_weight_numel:]
+        corr_feats2 = self.ace(x, x, w2)
+
+        return corr_feats1 + corr_feats2
 
 class VectorSwiGLU(torch.nn.Module):
     """

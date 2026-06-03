@@ -244,3 +244,117 @@ class e3nnElementLinear(torch.nn.Module):
         return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
     
 
+
+
+def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") -> torch.nn.Module:
+
+    assert target in {"toggle", "flat", "matrix"}
+
+    def is_supported_module(m: torch.nn.Module) -> bool:
+        return (
+            hasattr(m, "linear")
+            and hasattr(m.linear, "instructions")
+            and hasattr(m, "weight")
+            and hasattr(m, "use_matrix_weight")
+        )
+
+    def is_element_linear(m: torch.nn.Module) -> bool:
+        return hasattr(m, "num_elements")
+
+    def weight_is_matrix_layout(m: torch.nn.Module) -> bool:
+        return isinstance(m.weight, torch.nn.ParameterList)
+
+    def set_weight(m: torch.nn.Module, new_weight):
+        if hasattr(m, "weight"):
+            delattr(m, "weight")
+        m.weight = new_weight
+
+    def flat_to_matrix(m: torch.nn.Module):
+        if m.weight is None:
+            return
+
+        old_weight = m.weight
+        requires_grad = old_weight.requires_grad
+
+        matrix_weights = torch.nn.ParameterList()
+        offset = 0
+
+        with torch.no_grad():
+            if is_element_linear(m):
+                # old_weight: [num_elements, weight_numel]
+                for ins in m.linear.instructions:
+                    size = int(torch.tensor(ins.path_shape).prod().item())
+                    chunk = old_weight[:, offset:offset + size]
+                    chunk = chunk.reshape(m.num_elements, *ins.path_shape)
+                    matrix_weights.append(torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad))
+                    offset += size
+
+                # bias:
+                # flat layout:   [num_elements, bias_dim]
+                # matrix layout: [num_elements * bias_dim]
+                if m.bias is not None and m.bias.dim() == 2:
+                    m.bias = torch.nn.Parameter(
+                        m.bias.reshape(-1).clone(),
+                        requires_grad=m.bias.requires_grad,
+                    )
+
+            else:
+                # old_weight: [weight_numel]
+                for ins in m.linear.instructions:
+                    size = int(torch.tensor(ins.path_shape).prod().item())
+                    chunk = old_weight[offset:offset + size]
+                    chunk = chunk.reshape(*ins.path_shape)
+                    matrix_weights.append(torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad))
+                    offset += size
+
+        set_weight(m, matrix_weights)
+        m.use_matrix_weight = True
+
+    def matrix_to_flat(m: torch.nn.Module):
+        if m.weight is None:
+            return
+
+        old_weights = list(m.weight)
+        requires_grad = any(w.requires_grad for w in old_weights)
+
+        with torch.no_grad():
+            if is_element_linear(m):
+                # 每个 w: [num_elements, *path_shape]
+                chunks = [w.reshape(m.num_elements, -1) for w in old_weights]
+                flat_weight = torch.cat(chunks, dim=-1)
+
+                # bias:
+                # matrix layout: [num_elements * bias_dim]
+                # flat layout:   [num_elements, bias_dim]
+                if m.bias is not None and m.bias.dim() == 1:
+                    m.bias = torch.nn.Parameter(
+                        m.bias.reshape(m.num_elements, -1).clone(),
+                        requires_grad=m.bias.requires_grad,
+                    )
+            else:
+                chunks = [w.reshape(-1) for w in old_weights]
+                flat_weight = torch.cat(chunks, dim=-1)
+
+        set_weight(m, torch.nn.Parameter(flat_weight.clone(), requires_grad=requires_grad))
+        m.use_matrix_weight = False
+
+    def convert_module(m: torch.nn.Module):
+        if not is_supported_module(m):
+            return
+
+        currently_matrix = weight_is_matrix_layout(m)
+
+        if target == "toggle":
+            to_matrix = not currently_matrix
+        else:
+            to_matrix = target == "matrix"
+
+        if to_matrix and not currently_matrix:
+            flat_to_matrix(m)
+        elif not to_matrix and currently_matrix:
+            matrix_to_flat(m)
+
+    for module in model.modules():
+        convert_module(module)
+
+    return model

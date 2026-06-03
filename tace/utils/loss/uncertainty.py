@@ -48,10 +48,8 @@ class UncertaintyLoss(nn.Module):
         assert isinstance(
             loss_huber_delta, (list, ListConfig)
         ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
-        assert (
-            len(loss_property) == len(loss_function_name) == 
-            len(init_log_sigmas) == len(loss_huber_delta)
-        )
+        assert len(loss_function_name) == len(init_log_sigmas) == len(loss_huber_delta)
+        assert len(loss_property) <= len(loss_function_name)
         for fn in loss_function_name:
             assert (
                 fn in LOSS_FN

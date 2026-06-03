@@ -116,3 +116,49 @@ def mae_dens_direct_stress(
         torch.abs(error)
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
+
+# TODO
+@register_loss
+def mse_direct_forces_curl(
+    pred: Dict[str, Tensor],
+    label: Dict[str, Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
+    
+    num_pairs = 1
+    forces = pred["direct_forces"]
+    positions = label["positions"]
+
+    if not positions.requires_grad:
+        raise RuntimeError(
+            "positions must have requires_grad=True before model forward."
+        )
+
+    F_flat = forces.reshape(-1)
+    R_dim = positions.numel()
+
+    losses = []
+
+    for _ in range(num_pairs):
+        a = torch.randint(0, F_flat.numel(), (1,), device=F_flat.device).item()
+        b = torch.randint(0, R_dim, (1,), device=F_flat.device).item()
+
+        grad_a = torch.autograd.grad(
+            outputs=F_flat[a],
+            inputs=positions,
+            retain_graph=True,
+            create_graph=True,
+        )[0].reshape(-1)
+
+        grad_b = torch.autograd.grad(
+            outputs=F_flat[b],
+            inputs=positions,
+            retain_graph=True,
+            create_graph=True,
+        )[0].reshape(-1)
+
+        curl_ab = grad_a[b] - grad_b[a]
+
+        losses.append(curl_ab**2)
+
+    return torch.mean(torch.stack(losses))

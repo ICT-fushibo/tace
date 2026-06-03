@@ -1,218 +1,214 @@
-
-# import torch
-
-# from tace.models.wigner6j.tensor_product import E2TensorProductArbitraryOrder
-
-
-# for o in range(1, 4):
-#     head, hidden = 8, 16 # total channel
-#     f_N1, f_N2 = 7, 8
-#     alpha_ij = torch.randn(f_N1, f_N2, head) # [edge]
-
-#     h = torch.randn(f_N1, (o + 1) ** 2, head * hidden) # n_i
-#     exp_h = torch.randn(f_N2, (o + 1) ** 2, head * hidden) # n_j
-
-#     pos = torch.randn(f_N1, 3)
-#     exp_pos = torch.randn(f_N2, 3)
-
-#     irreps_in = "+".join(
-#         [
-#             f"{head*hidden}x0e",
-#             f"{head*hidden}x1e",
-#             f"{head*hidden}x2e",
-#             f"{head*hidden}x3e",
-#             f"{head*hidden}x4e",
-#         ][: o + 1]
-#     )
-#     irreps_out = irreps_in
-
-#     learnable_weight = True
-#     connection_mode = "uvw"
-
-#     # Test arbitrary order with second order case
-#     model_arbitrary = E2TensorProductArbitraryOrder(
-#         irreps_in,
-#         irreps_out,
-#         head,
-#         order=o,
-#         learnable_weight=learnable_weight,
-#         connection_mode=connection_mode,
-#         path_normalization="element",
-#     )
-#     out_arbitrary = model_arbitrary(pos, exp_pos, h, exp_h, alpha_ij)
-#     print(out_arbitrary.shape)
-#     # for name, param in model_arbitrary.named_parameters():
-#     #     print(name, param.shape, param.requires_grad)
-#     out_second = model_arbitrary.vanilla_forward(pos, exp_pos, h, exp_h, alpha_ij)
-#     # Print comparison metrics
-#     diff = out_arbitrary / out_second
-#     print(f"\nComparing Arbitrary Order (n={o}) vs Second Order:")
-#     print(f"Max difference: {torch.max(diff):.8f}")
-#     print(f"Mean difference: {torch.mean(diff):.8f}")
-#     print(f"Min difference: {torch.min(diff):.8f}")
+import math
+from functools import lru_cache
 
 import torch
-from sympy.physics.wigner import (
-    clebsch_gordan,
-    wigner_6j,
-)
+torch.set_default_dtype(torch.float64)
+NORMALIZATION = "component"
+ELL = 2       # edge     
+FEATURE_L = 1 # node
+OUT_L = 1
+NEIGHBORS = 8
+SAMPLES = 512
+NUM_EDGES = SAMPLES * NEIGHBORS
+SEED = 42
+TOL = 5e-7
+from e3nn import o3
 from sympy import S
-import math
+from sympy.physics import wigner
 
-
-dtype = torch.float64
-
-def cg_matrix(l1, l2, L):
-
-    C = torch.zeros(
-        2 * L + 1,
-        2 * l1 + 1,
-        2 * l2 + 1,
-        dtype=dtype,
-    )
-
-    for M in range(-L, L + 1):
-        for m1 in range(-l1, l1 + 1):
-            for m2 in range(-l2, l2 + 1):
-
-                if m1 + m2 != M:
-                    continue
-
-                val = clebsch_gordan(
-                    S(l1),
-                    S(l2),
-                    S(L),
-                    S(m1),
-                    S(m2),
-                    S(M),
-                )
-
-                C[M + L, m1 + l1, m2 + l2] = float(val)
-
-    return C
-
-
-def couple(x, y, l1, l2, L):
-
-    C = cg_matrix(l1, l2, L)
-
-    return torch.einsum(
-        "Mab,a,b->M",
-        C,
+def solid_harmonic(l: int, x: torch.Tensor) -> torch.Tensor:
+    return o3.spherical_harmonics(
+        l,
         x,
-        y,
+        normalize=False,
+        normalization=NORMALIZATION,
     )
 
+def cgtp(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    l1: int,
+    l2: int,
+    lout: int,
+) -> torch.Tensor:
+    w3j = o3.wigner_3j(l1, l2, lout)
+    return math.sqrt(2 * lout + 1) * torch.einsum("...i,...j,ijk->...k", x, y, w3j)
 
-def allowed_L(l1, l2):
 
-    return list(range(
-        abs(l1 - l2),
-        l1 + l2 + 1,
-    ))
+def allowed_intermediates(feature_l: int, v: int, u: int, out_l: int) -> list[int]:
+    lo = abs(feature_l - v)
+    hi = feature_l + v
+    return [k for k in range(lo, hi + 1) if abs(u - k) <= out_l <= u + k]
 
 
-def verify_recoupling(
-    l1,
-    l2,
-    l3,
-    l23,
-    L,
-):
-
-    torch.manual_seed(0)
-
-    x1 = torch.randn(2 * l1 + 1, dtype=dtype)
-    x2 = torch.randn(2 * l2 + 1, dtype=dtype)
-    x3 = torch.randn(2 * l3 + 1, dtype=dtype)
-
-    # LEFT:
-    # l1 ⊗ (l2 ⊗ l3)_l23 -> L
-    y23 = couple(
-        x2,
-        x3,
-        l2,
-        l3,
-        l23,
-    )
-
-    LEFT = couple(
-        x1,
-        y23,
-        l1,
-        l23,
-        L,
-    )
-
-    # RIGHT:
-    # Σ_l12 ((l1 ⊗ l2)_l12 ⊗ l3)_L
-  
-    RIGHT = torch.zeros(
-        2 * L + 1,
-        dtype=dtype,
-    )
-
-    for l12 in allowed_L(l1, l2):
-
-        if L not in allowed_L(l12, l3):
-            continue
-
-        y12 = couple(
-            x1,
-            x2,
-            l1,
-            l2,
-            l12,
+def wigner_6j(
+    l1: int, l2: int, l1l2: int,
+    l3: int, L: int, l23: int,
+) -> float:
+    return (
+        math.comb(l23, l2)
+        * ((-1) ** l2)
+        * ((-1) ** (l1 + l2 + l3 + L))
+        * math.sqrt((2 * l1l2 + 1) * (2 * l23 + 1))
+        * float(
+            wigner.wigner_6j(
+                S(l1), S(l2), S(l1l2),
+                S(l3), S(L), S(l23),
+            )
         )
+    )
 
-        tmp = couple(
-            y12,
-            x3,
-            l12,
-            l3,
-            L,
-        )
 
-        sixj = float(
-            wigner_6j(
-                S(l1),
-                S(l2),
-                S(l12),
-                S(l3),
-                S(L),
-                S(l23),
+def solid_path_scales(edge_l: int) -> torch.Tensor:
+    generator = torch.Generator().manual_seed(7919 + edge_l)
+    ri = torch.randn(512, 3, generator=generator)
+    rj = torch.randn(512, 3, generator=generator)
+    lhs = solid_harmonic(edge_l, ri - rj)
+    terms = []
+    for u in range(edge_l + 1):
+        v = edge_l - u
+        sign = -1.0 if v % 2 else 1.0
+        coeff = sign * math.comb(edge_l, u)
+        terms.append(
+            coeff
+            * cgtp(
+                solid_harmonic(u, ri),
+                solid_harmonic(v, rj),
+                u,
+                v,
+                edge_l,
             )
         )
 
-        coeff = math.sqrt(
-            (2 * l12 + 1)
-            * (2 * l23 + 1)
-        ) * sixj
-
-        RIGHT += coeff * tmp
-
-    err = (LEFT - RIGHT).abs().max()
-
-    return LEFT, RIGHT, err
+    basis = torch.stack(terms, dim=-1)
+    return torch.linalg.lstsq(
+        basis.reshape(-1, edge_l + 1),
+        lhs.reshape(-1),
+    ).solution.detach()
 
 
-LEFT, RIGHT, err = verify_recoupling(
-    l1=4,
-    l2=6,
-    l3=5,
-    l23=7,
-    L=7,
-)
+def sample_batch(
+    batch: int,
+    neighbors: int,
+    feature_l: int,
+    generator: torch.Generator,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ri = torch.randn(batch, 3, generator=generator)
+    rj = torch.randn(batch, neighbors, 3, generator=generator)
+    h = torch.randn(
+        batch,
+        neighbors,
+        2 * feature_l + 1,
+        generator=generator,
+    )
+    alpha = torch.randn(batch, neighbors, 1, generator=generator)
+    return ri, rj, h, alpha
 
-print("LEFT:")
-print(LEFT)
 
-print()
+def edge_convolution(
+    ri: torch.Tensor,
+    rj: torch.Tensor,
+    h: torch.Tensor,
+    alpha: torch.Tensor,
+    ell: int,
+    feature_l: int,
+    out_l: int,
+) -> torch.Tensor:
+    batch, neighbors, _ = rj.shape
+    rel = ri[:, None, :] - rj # r_ij
+    r_l = solid_harmonic(ell, rel.reshape(batch * neighbors, 3))
+    h_flat = h.reshape(batch * neighbors, 2 * feature_l + 1)
+    msg = cgtp(
+        h_flat,
+        r_l,
+        feature_l,
+        ell,
+        out_l,
+    ).reshape(batch, neighbors, 2 * out_l + 1)
+    return (alpha * msg).sum(dim=1)
 
-print("RIGHT:")
-print(RIGHT)
 
-print()
+def recoupled_convolution(
+    ri: torch.Tensor,
+    rj: torch.Tensor,
+    h: torch.Tensor,
+    alpha: torch.Tensor,
+    l23: int,   # solid harmonics
+    l1: int,    # node_feats
+    L: int,     # out
+) -> tuple[torch.Tensor, list[tuple[str, float]]]:
+    batch, neighbors, _ = rj.shape
+    out = torch.zeros(batch, 2 * L + 1)
+    paths: list[tuple[str, float]] = []
+    scales = solid_path_scales(l23).to(device=ri.device, dtype=ri.dtype)
 
-print("max error:")
-print(err)
+    # === h_i, r_i => expand => h_ij, r_IJ ===
+    h_ij = h.reshape(NUM_EDGES, 2 * l1 + 1) # [edge, 2l1+1]
+    r_ij = rj.reshape(NUM_EDGES, 3)
+
+    for l3 in range(l23 + 1):
+        l2 = l23 - l3
+        r_u_i = solid_harmonic(l3, ri)      # [node]
+        r_v_j = solid_harmonic(l2, r_ij) # [edge]
+        for l12 in allowed_intermediates(l1, l2, l3, L):
+            m_ij = cgtp(
+                h_ij,
+                r_v_j,
+                l1,
+                l2,
+                l12,
+            ).reshape(batch, neighbors, 2 * l12 + 1)
+            m_i = (alpha * m_ij).sum(dim=1)
+
+            outer = cgtp(
+                m_i, r_u_i,
+                l12, l3, L,
+            )
+            weight = float(scales[l3]) * wigner_6j(
+                l1, l2, l12,
+                l3, L,  l23,
+            )
+            out = out + weight * outer
+            paths.append((f"l3={l3}, l2={l2}, l12={l12}", weight))
+
+    return out, paths
+
+
+def relative_rms(x: torch.Tensor, ref: torch.Tensor) -> float:
+    num = (x - ref).square().mean().sqrt()
+    den = ref.square().mean().sqrt().clamp_min(torch.finfo(ref.dtype).eps)
+    return (num / den).item()
+
+
+def main() -> None:
+    generator = torch.Generator().manual_seed(SEED)
+
+    batch = sample_batch(SAMPLES, NEIGHBORS, FEATURE_L, generator)
+    lhs = edge_convolution(*batch, ELL, FEATURE_L, OUT_L)
+    rhs, paths = recoupled_convolution(*batch, ELL, FEATURE_L, OUT_L)
+    rel = relative_rms(rhs, lhs)
+    max_abs = (rhs - lhs).abs().max().item()
+
+
+    print(
+        f"ell={ELL}, feature_l={FEATURE_L}, out_l={OUT_L}, "
+        f"neighbors={NEIGHBORS}, samples={SAMPLES}"
+    )
+    print()
+    print("solid path scales from Theorem 3.2 / e3nn convention:")
+    print("  [" + ", ".join(f"{x:.12g}" for x in solid_path_scales(ELL).tolist()) + "]")
+    print()
+    print(f"number of analytic Wigner-6j paths: {len(paths)}")
+    for label, weight in paths:
+        print(f"  {label:16s} weight={weight:.12g}")
+    print()
+    print(f"relative RMS : {rel:.6e}")
+    print(f"max abs      : {max_abs:.6e}")
+
+    if rel > TOL:
+        raise SystemExit(f"FAIL: relative RMS {rel:.6e} > tol {TOL:.6e}")
+    print(f"PASS: relative RMS is below {TOL:g}.")
+
+
+if __name__ == "__main__":
+    main()

@@ -65,6 +65,7 @@ class e3nnGhostExchangeMixin:
             return tensor
         return tensor[:nlocal] if nlocal is not None else tensor
  
+ 
 class Graph(NamedTuple):
     lmp: bool
     lmp_data: Union[torch.Tensor, None]
@@ -78,3 +79,4 @@ class Graph(NamedTuple):
     node_fidelity: torch.Tensor
     num_atoms_arange: torch.Tensor
     dcutoff: Union[torch.Tensor, None] # [E,]
+    # node_radius: Union[torch.Tensor, None] # [N,]

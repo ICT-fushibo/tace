@@ -58,6 +58,7 @@ DEFAULT_MODEL_CONFIG = {
         "so2_l1l3": None,
         "so2_linear_type": 'w1_w2',
         "use_so2_edge_ace": False,
+        "so2_agnostic": True,
         "num_head": None,
         "use_graph_softmax": False,
         "node_wise_hidden": None,

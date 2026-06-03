@@ -34,8 +34,6 @@ class CgtpInteraction(Interaction):
 
     def _setup(self) -> None:
 
-        assert self.edge_wise_hidden is None
-
         self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
@@ -309,8 +307,6 @@ class uuSO2Interaction(Interaction):
 
     def _setup(self) -> None:
 
-        assert self.edge_wise_hidden is None
-
         self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
@@ -566,7 +562,7 @@ class uvSO2Interaction(Interaction):
             "uvSO2Interaction's irreps_in.lmax must > 0, "
             "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
         )
-        assert self.edge_nonlinear == 'so2_sigmoid_gate'
+        # assert self.edge_nonlinear == 'so2_sigmoid_gate'
         if self.use_graph_softmax: self.scatter_norm = None
 
         self.linear_up = e3nnLinear(
@@ -589,6 +585,7 @@ class uvSO2Interaction(Interaction):
             use_graph_softmax=self.use_graph_softmax,
             use_so2_edge_ace=self.use_so2_edge_ace,
             so2_linear_type=self.so2_linear_type,
+            agnostic=self.so2_agnostic,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -624,7 +621,8 @@ class uvSO2Interaction(Interaction):
             linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
-            o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
+            # o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
+            self.irreps_out,
             linear_down_irreps_out,
             bias=self.use_bias,
         )
@@ -800,8 +798,6 @@ class uvSO2Interaction(Interaction):
         return m_i, self.truncate_ghosts(sc, nlocal)
 
 
-
-
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
@@ -811,4 +807,8 @@ INTERACTION: Dict[str, Interaction] = {
     "uv_so2": uvSO2Interaction,
 
     "uu_so2": uuSO2Interaction,
+
+    # "w6j": Wigner6jInteraction,
+    # "wigner6j": Wigner6jInteraction,
+
 }

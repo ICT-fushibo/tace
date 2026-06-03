@@ -359,6 +359,7 @@ class TensorModel(torch.nn.Module):
             num_atoms_arange=num_atoms_arange,
             # dcutoff=dcutoff,
             dcutoff=None,
+            # node_radius=(data["positions"]**2).sum(dim=1, keepdim=True).sqrt() + 1e-9 # TODO
         )
     
     def get_fidelity_idx(self) -> int:
