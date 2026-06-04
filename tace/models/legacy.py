@@ -2081,3 +2081,91 @@ The contents of this file are all historical artifacts from TACE development and
 #             outs = outs + sc
 
 #         return outs
+
+
+# # TODO, not finish
+# class So2ACE(Product):
+#     def _setup(self):
+
+#         assert self.correlation == 2
+
+#         self.linear_up = e3nnLinear(
+#             self.irreps_in,
+#             self.irreps_hidden,
+#             bias=self.use_bias,
+#         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+#         self.reshape = LayoutTransform(self.irreps_hidden)
+
+#         from tace.models.so2.so2 import uvSO2Linear, SO2Gate
+#         from .edge_prod import ComplexProductBasis
+#         self.num_gates = sum(self.lmax+1 for _ in range(self.lmax+1))
+#         self.so2_linear_up = uvSO2Linear(
+#             self.lmax,
+#             self.lmax,
+#             self.num_channel,
+#             self.num_channel,    
+#             num_components_out=[self.num_gates + self.lmax+1] + [self.lmax+1 for m in range(1, self.lmax+1)],
+#         )
+#         self.split_list = [self.num_gates, (self.lmax+1) + (self.lmax+1) * self.lmax * 2]
+ 
+#         self.ace = ComplexProductBasis(
+#             self.lmax,
+#             self.lmax,
+#             self.num_channel,
+#             num_elements=self.num_elements,
+#             m1m2='<=',
+#         )
+#         self.nonlinearity = SO2Gate(
+#             self.lmax,
+#             self.lmax,
+#             self.num_channel, 
+#             channel_wise=True,
+#         )
+#         self.linear_down = uvSO2Linear(
+#             self.lmax,
+#             self.lmax,
+#             self.num_channel,   
+#             self.num_channel,     
+#             num_components_in=[self.lmax+1] * (self.lmax+1),
+#         ) 
+
+#         self.linear = e3nnLinear(
+#             self.irreps_hidden,
+#             self.irreps_out,
+#             bias=self.use_bias
+#         )    
+
+#         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+        
+#     def forward(
+#             self, 
+#             node_feats: torch.Tensor, 
+#             node_attrs: torch.Tensor,
+#             sc: torch.Tensor,
+#             batch: torch.Tensor,
+#         ) -> torch.Tensor:
+
+#         node_feats = self.linear_up(node_feats)
+#         node_feats = self.reshape(node_feats)
+#         node_feats = self.node_rotate.rotate(node_feats)
+#         node_feats = self.so2_linear_up(node_feats) 
+#         gate = node_feats.narrow(1, 0, self.split_list[0])
+#         node_feats = node_feats.narrow(1, self.split_list[0], self.split_list[1])
+#         node_feats = self.ace(node_feats, node_attrs, None)
+#         node_feats = self.nonlinearity(node_feats, gate) 
+#         node_feats = self.linear_down(node_feats)
+#         node_feats = self.node_rotate.rotate_inv(node_feats)
+
+#         outs = self.reshape.inverse(node_feats)
+
+#         outs = self.linear(outs)
+
+#         if hasattr(self, "stochastic_depth"):
+#             outs = self.stochastic_depth(outs, batch)
+        
+#         if sc is not None:
+#             outs = outs + sc
+
+#         return outs

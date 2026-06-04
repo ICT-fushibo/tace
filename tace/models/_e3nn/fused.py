@@ -362,7 +362,6 @@ class uvSO2TensorProduct(torch.nn.Module):
         m_ij = self.nonlinearity(m_ij, gate) 
         m_ij = self.linear_down(m_ij)
 
-        # Attention
         if self.use_graph_softmax:
             real_alpha = real_alpha.reshape(num_edges, self.num_head, self.num_channel_per_head)
             real_alpha = self.real_alpha_norm(real_alpha)

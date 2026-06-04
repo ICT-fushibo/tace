@@ -255,6 +255,7 @@ class Product(torch.nn.Module):
         l1l2: Union[str, None],
         bias: bool,
         resolution: list[int],
+        node_rotate: Union[SO3Rotation, None],
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
@@ -279,6 +280,7 @@ class Product(torch.nn.Module):
         self.use_first_dropout = use_first_dropout
         self.parity = parity
         self.last_layer = layer == num_layers -1
+        self.node_rotate = node_rotate
 
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])

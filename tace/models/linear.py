@@ -48,6 +48,48 @@ class torchLinear(torch.nn.Module):
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
+# # TODO, add bias
+# class torchElementLinear(torch.nn.Module):
+
+#     __constants__ = ["in_features", "out_features"]
+#     in_features: int
+#     out_features: int
+#     weight: torch.Tensor
+
+#     def __init__(
+#         self,
+#         in_features: int,
+#         out_features: int,
+#         bias: bool = True,
+#         device=None,
+#         dtype=None,
+#         num_elements: int = -1,
+#     ) -> None:
+#         factory_kwargs = {"device": device, "dtype": dtype}
+#         super().__init__()
+#         assert num_elements > 0
+#         self.in_features = in_features
+#         self.out_features = out_features
+#         self.weight = torch.nn.Parameter(
+#             torch.randn((num_elements, out_features, in_features), **factory_kwargs)
+#         )
+#         self.num_elements = num_elements
+#         # if bias:
+#         #     self.bias = torch.nn.Parameter(torch.zeros(num_elements, out_features, **factory_kwargs))
+#         # else:
+#         #     self.register_parameter("bias", None)
+#         self.bias = None
+#         self.alpha = 1.0 / math.sqrt(in_features)
+
+#     def forward(self, input: torch.Tensor, node_attrs: torch.Tensor) -> torch.Tensor:
+#         weight = self.weight * self.alpha
+#         node_type = node_attrs.argmax(dim=-1)
+#         weight = weight[node_type]
+#         out = torch.einsum("b...c, bCc -> b...C", input, weight)
+#         return out
+
+#     def extra_repr(self) -> str:
+#         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
 class mlpLinear(torch.nn.Module):
     def __init__(

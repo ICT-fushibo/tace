@@ -278,5 +278,7 @@ PRODUCT: Dict[str, torch.nn.Module] = {
 
     "mace": MACE,
 
+    # "so2": So2ACE,
+
     # "vstp": VstpACE,
 }

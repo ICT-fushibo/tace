@@ -3,7 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import sys
+
 import math
 from typing import Dict, List
 
@@ -88,10 +88,11 @@ class Representation(torch.nn.Module):
             or True in atomic_basis["use_graph_softmax"]
         )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
-        # assert not (self.use_so2)
         if self.use_so2:
             # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
             self.so2_angular_basis = SO3Rotation(Lmax, mmax, use_rotation_mask=True)
+        else:
+            self.so2_angular_basis = None
         if self.use_o3:
             self.o3_angular_basis = SphericalHarmonics(
                 o3.Irreps.spherical_harmonics(lmax, p=-1),
@@ -108,7 +109,7 @@ class Representation(torch.nn.Module):
             lmax=lmax,
             avg_num_neighbors=avg_num_neighbors,
             bias=False,
-            so2_angular_basis=self.so2_angular_basis if self.use_so2 or self.use_wigner6j else None
+            so2_angular_basis=self.so2_angular_basis
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
             num_elements=self.num_elements,
@@ -172,7 +173,7 @@ class Representation(torch.nn.Module):
             "stochastic_depth": dropout['stochastic_depth'],
 
             "num_head": atomic_basis["num_head"],
-            "so2_angular_basis": self.so2_angular_basis if self.use_so2 else None,
+            "so2_angular_basis": self.so2_angular_basis,
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
             "so2_l1l3": atomic_basis["so2_l1l3"],
@@ -237,6 +238,7 @@ class Representation(torch.nn.Module):
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
                     irreps_in=prod_irreps_in,
+                    node_rotate=None,
                 )
             )
             self.irreps_out = self.products[-1].irreps_out
@@ -295,6 +297,7 @@ class Representation(torch.nn.Module):
                         stochastic_depth=0.0,
                         parity=parity,
                         irreps_in=self.decouple_interactions[idx].irreps_out,
+                        node_rotate=None,
                     )
                 )
 
@@ -312,10 +315,7 @@ class Representation(torch.nn.Module):
         # === angular basis ===
         if self.use_so2:
             self.so2_angular_basis.set_wigner(graph.edge_vector)
-            edge_attrs = None # wignerD here
-        # if self.use_wigner6j:
-        #     self.so2_angular_basis.set_wigner(data["positions"])
-        #     edge_attrs = None # wignerD here  
+            edge_attrs = None # wignerD here 
         if self.use_o3:
             edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
 
@@ -347,7 +347,6 @@ class Representation(torch.nn.Module):
         if self.training and self.use_dens:
             forces_embedding, noise_mask_tensor, dens_batch_mask_tensor = self._forward_dens_forces_encoding(data)
         
-
         # === representation Learning ===
         prev_feats = []
         for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):

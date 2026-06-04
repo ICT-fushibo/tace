@@ -230,3 +230,6 @@ def calculate_cps(
         0.1 * s_rmsd
     )
     return cps
+
+
+# print(calculate_cps(0.928, 0.11, 0.059))
