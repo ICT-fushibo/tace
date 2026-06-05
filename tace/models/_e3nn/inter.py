@@ -4,7 +4,7 @@
 ################################################################################
 
 import math
-from typing import Optional, Dict
+from typing import Dict, Union
 
 
 import torch
@@ -197,8 +197,10 @@ class CgtpInteraction(Interaction):
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor],
+        cutoff: Union[torch.Tensor, None],
         graph,
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ):
 
         lmp_data = graph.lmp_data
@@ -317,7 +319,6 @@ class uuSO2Interaction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
-            so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
             weight_type=self.so2_linear_type,
@@ -448,8 +449,10 @@ class uuSO2Interaction(Interaction):
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor],
+        cutoff: Union[torch.Tensor, None],
         graph,
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ):
 
         lmp_data = graph.lmp_data
@@ -497,7 +500,14 @@ class uuSO2Interaction(Interaction):
 
         m_i = self.linear_down(
             self.truncate_ghosts(
-                self.rejector(node_feats, edge_attrs, conv_weights, edge_index), 
+                self.rejector(
+                    node_feats, 
+                    edge_attrs, 
+                    conv_weights, 
+                    edge_index,
+                    wigner,
+                    wigner_inv,
+                ), 
                 nlocal
             )
         )
@@ -577,7 +587,6 @@ class uvSO2Interaction(Interaction):
             num_channel=self.num_channel,
             edge_wise_hidden=self.edge_wise_hidden,
             num_elements=self.num_elements,
-            so2_angular_basis=self.so2_angular_basis,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
 
@@ -714,8 +723,10 @@ class uvSO2Interaction(Interaction):
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
-        cutoff: Optional[torch.Tensor],
+        cutoff: Union[torch.Tensor, None],
         graph,
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
 ):
     
         lmp_data = graph.lmp_data
@@ -752,7 +763,15 @@ class uvSO2Interaction(Interaction):
             
         m_i = self.linear_down(
             self.truncate_ghosts(
-                self.rejector(node_feats, node_attrs_slice, conv_weights, edge_index, cutoff), 
+                self.rejector(
+                    node_feats, 
+                    node_attrs_slice, 
+                    conv_weights, 
+                    edge_index, 
+                    cutoff,
+                    wigner,
+                    wigner_inv,
+                ), 
                 nlocal
             ) # check   node_attrs_slice TODO
         )

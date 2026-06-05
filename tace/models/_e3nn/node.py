@@ -4,6 +4,9 @@
 ################################################################################
 
 
+from typing import Union
+
+
 import torch
 from e3nn.nn import Activation
 from e3nn import o3
@@ -42,7 +45,9 @@ class LinearNodeEmbedding(NodeEmbedding):
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attrs: torch.Tensor,
-        cutoff: torch.Tensor
+        cutoff: Union[torch.Tensor, None],
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return self.elem_emb1(node_attrs)
@@ -73,67 +78,12 @@ class NonLinearNodeEmbedding(NodeEmbedding):
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attrs: torch.Tensor,
-        cutoff: torch.Tensor
+        cutoff: Union[torch.Tensor, None],
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         return self.act1(self.elem_emb1(node_attrs))
-    
-
-# class GroupNodeEmbedding(NodeEmbedding):
-#     """
-#     A group-based node embedding module.
-
-#     This class augments basic element embeddings with a learned grouping
-#     mechanism, where nodes are softly assigned to 32 latent groups and
-#     group-level representations are combined with element-wise features
-#     to enhance expressiveness.
-#     """
-
-#     def _setup(self) -> None:
-        
-#         self.irreps_out = o3.Irreps(f"{self.num_channel}x0e")
-
-#         self.num_groups = 32
-
-#         self.elem_emb1 = e3nnLinear(
-#             f"{self.num_elements}x0e",
-#             f"{self.num_channel}x0e",
-#             bias=self.bias
-#         )
-
-#         self.elem_emb2 = e3nnLinear(
-#             f"{self.num_elements}x0e",
-#             f"{self.num_groups}x0e",
-#             bias=self.bias
-#         )
-
-#         self.group_emb1 = e3nnLinear(
-#             f"{self.num_groups}x0e",
-#             f"{self.num_channel}x0e",
-#             bias=self.bias
-#         )
-
-#         self.act1 = Activation(self.elem_emb1.irreps_out, [torch.nn.SiLU()])
-#         self.act2 = torch.nn.Softmax(dim=-1)
-
-
-#     def forward(
-#         self,
-#         node_attrs: torch.Tensor,
-#         edge_feats: torch.Tensor,
-#         edge_index: torch.Tensor,
-#         edge_attrs: torch.Tensor,
-#         cutoff: torch.Tensor
-#     ) -> torch.Tensor:
-         
-#         elem_emb = self.elem_emb1(node_attrs)     
-#         elem_emb = self.act1(elem_emb)        
-
-#         logits = self.elem_emb2(node_attrs)   
-#         scores = self.act2(logits)      
-#         group_emb = self.group_emb1(scores)
-
-#         return elem_emb + group_emb
     
 
 class TensorNodeEmbedding(NodeEmbedding):
@@ -183,7 +133,9 @@ class TensorNodeEmbedding(NodeEmbedding):
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attrs: torch.Tensor,
-        cutoff: torch.Tensor
+        cutoff: Union[torch.Tensor, None],
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         base_node_feats = self.node_embedding(node_attrs) 
@@ -245,7 +197,9 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attrs: torch.Tensor,
-        cutoff: torch.Tensor
+        cutoff: Union[torch.Tensor, None],
+        wigner,
+        wigner_inv: Union[torch.Tensor, None],
     ) -> torch.Tensor:
         
         base_node_feats = self.node_embedding(node_attrs) 
@@ -276,7 +230,6 @@ class SO2TensorNodeEmbedding(NodeEmbedding):
 NODE_EMBEDDING = {
     "linear": LinearNodeEmbedding,
     "nonlinear": NonLinearNodeEmbedding,
-    # "group": GroupNodeEmbedding,
     "tensor": TensorNodeEmbedding,
     "so2_tensor": SO2TensorNodeEmbedding,
 }

@@ -109,7 +109,6 @@ class Representation(torch.nn.Module):
             lmax=lmax,
             avg_num_neighbors=avg_num_neighbors,
             bias=False,
-            so2_angular_basis=self.so2_angular_basis
         )
         self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
             num_elements=self.num_elements,
@@ -173,7 +172,6 @@ class Representation(torch.nn.Module):
             "stochastic_depth": dropout['stochastic_depth'],
 
             "num_head": atomic_basis["num_head"],
-            "so2_angular_basis": self.so2_angular_basis,
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
             "so2_l1l3": atomic_basis["so2_l1l3"],
@@ -314,10 +312,12 @@ class Representation(torch.nn.Module):
 
         # === angular basis ===
         if self.use_so2:
-            self.so2_angular_basis.set_wigner(graph.edge_vector)
-            edge_attrs = None # wignerD here 
+            wigner, wigner_inv = self.so2_angular_basis.get_wigner()
+            edge_attrs = None
         if self.use_o3:
             edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
+            wigner = None
+            wigner_inv = None
 
         # === node initialize ===
         node_feats = self.node_embedding(
@@ -326,6 +326,8 @@ class Representation(torch.nn.Module):
             data['edge_index'],
             edge_attrs,
             cutoff,
+            wigner, 
+            wigner_inv,
         )
         if hasattr(self, "uie_embedding"):
             uie_feats = self.uie_embedding(data)
@@ -370,6 +372,8 @@ class Representation(torch.nn.Module):
                 data['edge_index'],
                 cutoff,
                 graph,
+                wigner,
+                wigner_inv,
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 

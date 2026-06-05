@@ -359,6 +359,14 @@ class SO3Rotation(torch.nn.Module):
         self.wigner = wigner
         self.wigner_inv = wigner_inv
 
+    def get_wigner(self, edge_vector) -> tuple[torch.Tensor]:
+        rot_mat3x3 = init_edge_rot_mat(edge_vector, use_rotation_mask=self.use_rotation_mask)
+        wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
+        wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner) # [14, 16] @ [16, 16]
+        wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
+        wigner_inv = wigner_inv * self.wigner_inv_rescale
+        return wigner, wigner_inv
+
 
     def rotate(self, inputs):
         outputs = torch.bmm(self.wigner, inputs)

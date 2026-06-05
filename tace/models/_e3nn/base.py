@@ -13,7 +13,6 @@ from e3nn import o3
 
 
 from ..lammps import e3nnGhostExchangeMixin
-from ..so2 import SO3Rotation
 
 
 def _to_possible_tp_irreps(
@@ -47,7 +46,6 @@ class NodeEmbedding(torch.nn.Module):
         lmax: int,
         avg_num_neighbors: float,
         bias: bool = False,
-        so2_angular_basis: Union[SO3Rotation, None] = None,
     ) -> None:
         super().__init__()
 
@@ -58,7 +56,6 @@ class NodeEmbedding(torch.nn.Module):
         self.Lmax = Lmax
         self.lmax = lmax
         self.avg_num_neighbors = avg_num_neighbors
-        self.so2_angular_basis = so2_angular_basis
 
         self._setup()
     
@@ -148,7 +145,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_first_resnet: bool = False,
         pre_norm_type: Union[str, None] = None,
         use_first_pre_norm: bool = False,
-        so2_angular_basis: Union[SO3Rotation, None] = None,
         use_so2_edge_ace: bool = False,
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
@@ -206,7 +202,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
         self.edge_nonlinear = edge_nonlinear
-        self.so2_angular_basis = so2_angular_basis
         self.stochastic_depth_p = stochastic_depth
         self.parity = parity
         self.num_head = num_head or 1
@@ -255,7 +250,6 @@ class Product(torch.nn.Module):
         l1l2: Union[str, None],
         bias: bool,
         resolution: list[int],
-        node_rotate: Union[SO3Rotation, None],
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
@@ -280,8 +274,6 @@ class Product(torch.nn.Module):
         self.use_first_dropout = use_first_dropout
         self.parity = parity
         self.last_layer = layer == num_layers -1
-        self.node_rotate = node_rotate
-
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
 

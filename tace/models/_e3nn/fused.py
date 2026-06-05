@@ -113,7 +113,6 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
-        so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
         l1l3: Union[str, None],
@@ -125,7 +124,6 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.mmax = mmax
         self.lmax = lmax
         self.num_channel = num_channel
-        self.so2_angular_basis = so2_angular_basis
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
         self.weight_type = weight_type
@@ -147,16 +145,17 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
             x: torch.Tensor, 
             w: torch.Tensor, 
             edge_index: torch.Tensor,
+            wigner: torch.Tensor,
+            wigner_inv: torch.Tensor,
         ) -> torch.Tensor:
         
         num_nodes = x.size(0)
 
         x = self.reshape_in(x)
         m_ij = x[edge_index[0]]
-        m_ij = self.so2_angular_basis.rotate(m_ij)
+        m_ij = torch.bmm(wigner, m_ij)
         m_ij = self.linear_up(m_ij, w) # tensor product here
-        m_ij = self.so2_angular_basis.rotate_inv(m_ij)
-
+        m_ij = torch.bmm(wigner_inv, m_ij)
         return self.reshape_out.inverse(
             scatter_sum(
                 m_ij, 
@@ -237,7 +236,6 @@ class uvSO2TensorProduct(torch.nn.Module):
         num_channel: int,
         num_elements: int,
         edge_wise_hidden: int,
-        so2_angular_basis: SO3Rotation,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
 
@@ -255,7 +253,6 @@ class uvSO2TensorProduct(torch.nn.Module):
         self.num_channel = num_channel
         self.num_elements = num_elements
         self.edge_wise_hidden = edge_wise_hidden or self.num_channel
-        self.so2_angular_basis = so2_angular_basis
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
         self.so2_linear_type = so2_linear_type
@@ -337,6 +334,8 @@ class uvSO2TensorProduct(torch.nn.Module):
             w: torch.Tensor, 
             edge_index: torch.Tensor,
             cutoff: torch.Tensor,
+            wigner: torch.Tensor,
+            wigner_inv: torch.Tensor,
         ) -> torch.Tensor:
 
         num_nodes = x.size(0)
@@ -344,7 +343,7 @@ class uvSO2TensorProduct(torch.nn.Module):
         x = self.reshape_in(x)
 
         m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        m_ij = self.so2_angular_basis.rotate(m_ij)
+        m_ij = torch.bmm(wigner, m_ij)
         w = w.view(num_edges, self.num_components, -1)
         w = torch.index_select(w, dim=1, index=self.expand_index)
         m_ij = w * m_ij
@@ -378,7 +377,7 @@ class uvSO2TensorProduct(torch.nn.Module):
             if cutoff is not None:
                 m_ij = m_ij * cutoff.unsqueeze(-1)
 
-        m_ij = self.so2_angular_basis.rotate_inv(m_ij)
+        m_ij = torch.bmm(wigner_inv, m_ij)
         
         return self.reshape_out.inverse(
             scatter_sum(
