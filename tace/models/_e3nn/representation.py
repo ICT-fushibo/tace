@@ -236,7 +236,6 @@ class Representation(torch.nn.Module):
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
                     irreps_in=prod_irreps_in,
-                    node_rotate=None,
                 )
             )
             self.irreps_out = self.products[-1].irreps_out
@@ -310,15 +309,16 @@ class Representation(torch.nn.Module):
             graph.dcutoff,
         )
 
+
         # === angular basis ===
+        edge_attrs = None
+        wigner = None
+        wigner_inv = None
         if self.use_so2:
-            wigner, wigner_inv = self.so2_angular_basis.get_wigner()
-            edge_attrs = None
+            wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
         if self.use_o3:
             edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
-            wigner = None
-            wigner_inv = None
-
+            
         # === node initialize ===
         node_feats = self.node_embedding(
             data['node_attrs'],
