@@ -9,7 +9,7 @@ import argparse
 import torch
 
 
-from tace.lightning import load_tace
+from tace.lightning import load_tace, export_tace
 from tace.utils._global import DTYPE
 
 
@@ -68,20 +68,11 @@ def main():
     model.to(dtype=args_dtype, device=args.device)
 
     if args.backend == "state_dict":
-        torch.save(
-            {
-                "state_dict": model.state_dict(),
-                "cfg": model.readout_fn.model_config,
-                "target_property": model.get_target_property(),
-                "embedding_property": model.get_embedding_property(),
-                "statistics": model.readout_fn.statistics,
-            }, 
-            args.model + "-state.pt"
-        )
+        export_tace(model, args.model + "-state.pt")
     elif args.backend == "whole_model":
         torch.save(model, args.model + "-whole.pt") 
     elif args.backend == "lammps":
-        from ..interface.lammps import TACELammpsCalc
+        from tace.interface.lammps import TACELammpsCalc
         model.lmp = True
         lammps_model = TACELammpsCalc(model)
         torch.save(lammps_model, args.model + "-lammps_mliap.pt")
