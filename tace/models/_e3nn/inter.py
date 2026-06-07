@@ -128,7 +128,7 @@ class CgtpInteraction(Interaction):
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
+        if (self.use_first_resnet or self.layer > 0):
             if self.resnet_linear_type == 'agnostic':
                 self.resnetBB = e3nnLinear(
                     irreps_in=self.irreps_in,
@@ -143,51 +143,13 @@ class CgtpInteraction(Interaction):
                     num_elements=self.num_elements,
                 )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
-
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
-
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
-                self.norm1 = get_normalization_layer(
-                    self.pre_norm_type,
-                    ls=self.irreps_in.lmax,
-                    num_channels=self.num_channel,
-                )
-                self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
-                self.norm2 = get_normalization_layer(
-                    self.pre_norm_type,
-                    ls=self.irreps_out.lmax,
-                    num_channels=self.num_channel,
-                )
-                self.reshape2 = LayoutTransform(self.irreps_out)
+            self.norm1 = get_normalization_layer(
+                self.pre_norm_type,
+                ls=self.irreps_in.lmax,
+                num_channels=self.num_channel,
+            )
+            self.reshape1 = LayoutTransform(self.irreps_in)
 
     def forward(
         self,
@@ -209,20 +171,12 @@ class CgtpInteraction(Interaction):
 
         density = None
         resBB = None
-        resBA = None
-        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
-
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
-                resBA = self.resnetBA(node_feats, node_attrs_slice)
-            else:
-                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -273,26 +227,7 @@ class CgtpInteraction(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        if resBA is not None:
-            m_i = m_i + resBA
-
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
-                resAB = self.resnetAB(m_i, node_attrs_slice)
-            else:
-                resAB = self.resnetAB(m_i)
-
-        if hasattr(self, 'norm2'):
-            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
-
-        if resBB is not None:
-            sc = resBB
-        elif resAB is not None:
-            sc = resAB
-        else:
-            sc = None
-
-        return m_i, self.truncate_ghosts(sc, nlocal)
+        return m_i, self.truncate_ghosts(resBB, nlocal)
     
 
 class uuSO2Interaction(Interaction):
@@ -828,7 +763,8 @@ class AttentionInteraction(Interaction):
             "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
         )
         # assert self.edge_nonlinear == 'so2_sigmoid_gate'
-        if self.use_graph_softmax: self.scatter_norm = None
+        # if self.use_graph_softmax: self.scatter_norm = None
+        self.use_graph_softmax = True
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -894,17 +830,6 @@ class AttentionInteraction(Interaction):
             act=self.radial_act,
         )
 
-        if self.scatter_norm == 'density' or self.scatter_norm == 'no_cutoff_density': 
-            self.edge_density = FFN[self.edge_info_type](
-                [self.edge_feats_channel, 64, 1],
-                bias=self.radial_bias,
-                layer_norm=self.radial_layer_norm,
-                act=self.radial_act,
-            ) # From MACE
-            self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
-            self.beta = torch.nn.Parameter(torch.tensor(0.0))
-
-
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
                 self.resnetBB = e3nnLinear(
@@ -927,6 +852,11 @@ class AttentionInteraction(Interaction):
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
                 )
+                self.resnetAB = e3nnLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
             else:
                 self.resnetBA = e3nnElementLinear(
                     irreps_in = self.irreps_in,
@@ -934,15 +864,6 @@ class AttentionInteraction(Interaction):
                     bias=self.use_bias,
                     num_elements=self.num_elements,
                 )
-
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
                 self.resnetAB = e3nnElementLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
@@ -951,14 +872,13 @@ class AttentionInteraction(Interaction):
                 ) 
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
-                self.norm1 = get_normalization_layer(
-                    self.pre_norm_type,
-                    ls=self.irreps_in.lmax,
-                    num_channels=self.num_channel,
-                )
-                self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
+            self.norm1 = get_normalization_layer(
+                self.pre_norm_type,
+                ls=self.irreps_in.lmax,
+                num_channels=self.num_channel,
+            )
+            self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type == "BAB":
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_out.lmax,
@@ -984,7 +904,6 @@ class AttentionInteraction(Interaction):
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
 
-        density = None
         resBB = None
         resBA = None
         resAB = None
@@ -1006,42 +925,19 @@ class AttentionInteraction(Interaction):
 
         node_feats = self.linear_up(node_feats)
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
-
-        conv_weights = self.edge_info(edge_feats)
-            
-        m_i = self.linear_down(
-            self.truncate_ghosts(
-                self.rejector(
-                    node_feats, 
-                    conv_weights, 
-                    edge_index, 
-                    cutoff,
-                    wigner,
-                    wigner_inv,
-                    edge_feats,
-                ), 
-                nlocal
-            ) # check   node_attrs_slice TODO
+        m_i = self.truncate_ghosts(
+            self.rejector(
+                node_feats, 
+                self.edge_info(edge_feats), 
+                edge_index, 
+                cutoff,
+                wigner,
+                wigner_inv,
+                edge_feats,
+            ), 
+            nlocal
         )
-
-        if hasattr(self, "edge_density"):
-            density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            if cutoff is not None and self.apply_density_cutoff:
-                density = density * cutoff
-            density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
-            density  = self.truncate_ghosts(density , nlocal)
-            density = density * self.beta + self.alpha
-            density = density.masked_fill(density == 0, 1e-9)
-
-        if self.scatter_norm is None:
-            m_i = m_i
-        elif self.scatter_norm == 'avg_num_neighbors':
-            m_i = m_i / self.avg_num_neighbors
-        else:
-            m_i = m_i / density
-
-        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
-
+    
         if resBA is not None:
             m_i = m_i + resBA
 
@@ -1054,13 +950,15 @@ class AttentionInteraction(Interaction):
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
+        m_i = self.linear_down(m_i)
+        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
+
         if resBB is not None:
             sc = resBB
         elif resAB is not None:
             sc = resAB
         else:
             sc = None
-
 
         return m_i, self.truncate_ghosts(sc, nlocal)
     

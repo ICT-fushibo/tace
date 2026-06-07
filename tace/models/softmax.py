@@ -3,7 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 '''
-Not use in TACE now
 Copy from
 https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/softmax.py
 https://pytorch-geometric.readthedocs.io/en/2.3.1/_modules/torch_geometric/utils/softmax.html
@@ -36,7 +35,6 @@ class GraphSoftmax(torch.nn.Module):
         super().__init__()
         self.eps = eps
         self.softcap = SoftCap(cap=softcap) if softcap is not None else torch.nn.Identity()
-
 
     def forward(
         self, 

@@ -483,6 +483,18 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
         self.graph_softmax = GraphSoftmax()
 
+        self.use_temperature = False
+        if self.use_temperature:
+            self.temperature_min = 0.25
+            self.temperature_max = 4.0
+            initial_temperature = 1.0
+            initial_temperature_logit = math.log(
+                (initial_temperature - self.temperature_min)
+                / (self.temperature_max - initial_temperature)
+            )
+            self.temperature_logit = torch.nn.Parameter(
+                torch.full((self.num_head,), initial_temperature_logit)
+            )
     def _complex_qk_attention(self, query: torch.Tensor, key: torch.Tensor, edge_feats: torch.Tensor) -> torch.Tensor:
 
         B = query.size(0)
@@ -514,6 +526,13 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             key_imag = sin_phase * key_m[:, 0] + cos_phase * key_m[:, 1]
             score = score + (query_m[:, 0] * key_real + query_m[:, 1] * key_imag).sum(dim=(1, 3))
 
+        if self.use_temperature:
+            temperature = self.temperature_min + (
+                self.temperature_max - self.temperature_min
+            ) * torch.sigmoid(self.temperature_logit)
+            print(temperature)
+            return score * self.attention_scale * temperature + radial_bias
+        
         return score * self.attention_scale + radial_bias
 
     def forward(
