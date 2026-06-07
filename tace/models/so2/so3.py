@@ -15,6 +15,7 @@ from e3nn import o3
 from e3nn.o3 import FromS2Grid, ToS2Grid
 
 
+# from .triton_wigner import fused_sparse_wigner_bmm
 from .utils import so2_expand_index, so3_expand_index
 
 
@@ -297,30 +298,18 @@ class CoefficientMappingModule(torch.nn.Module):
 
 
 class SO3Rotation(torch.nn.Module):
-    """
-        1.  Helper functions for Wigner-D rotations
-        2.  We merge the rotation with the original `._m_primary()` so after rotation, the layout of orders 
-            would be changed from (0, (-1, 0, +1), (-2, -1, 0, +1, +2) ...) to ((0, ...), (1, ...)).
-            This can skip one matrix multiplication.
-        3.  Similar to 2., we also merge the inverse rotation with `._l_primary()`.
-        4.  To stabilize gradient methods, in `_rotation_to_wigner_matrix()`, we set `use_rotation_mask` == True 
-            so that we do not backpropogate rotation if y component of the unit vector of relative position is 
-            very close to `_ROTATION_MASK_THRESHOLD`. This implementation is based on eSEN.
-        
-        Args:
-            lmax (int):     Maximum degree of irreps features
-            mmax (int):     Maximum order of irreps features after rotation
-    """
     def __init__(
         self,
         lmax,
         mmax,
-        use_rotation_mask=True
+        use_rotation_mask=True,
+        use_sparse_matmul=True,
     ):
         super().__init__()
         self.lmax = lmax
         self.mmax = mmax
         self.use_rotation_mask = use_rotation_mask
+        self.use_sparse_matmul = use_sparse_matmul
         
         mapping = CoefficientMappingModule(
             lmax=self.lmax, 
@@ -349,7 +338,51 @@ class SO3Rotation(torch.nn.Module):
         self.register_buffer('wigner_index_to_m_array', wigner_index_to_m_array)
         self.register_buffer('wigner_inv_rescale', wigner_inv_rescale) # [1, 16, 14]
 
+        # # sparse
+        # output_to_input = wigner_index_to_m_array.argmax(dim=1)
+        # rotate_row_ptr, rotate_col_idx = self._sparse_wigner_indices(
+        #     output_to_input, transpose=False
+        # )
+        # inverse_row_ptr, inverse_col_idx = self._sparse_wigner_indices(
+        #     output_to_input, transpose=True
+        # )
+        # self.register_buffer("rotate_row_ptr", rotate_row_ptr)
+        # self.register_buffer("rotate_col_idx", rotate_col_idx)
+        # self.register_buffer("inverse_row_ptr", inverse_row_ptr)
+        # self.register_buffer("inverse_col_idx", inverse_col_idx)
+        # self.rotate_max_nnz = 2 * self.lmax + 1
+        # self.inverse_max_nnz = max(
+        #     1,
+        #     max(
+        #         int((output_to_input >= l * l).logical_and(
+        #             output_to_input < (l + 1) * (l + 1)
+        #         ).sum())
+        #         for l in range(self.lmax + 1)
+        #     ),
+        # )
 
+    def _sparse_wigner_indices(self, output_to_input, transpose):
+        """Build the fixed CSR pattern while keeping TACE's existing layouts."""
+        rows = (self.lmax + 1) ** 2 if transpose else output_to_input.numel()
+        row_ptr = [0]
+        col_idx = []
+        for row in range(rows):
+            if transpose:
+                l = math.isqrt(row)
+                columns = torch.nonzero(
+                    (output_to_input >= l * l)
+                    & (output_to_input < (l + 1) * (l + 1)),
+                    as_tuple=False,
+                ).flatten()
+            else:
+                l = math.isqrt(int(output_to_input[row]))
+                columns = torch.arange(l * l, (l + 1) * (l + 1))
+            col_idx.extend(columns.tolist())
+            row_ptr.append(len(col_idx))
+        return torch.tensor(row_ptr, dtype=torch.int32), torch.tensor(
+            col_idx, dtype=torch.int32
+        )
+    
     def set_wigner(self, edge_vector):
         rot_mat3x3 = init_edge_rot_mat(edge_vector, use_rotation_mask=self.use_rotation_mask)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
@@ -367,31 +400,39 @@ class SO3Rotation(torch.nn.Module):
         wigner_inv = wigner_inv * self.wigner_inv_rescale
         return wigner, wigner_inv
 
+    # def rotate(self, wigner, inputs):
+    #     if not self.use_sparse_matmul:
+    #         return torch.bmm(wigner, inputs)
+    #     return fused_sparse_wigner_bmm(
+    #         wigner,
+    #         inputs,
+    #         self.rotate_row_ptr,
+    #         self.rotate_col_idx,
+    #         self.inverse_row_ptr,
+    #         self.inverse_col_idx,
+    #         self.rotate_max_nnz,
+    #         self.inverse_max_nnz,
+    #     )
 
-    def rotate(self, inputs):
-        outputs = torch.bmm(self.wigner, inputs)
-        return outputs
-
-
-    def rotate_inv(self, inputs):
-        outputs = torch.bmm(self.wigner_inv, inputs)
-        return outputs
+    # def rotate_inv(self, wigner_inv, inputs):
+    #     if not self.use_sparse_matmul:
+    #         return torch.bmm(wigner_inv, inputs)
+    #     return fused_sparse_wigner_bmm(
+    #         wigner_inv,
+    #         inputs,
+    #         self.inverse_row_ptr,
+    #         self.inverse_col_idx,
+    #         self.rotate_row_ptr,
+    #         self.rotate_col_idx,
+    #         self.inverse_max_nnz,
+    #         self.rotate_max_nnz,
+    #     )
     
-
     def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
-        #x = edge_rot_mat @ edge_rot_mat.new_tensor([0.0, 1.0, 0.0])
-        #x = torch.einsum(
-        #    'bij, j -> bi',
-        #    edge_rot_mat,
-        #    edge_rot_mat.new_tensor([0.0, 1.0, 0.0])
-        #)
         x = edge_rot_mat[:, :, 1]
 
         alpha, beta = o3.xyz_to_angles(x)
         R = o3.angles_to_matrix(alpha, beta, torch.zeros_like(alpha)).transpose(-1, -2)
-        
-        #R = R @ edge_rot_mat
-        #R = torch.einsum('bik, bkj -> bij', R, edge_rot_mat)
         R = torch.bmm(R, edge_rot_mat)
 
         gamma = torch.atan2(R[..., 0, 2], R[..., 0, 0])
@@ -440,6 +481,183 @@ class SO3Rotation(torch.nn.Module):
         return 'mmax={}, lmax={}'.format(self.mmax, self.lmax)
 
 
+# class SO3Rotation(torch.nn.Module):
+#     def __init__(
+#         self,
+#         lmax,
+#         mmax,
+#         use_rotation_mask=True,
+#         use_sparse_matmul=True,
+#     ):
+#         super().__init__()
+#         self.lmax = lmax
+#         self.mmax = mmax
+#         self.use_rotation_mask = use_rotation_mask
+#         self.use_sparse_matmul = use_sparse_matmul
+        
+#         mapping = CoefficientMappingModule(
+#             lmax=self.lmax, 
+#             mmax=self.lmax, 
+#             use_rotate_inv_rescale=True
+#         )
+#         wigner_index_mask = mapping.coefficient_idx(self.lmax, self.mmax)
+#         wigner_inv_rescale = mapping.get_rotate_inv_rescale(self.lmax, self.mmax)
+        
+#         # Merge converting m and l layout
+#         mapping = CoefficientMappingModule(
+#             lmax=self.lmax,
+#             mmax=self.mmax,
+#             use_rotate_inv_rescale=False
+#         )
+#         to_m = mapping.to_m
+#         wigner_inv_rescale = torch.einsum('nia, ba -> nib', wigner_inv_rescale, to_m)
+#         wigner_index_to_m_array = torch.zeros(
+#             to_m.shape[0],
+#             ((self.lmax + 1) ** 2)
+#         )
+#         # to_m [14, 14]
+#         # wigner_index_mask [14], tensor([ 0,  1,  2,  3,  4,  5,  6,  7,  8, 10, 11, 12, 13, 14])
+#         wigner_index_to_m_array[:, wigner_index_mask] = to_m
+
+#         self.register_buffer('wigner_index_to_m_array', wigner_index_to_m_array)
+#         self.register_buffer('wigner_inv_rescale', wigner_inv_rescale) # [1, 16, 14]
+#         output_to_input = wigner_index_to_m_array.argmax(dim=1)
+#         rotate_row_ptr, rotate_col_idx = self._sparse_wigner_indices(
+#             output_to_input, transpose=False
+#         )
+#         inverse_row_ptr, inverse_col_idx = self._sparse_wigner_indices(
+#             output_to_input, transpose=True
+#         )
+#         self.register_buffer("rotate_row_ptr", rotate_row_ptr)
+#         self.register_buffer("rotate_col_idx", rotate_col_idx)
+#         self.register_buffer("inverse_row_ptr", inverse_row_ptr)
+#         self.register_buffer("inverse_col_idx", inverse_col_idx)
+#         self.rotate_max_nnz = 2 * self.lmax + 1
+#         self.inverse_max_nnz = max(
+#             1,
+#             max(
+#                 int((output_to_input >= l * l).logical_and(
+#                     output_to_input < (l + 1) * (l + 1)
+#                 ).sum())
+#                 for l in range(self.lmax + 1)
+#             ),
+#         )
+
+#     def _sparse_wigner_indices(self, output_to_input, transpose):
+#         """Build the fixed CSR pattern while keeping TACE's existing layouts."""
+#         rows = (self.lmax + 1) ** 2 if transpose else output_to_input.numel()
+#         row_ptr = [0]
+#         col_idx = []
+#         for row in range(rows):
+#             if transpose:
+#                 l = math.isqrt(row)
+#                 columns = torch.nonzero(
+#                     (output_to_input >= l * l)
+#                     & (output_to_input < (l + 1) * (l + 1)),
+#                     as_tuple=False,
+#                 ).flatten()
+#             else:
+#                 l = math.isqrt(int(output_to_input[row]))
+#                 columns = torch.arange(l * l, (l + 1) * (l + 1))
+#             col_idx.extend(columns.tolist())
+#             row_ptr.append(len(col_idx))
+#         return torch.tensor(row_ptr, dtype=torch.int32), torch.tensor(
+#             col_idx, dtype=torch.int32
+#         )
+
+#     def set_wigner(self, edge_vector):
+#         rot_mat3x3 = init_edge_rot_mat(edge_vector, use_rotation_mask=self.use_rotation_mask)
+#         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
+#         wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner) # [14, 16] @ [16, 16]
+#         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
+#         wigner_inv = wigner_inv * self.wigner_inv_rescale
+#         self.wigner = wigner
+#         self.wigner_inv = wigner_inv
+
+#     def rotate(self, inputs, wigner):
+#         if not self.use_sparse_matmul:
+#             return torch.bmm(wigner, inputs)
+#         return fused_sparse_wigner_bmm(
+#             wigner,
+#             inputs,
+#             self.rotate_row_ptr,
+#             self.rotate_col_idx,
+#             self.inverse_row_ptr,
+#             self.inverse_col_idx,
+#             self.rotate_max_nnz,
+#             self.inverse_max_nnz,
+#         )
+
+#     def rotate_inv(self, inputs, wigner_inv):
+#         if not self.use_sparse_matmul:
+#             return torch.bmm(wigner_inv, inputs)
+#         return fused_sparse_wigner_bmm(
+#             wigner_inv,
+#             inputs,
+#             self.inverse_row_ptr,
+#             self.inverse_col_idx,
+#             self.rotate_row_ptr,
+#             self.rotate_col_idx,
+#             self.inverse_max_nnz,
+#             self.rotate_max_nnz,
+#         )
+    
+
+#     def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
+#         x = edge_rot_mat[:, :, 1]
+
+#         alpha, beta = o3.xyz_to_angles(x)
+#         R = o3.angles_to_matrix(alpha, beta, torch.zeros_like(alpha)).transpose(-1, -2)
+#         R = torch.bmm(R, edge_rot_mat)
+
+#         gamma = torch.atan2(R[..., 0, 2], R[..., 0, 0])
+
+#         if self.use_rotation_mask:
+#             yprod = (x @ x.new_tensor([0, 1, 0])).detach()
+#             backprop_mask = (yprod > -_ROTATION_MASK_THRESHOLD) & (yprod < _ROTATION_MASK_THRESHOLD)
+#             alpha_detach = alpha[(~backprop_mask)].clone().detach()
+#             gamma_detach = gamma[(~backprop_mask)].clone().detach()
+#             beta_detach = beta.clone().detach()
+#             beta_detach[yprod >  _ROTATION_MASK_THRESHOLD] = 0.0
+#             beta_detach[yprod < -_ROTATION_MASK_THRESHOLD] = math.pi
+#             beta_detach = beta_detach[(~backprop_mask)]
+
+#         size = int((end_lmax + 1) ** 2) - int((start_lmax) ** 2)
+#         wigner = torch.zeros(len(alpha), size, size, device=edge_rot_mat.device)
+#         start = 0
+#         for lmax in range(start_lmax, end_lmax + 1):
+#             if self.use_rotation_mask:
+#                 block = wigner_D(
+#                     lmax, 
+#                     alpha[backprop_mask], 
+#                     beta[backprop_mask], 
+#                     gamma[backprop_mask]
+#                 )
+#                 block_detach = wigner_D(
+#                     lmax, 
+#                     alpha_detach, 
+#                     beta_detach, 
+#                     gamma_detach
+#                 )
+#                 end = start + block.size()[1]
+#                 wigner[   backprop_mask, start:end, start:end] = block
+#                 wigner[(~backprop_mask), start:end, start:end] = block_detach
+#             elif not self.use_rotation_mask:
+#                 block = wigner_D(lmax, alpha, beta, gamma)
+#                 end = start + block.size()[1]
+#                 wigner[:, start:end, start:end] = block
+#             start = end
+#         if self.use_rotation_mask:
+#             return wigner
+#         else:
+#             return wigner.detach()
+
+#     def extra_repr(self):
+#         return 'mmax={}, lmax={}, use_sparse_matmul={}'.format(
+#             self.mmax, self.lmax, self.use_sparse_matmul
+#         )
+    
+    
 class SO3Grid(torch.nn.Module):
     """
     Helper functions for grid representation of the irreps

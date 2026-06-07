@@ -92,3 +92,49 @@ class O3Norm(torch.nn.Module):
         if y is not None:
             return self.scalar_multiplier(norm, y)
         return self.scalar_multiplier(norm, x)
+    
+
+
+class ChannelWiseO3NormGate(torch.nn.Module):
+    """Gate all O(3) components belonging to the same channel together."""
+
+    def __init__(
+        self,
+        irreps: o3.Irreps,
+        activation: torch.nn.Module,
+    ) -> None:
+        super().__init__()
+
+        self.irreps_in = o3.Irreps(irreps)
+        self.irreps_out = self.irreps_in
+        multiplicities = {mul for mul, _ in self.irreps_in}
+        if len(multiplicities) != 1:
+            raise ValueError(
+                "ChannelWiseO3NormGate requires the same multiplicity for every "
+                f"irrep, got {self.irreps_in}"
+            )
+
+        from ..layout import LayoutTransform2
+        self.reshape = LayoutTransform2(self.irreps_in)
+        self.activation = activation
+        self.register_buffer(
+            "balance_degree_weight",
+            torch.cat(
+                [
+                    torch.full((ir.dim,), 1.0 / ir.dim) / len(self.irreps_in)
+                    for _, ir in self.irreps_in
+                ]
+            ),
+            persistent=False,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.reshape(x)
+        channel_norm = torch.sum(
+            x.square() * self.balance_degree_weight,
+            dim=-1,
+            keepdim=True,
+        )
+        gate = self.activation(channel_norm)
+
+        return self.reshape.inverse(gate * x)

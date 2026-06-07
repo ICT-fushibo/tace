@@ -8,9 +8,11 @@ from typing import Dict
 
 
 import torch
+from e3nn import o3
+
 
 from ..layout import LayoutTransform, LayoutTransform2
-from ..linear import e3nnLinear, e3nnElementLinear
+from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
 from ..so2 import SO3Grid
 from .base import Product
 from .fused import uuuTensorProduct
@@ -44,10 +46,18 @@ class CgtpACE(Product):
             "num_elements": self.num_elements,
         }
         coefs_cls = e3nnElementLinear
-            
+        if self.num_expert > 1:
+            coefs_cls = e3nnMoEElementLinear
+            for_coefs["num_experts"] = self.num_expert
+
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
-        self.coefs.append(coefs_cls(self.irreps_hidden, **for_coefs))
+        self.coefs.append(
+            coefs_cls(
+                o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]).simplify(),
+                **for_coefs,
+            )
+        )
 
         product_in1 = self.irreps_hidden
 
@@ -59,18 +69,30 @@ class CgtpACE(Product):
                 l1l2=self.l1l2,
             )
             self.aces.append(this_ace)
-            self.coefs.append(coefs_cls(this_ace.irreps_out.simplify(), **for_coefs))
+            self.coefs.append(coefs_cls(
+                o3.Irreps([(self.num_hidden_channel, ir) for _, ir in this_ace.irreps_out]).simplify(), 
+                **for_coefs,
+                )
+            )
             product_in1 = this_ace.irreps_out
 
+        if self.nonlinear_type == 'cwnorm':
+            from .nonlinear import ChannelWiseO3NormGate
+            from ..mlp import ScaledSigmoid
+            self.nonlinearty = ChannelWiseO3NormGate(
+                for_coefs["irreps_out"],
+                ScaledSigmoid(),
+            )
+
         self.linear = e3nnLinear(
-            self.irreps_coefs_out,
+            o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]),
             self.irreps_out,
-            bias=self.use_bias
+            bias=self.use_bias,
         )    
 
         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
-        
+
     def forward(
             self, 
             node_feats: torch.Tensor, 
@@ -91,11 +113,11 @@ class CgtpACE(Product):
             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
 
-        # if hasattr(self, "nonlinearity"):
-        #     outs = self.nonlinearity(outs, node_attrs)
+        if hasattr(self, "nonlinearty"):
+            outs = self.nonlinearty(outs)
 
         outs = self.linear(outs)
-        
+
         if hasattr(self, "stochastic_depth"):
             outs = self.stochastic_depth(outs, batch)
         
@@ -104,7 +126,8 @@ class CgtpACE(Product):
 
         return outs
 
-
+    
+# TODO, refactor
 class GtpACE(Product):
     """
     An ACE implementation based on Gaunt tensor products.
@@ -125,6 +148,7 @@ class GtpACE(Product):
     def _setup(self):
 
         assert self.parity == False, "GtpACE not support O(3) group now"
+        assert self.num_expert == 1
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -202,6 +226,8 @@ class MACE(Product):
     https://github.com/ACEsuit/mace
     """
     def _setup(self):
+
+        assert self.num_expert == 1
 
         self.linear_up = e3nnLinear(
             self.irreps_in,

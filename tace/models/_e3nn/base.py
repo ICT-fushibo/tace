@@ -243,13 +243,16 @@ class Product(torch.nn.Module):
         Lmax: int,
         lmax: int,
         num_channel: int,
-        num_hidden_channel: int,
+        num_expert: Union[int, None],
+        num_channel_per_expert: Union[int, None],
         target_irreps: list[str],
         irreps_in: o3.Irreps,
         correlation: list[int],
         l1l2: Union[str, None],
         bias: bool,
         resolution: list[int],
+        nonlinear: Union[str, None],
+
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
@@ -262,13 +265,20 @@ class Product(torch.nn.Module):
         self.lmax = lmax
         self.correlation = correlation[layer]
         self.num_channel = num_channel
+        self.num_expert = num_expert or 1
+        if self.num_expert > 1:
+            self.num_channel_per_expert = num_channel_per_expert or self.num_channel
+        else:
+            self.num_channel_per_expert = self.num_channel
+        self.num_hidden_channel = self.num_expert * self.num_channel_per_expert
         self.target_irreps = target_irreps
         self.num_elements = num_elements
         self.l1l2 = l1l2
         self.use_bias = bias
-        self.num_hidden_channel = num_hidden_channel or num_channel
         self.nonlinear_type = None
         self.nonlinear_act = None
+        if nonlinear is not None:
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
         self.resolution = resolution
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
@@ -290,7 +300,7 @@ class Product(torch.nn.Module):
         if self.correlation == 1:
             self.irreps_coefs_out = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in if ir.l <=Lmax])
         else:
-            self.irreps_coefs_out = (_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, Lmax) * self.num_hidden_channel).regroup()
+            self.irreps_coefs_out = (_to_possible_tp_irreps(self.irreps_in, self.irreps_in, parity, Lmax) * self.num_hidden_channel).regroup()
 
         if self.last_layer:
             self.irreps_coefs_out = (self.target_irreps * self.num_hidden_channel).regroup()

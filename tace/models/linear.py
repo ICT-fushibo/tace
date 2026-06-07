@@ -48,48 +48,6 @@ class torchLinear(torch.nn.Module):
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
-# # TODO, add bias
-# class torchElementLinear(torch.nn.Module):
-
-#     __constants__ = ["in_features", "out_features"]
-#     in_features: int
-#     out_features: int
-#     weight: torch.Tensor
-
-#     def __init__(
-#         self,
-#         in_features: int,
-#         out_features: int,
-#         bias: bool = True,
-#         device=None,
-#         dtype=None,
-#         num_elements: int = -1,
-#     ) -> None:
-#         factory_kwargs = {"device": device, "dtype": dtype}
-#         super().__init__()
-#         assert num_elements > 0
-#         self.in_features = in_features
-#         self.out_features = out_features
-#         self.weight = torch.nn.Parameter(
-#             torch.randn((num_elements, out_features, in_features), **factory_kwargs)
-#         )
-#         self.num_elements = num_elements
-#         # if bias:
-#         #     self.bias = torch.nn.Parameter(torch.zeros(num_elements, out_features, **factory_kwargs))
-#         # else:
-#         #     self.register_parameter("bias", None)
-#         self.bias = None
-#         self.alpha = 1.0 / math.sqrt(in_features)
-
-#     def forward(self, input: torch.Tensor, node_attrs: torch.Tensor) -> torch.Tensor:
-#         weight = self.weight * self.alpha
-#         node_type = node_attrs.argmax(dim=-1)
-#         weight = weight[node_type]
-#         out = torch.einsum("b...c, bCc -> b...C", input, weight)
-#         return out
-
-#     def extra_repr(self) -> str:
-#         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
 
 class mlpLinear(torch.nn.Module):
     def __init__(
@@ -286,7 +244,151 @@ class e3nnElementLinear(torch.nn.Module):
         return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
     
 
+class e3nnMoEElementLinear(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in: o3.Irreps,
+        irreps_out: o3.Irreps,
+        *,
+        bias: bool = True,
+        num_elements: int,
+        num_experts: int,
+        use_matrix_weight: bool = get_tace_use_matrix_weight(),
+    ):
+        super().__init__()
 
+        self.irreps_in = o3.Irreps(irreps_in)
+        self.irreps_out = o3.Irreps(irreps_out)
+        self.num_elements = num_elements
+        self.num_experts = num_experts
+        self.use_matrix_weight = use_matrix_weight == "1"
+
+        if num_experts < 1:
+            raise ValueError(f"num_experts must be positive, got {num_experts}")
+
+        invalid_in = [mul for mul, _ in self.irreps_in if mul % num_experts != 0]
+        invalid_out = [mul for mul, _ in self.irreps_out if mul % num_experts != 0]
+        if invalid_in or invalid_out:
+            raise ValueError(
+                "every input and output irrep multiplicity must be divisible by "
+                f"num_experts={num_experts}, got invalid input multiplicities="
+                f"{invalid_in} and output multiplicities={invalid_out}"
+            )
+
+        self.expert_irreps_in = o3.Irreps(
+            [(mul // num_experts, ir) for mul, ir in self.irreps_in]
+        )
+        self.expert_irreps_out = o3.Irreps(
+            [(mul // num_experts, ir) for mul, ir in self.irreps_out]
+        )
+        self.linear = o3.Linear(
+            self.expert_irreps_in,
+            self.expert_irreps_out,
+            internal_weights=False,
+            shared_weights=False,
+        )
+        self._input_slices = list(self.irreps_in.slices())
+        self._input_dims = [ir.dim for _, ir in self.irreps_in]
+        self._input_expert_muls = [
+            mul // self.num_experts for mul, _ in self.irreps_in
+        ]
+        self._output_dims = [ir.dim for _, ir in self.irreps_out]
+        self._output_expert_muls = [
+            mul // self.num_experts for mul, _ in self.irreps_out
+        ]
+        self._path_shapes = [
+            tuple(ins.path_shape) for ins in self.linear.instructions
+        ]
+        self._path_metadata = [
+            (ins.i_in, ins.i_out, float(ins.path_weight))
+            for ins in self.linear.instructions
+        ]
+
+        if self.use_matrix_weight:
+            self.weight = torch.nn.ParameterList(
+                [
+                    torch.nn.Parameter(
+                        torch.randn(num_elements, num_experts, *ins.path_shape)
+                    )
+                    for ins in self.linear.instructions
+                ]
+            )
+        else:
+            self.weight = torch.nn.Parameter(
+                torch.randn(num_elements, num_experts, self.linear.weight_numel)
+            )
+
+        self._bias_out_indices = []
+        bias_numel = 0
+        for out_idx, (mul, ir) in enumerate(self.expert_irreps_out):
+            if ir.l == 0 and ir.p == 1:
+                self._bias_out_indices.append((out_idx, bias_numel, bias_numel + mul))
+                bias_numel += mul
+        if bias and bias_numel > 0:
+            self.bias = torch.nn.Parameter(
+                torch.zeros(num_elements, num_experts, bias_numel)
+            )
+        else:
+            self.register_parameter("bias", None)
+
+    def _path_weights(self, node_type: torch.Tensor) -> list[torch.Tensor]:
+        if self.use_matrix_weight:
+            return [weight[node_type] for weight in self.weight]
+
+        selected = self.weight[node_type]
+        weights = []
+        offset = 0
+        for path_shape in self._path_shapes:
+            size = math.prod(path_shape)
+            weights.append(
+                selected[:, :, offset : offset + size].reshape(
+                    selected.shape[0], self.num_experts, *path_shape
+                )
+            )
+            offset += size
+        return weights
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        node_type = y.argmax(dim=-1)
+        inputs = [
+            x[:, tensor_slice].reshape(
+                x.shape[0], self.num_experts, expert_mul, ir_dim
+            )
+            for tensor_slice, ir_dim, expert_mul in zip(
+                self._input_slices,
+                self._input_dims,
+                self._input_expert_muls,
+            )
+        ]
+        outputs = [
+            x.new_zeros(x.shape[0], self.num_experts, expert_mul, ir_dim)
+            for ir_dim, expert_mul in zip(
+                self._output_dims, self._output_expert_muls
+            )
+        ]
+
+        for (i_in, i_out, path_weight), weight in zip(
+            self._path_metadata, self._path_weights(node_type)
+        ):
+            outputs[i_out] = outputs[i_out] + path_weight * torch.einsum(
+                "bemd,bemn->bend",
+                inputs[i_in],
+                weight,
+            )
+
+        if self.bias is not None:
+            bias = self.bias[node_type]
+            for out_idx, start, end in self._bias_out_indices:
+                outputs[out_idx] = outputs[out_idx] + bias[:, :, start:end].unsqueeze(-1)
+
+        return torch.cat(
+            [output.reshape(output.shape[0], -1) for output in outputs],
+            dim=-1,
+        )
+
+    def __repr__(self):
+        return "MoE" + repr(self.linear) + f"(bias={self.bias is not None}, num_experts={self.num_experts})"
+    
 
 def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") -> torch.nn.Module:
 

@@ -14,16 +14,16 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 from ..so2 import (
-    SO3Rotation, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear, 
+    SO3Rotation, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear,
     so2_expand_index, so3_expand_index, SO3Linear, 
 )
 from .paths import generate_paths
-from .edge_prod import ComplexProductBasis, VectorSwiGLU
+from .edge_prod import ComplexProductBasisV1, ComplexProductBasisV2, VectorSwiGLU
 
 
 from ..mlp import SmoothLeakyReLU
 from ..softmax import GraphSoftmax
-
+from ..linear import  torchLinear
 
 class O3ScatterTensorProduct(torch.nn.Module):
     def __init__(
@@ -116,6 +116,8 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
         l1l3: Union[str, None],
+        num_elements: int,
+        use_so2_edge_ace: bool,
         weight_type: str = "w1",
         path_mode: str = 'sum',
     ) -> None:
@@ -129,6 +131,8 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.weight_type = weight_type
         self.path_mode = path_mode
         self.l1l3 = l1l3
+        self.num_elements = num_elements
+        self.use_so2_edge_ace = use_so2_edge_ace
         self.linear_up = uuSO2Linear(
             self.mmax,
             self.lmax,
@@ -140,9 +144,20 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         )
         self.weight_numel = self.linear_up.weight_numel
 
+        if self.use_so2_edge_ace:
+            self.ace = ComplexProductBasisV2(
+                mmax, 
+                lmax, 
+                self.num_channel,
+                num_elements=self.num_elements,
+                m1m2='<=',
+                agnostic=True,
+            )
+
     def forward(
             self, 
             x: torch.Tensor, 
+            node_attrs: torch.Tensor,
             w: torch.Tensor, 
             edge_index: torch.Tensor,
             wigner: torch.Tensor,
@@ -155,6 +170,8 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         m_ij = x[edge_index[0]]
         m_ij = torch.bmm(wigner, m_ij)
         m_ij = self.linear_up(m_ij, w) # tensor product here
+        if hasattr(self, "ace"):
+            m_ij = self.ace(m_ij, node_attrs, edge_index)
         m_ij = torch.bmm(wigner_inv, m_ij)
         return self.reshape_out.inverse(
             scatter_sum(
@@ -286,7 +303,7 @@ class uvSO2TensorProduct(torch.nn.Module):
         )
         self.split_list = [self.num_gates, (lmax+1) + (lmax+1) * mmax * 2]
         if self.use_so2_edge_ace:
-            self.ace = ComplexProductBasis(
+            self.ace = ComplexProductBasisV1(
                 mmax, 
                 lmax, 
                 self.edge_wise_hidden,
@@ -316,7 +333,7 @@ class uvSO2TensorProduct(torch.nn.Module):
                 0,
                 lmax,
                 self.num_channel * 2,
-                self.num_channel,     
+                self.edge_wise_hidden,     
                 num_components_out=[1],
                 weight_type=self.so2_linear_type,
             )
@@ -326,6 +343,8 @@ class uvSO2TensorProduct(torch.nn.Module):
             self.real_alpha_norm = torch.nn.LayerNorm(self.num_channel_per_head)
             self.real_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
             torch.nn.init.uniform_(self.real_alpha_dot, -std, std)
+
+        # self.wigner = SO3Rotation(lmax, mmax)
 
     def forward(
             self, 
@@ -370,13 +389,170 @@ class uvSO2TensorProduct(torch.nn.Module):
             if cutoff is not None:
                 real_alpha = real_alpha * cutoff
             real_alpha = real_alpha.view(num_edges, 1, self.num_head, 1)
-            m_ij = m_ij.view(num_edges, -1, self.num_head, self.num_channel_per_head)
+            
+            m_ij = m_ij.view(num_edges, m_ij.size(1), self.num_head, -1)
             m_ij = real_alpha * m_ij 
-            m_ij = m_ij.view(num_edges, -1, self.edge_wise_hidden)
+            m_ij = m_ij.view(num_edges, m_ij.size(1), -1)
         else:
             if cutoff is not None:
                 m_ij = m_ij * cutoff.unsqueeze(-1)
 
+        m_ij = torch.bmm(wigner_inv, m_ij)
+        # m_ij = self.wigner.rotate(wigner_inv, m_ij)
+        
+        return self.reshape_out.inverse(
+            scatter_sum(
+                m_ij, 
+                edge_index[1], 
+                dim=0, 
+                dim_size=num_nodes,
+            )
+        )
+    
+
+class AttentionSO2TensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channel: int,
+        num_head: int,
+        edge_wise_hidden: int,
+        edge_feats_channel: int,
+        so2_linear_type: str,
+        reshape_in: LayoutTransform,
+        reshape_out: LayoutTransform,
+    ) -> None:
+        super().__init__()
+
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+        self.num_head = num_head
+        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
+        self.num_channel_per_head = self.edge_wise_hidden // self.num_head
+        assert self.edge_wise_hidden % self.num_head == 0
+        self.so2_linear_type = so2_linear_type
+        self.reshape_in = reshape_in
+        self.reshape_out = reshape_out
+
+        self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
+        self.weight_numel = (self.num_components * self.num_channel * 2)
+        self.register_buffer('expand_index', expand_index, persistent=False)
+        self.num_gates = sum(lmax+1-m for m in range(mmax+1))
+
+        self.linear_up = uvSO2Linear(
+            mmax,
+            lmax,
+            self.num_channel * 2,
+            self.edge_wise_hidden,     
+            num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
+            weight_type=self.so2_linear_type,
+        )
+        self.split_list = [self.num_gates, (lmax+1) + sum((lmax+1-m)*2 for m in range(1, mmax+1))]
+        self.nonlinearity = SO2Gate(
+            mmax,
+            lmax,
+            self.edge_wise_hidden,   
+            channel_wise=False,
+        )
+        self.linear_down = uvSO2Linear(
+            mmax,
+            lmax,
+            self.edge_wise_hidden,     
+            self.num_channel,     
+            weight_type=self.so2_linear_type,
+        )
+        self.query_proj = uvSO2Linear(
+            mmax,
+            lmax,
+            self.num_channel,
+            self.edge_wise_hidden,   
+            weight_type=self.so2_linear_type,
+        )
+        self.key_proj = uvSO2Linear(
+            mmax,
+            lmax,
+            self.num_channel,
+            self.edge_wise_hidden,   
+            weight_type=self.so2_linear_type,
+        )
+        self.radial_proj = torchLinear(edge_feats_channel, 2 * self.num_head)
+        torch.nn.init.zeros_(self.radial_proj.weight)
+        torch.nn.init.zeros_(self.radial_proj.bias)
+        self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
+        self.graph_softmax = GraphSoftmax()
+
+    def _complex_qk_attention(self, query: torch.Tensor, key: torch.Tensor, edge_feats: torch.Tensor) -> torch.Tensor:
+
+        B = query.size(0)
+        H = self.num_head
+        C = self.num_channel_per_head
+
+        # radial bias and pahse
+        radial_proj = self.radial_proj(edge_feats)
+        radial_bias = radial_proj[:, :H]
+        radial_phase = math.pi * torch.tanh(radial_proj[:, H:])
+
+        # m = 0
+        n = self.lmax + 1
+        query_m0 = query[:, :n].view(B, n, H, C)
+        key_m0 = key[:, :n].view(B, n, H, C)
+        score = (query_m0 * key_m0).sum(dim=(1, 3))
+
+        # m > 0
+        offset = n
+        for m in range(1, self.mmax + 1):
+            n = self.lmax + 1 - m
+            query_m = query[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+            key_m = key[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+            offset += 2 * n
+            phase = (m * radial_phase).view(B, 1, H, 1)
+            cos_phase = torch.cos(phase)
+            sin_phase = torch.sin(phase)
+            key_real = cos_phase * key_m[:, 0] - sin_phase * key_m[:, 1]
+            key_imag = sin_phase * key_m[:, 0] + cos_phase * key_m[:, 1]
+            score = score + (query_m[:, 0] * key_real + query_m[:, 1] * key_imag).sum(dim=(1, 3))
+
+        return score * self.attention_scale + radial_bias
+
+    def forward(
+            self, 
+            x: torch.Tensor, 
+            w: torch.Tensor, 
+            edge_index: torch.Tensor,
+            cutoff: torch.Tensor,
+            wigner: torch.Tensor,
+            wigner_inv: torch.Tensor,
+            edge_feats: torch.Tensor,
+        ) -> torch.Tensor:
+
+        num_nodes = x.size(0)
+        num_edges = w.size(0)
+        x = self.reshape_in(x)
+        m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
+        m_ij = torch.bmm(wigner, m_ij)
+
+        key = self.key_proj(m_ij[:, :, :self.num_channel])
+        query = self.query_proj(m_ij[:, :, self.num_channel:])
+        real_alpha = self._complex_qk_attention(query, key, edge_feats)
+
+        w = w.view(num_edges, self.num_components, -1)
+        w = torch.index_select(w, dim=1, index=self.expand_index)
+        m_ij = w * m_ij
+        m_ij = self.linear_up(m_ij) 
+        gate = m_ij.narrow(1, 0, self.split_list[0])
+        m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
+        m_ij = self.nonlinearity(m_ij, gate) 
+        m_ij = self.linear_down(m_ij)
+
+        real_alpha = self.graph_softmax(real_alpha, edge_index[1], num_nodes=num_nodes, exp_rescale=cutoff) # [edge, head]
+        if cutoff is not None:
+            real_alpha = real_alpha * cutoff
+        real_alpha = real_alpha.view(num_edges, 1, self.num_head, 1)
+        m_ij = m_ij.view(num_edges, -1, self.num_head, self.num_channel_per_head)
+        m_ij = real_alpha * m_ij 
+        m_ij = m_ij.view(num_edges, -1, self.num_channel)
         m_ij = torch.bmm(wigner_inv, m_ij)
         
         return self.reshape_out.inverse(
@@ -387,3 +563,4 @@ class uvSO2TensorProduct(torch.nn.Module):
                 dim_size=num_nodes,
             )
         )
+
