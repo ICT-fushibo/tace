@@ -61,6 +61,7 @@ DEFAULT_MODEL_CONFIG = {
         "so2_agnostic": True,
         "num_head": None,
         "use_graph_softmax": False,
+        "use_temperature": False,
         "node_wise_hidden": None,
         "edge_wise_hidden": None,
         "resolution": None,

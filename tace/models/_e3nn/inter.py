@@ -778,6 +778,7 @@ class AttentionInteraction(Interaction):
             num_channel=self.num_channel,
             edge_feats_channel=self.edge_feats_channel,
             num_head=self.num_head,
+            use_temperature=self.use_temperature,
             edge_wise_hidden=self.edge_wise_hidden,
             so2_linear_type=self.so2_linear_type,
             reshape_in=LayoutTransform(self.irreps_in),

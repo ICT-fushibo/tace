@@ -417,6 +417,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         lmax: int,
         num_channel: int,
         num_head: int,
+        use_temperature: bool,
         edge_wise_hidden: int,
         edge_feats_channel: int,
         so2_linear_type: str,
@@ -433,6 +434,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         self.num_channel_per_head = self.edge_wise_hidden // self.num_head
         assert self.edge_wise_hidden % self.num_head == 0
         self.so2_linear_type = so2_linear_type
+        self.use_temperature = use_temperature
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
 
@@ -483,7 +485,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
         self.graph_softmax = GraphSoftmax()
 
-        self.use_temperature = False
+        # self.use_temperature = True
         if self.use_temperature:
             self.temperature_min = 0.25
             self.temperature_max = 4.0
@@ -495,6 +497,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             self.temperature_logit = torch.nn.Parameter(
                 torch.full((self.num_head,), initial_temperature_logit)
             )
+
     def _complex_qk_attention(self, query: torch.Tensor, key: torch.Tensor, edge_feats: torch.Tensor) -> torch.Tensor:
 
         B = query.size(0)
@@ -530,11 +533,47 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             temperature = self.temperature_min + (
                 self.temperature_max - self.temperature_min
             ) * torch.sigmoid(self.temperature_logit)
-            print(temperature)
             return score * self.attention_scale * temperature + radial_bias
         
         return score * self.attention_scale + radial_bias
 
+    def _radial_value_rotation(
+        self,
+        value: torch.Tensor,
+        radial_weights: torch.Tensor,
+    ) -> torch.Tensor:
+        outputs = []
+        value_offset = 0
+        weight_offset = 0
+
+        n = self.lmax + 1
+        outputs.append(value[:, value_offset : value_offset + n])
+        value_offset += n
+        weight_offset += n
+
+        for m in range(1, self.mmax + 1):
+            n = self.lmax + 1 - m
+            value_m = value[:, value_offset : value_offset + 2 * n].view(
+                value.size(0), 2, n, -1
+            )
+            phase = m * math.pi * torch.tanh(
+                radial_weights[:, weight_offset : weight_offset + n]
+            )
+            cos_phase = torch.cos(phase)
+            sin_phase = torch.sin(phase)
+            value_real = (
+                cos_phase * value_m[:, 0] - sin_phase * value_m[:, 1]
+            )
+            value_imag = (
+                sin_phase * value_m[:, 0] + cos_phase * value_m[:, 1]
+            )
+            outputs.append(value_real)
+            outputs.append(value_imag)
+            value_offset += 2 * n
+            weight_offset += n
+
+        return torch.cat(outputs, dim=1)
+    
     def forward(
             self, 
             x: torch.Tensor, 
@@ -582,4 +621,3 @@ class AttentionSO2TensorProduct(torch.nn.Module):
                 dim_size=num_nodes,
             )
         )
-

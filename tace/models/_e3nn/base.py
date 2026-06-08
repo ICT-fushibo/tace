@@ -128,6 +128,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         lmax: int,
         correlation: list[int],
         num_channel: int,
+        use_temperature: bool,
         edge_feats_channel: int,
         target_irreps: list[str],
         num_radial_basis: int,
@@ -193,6 +194,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
             self.radial_act = 'silu'
         else:
             self.radial_act = 'sigmoid'
+        self.use_temperature = use_temperature
 
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
