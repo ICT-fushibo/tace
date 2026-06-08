@@ -304,15 +304,14 @@ class Representation(torch.nn.Module):
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
   
         # === edge initialize (radial) ===
-        edge_feats, cutoff = self.radial_basis(
+        radial_basis, cutoff = self.radial_basis(
             graph.edge_length,
             data['node_attrs'],
             data['edge_index'],
             self.atomic_numbers,
             graph.dcutoff,
         )
-
-
+        
         # === angular basis ===
         edge_attrs = None
         wigner = None
@@ -325,7 +324,7 @@ class Representation(torch.nn.Module):
         # === node initialize ===
         node_feats = self.node_embedding(
             data['node_attrs'],
-            edge_feats,
+            radial_basis,
             data['edge_index'],
             edge_attrs,
             cutoff,
@@ -341,7 +340,7 @@ class Representation(torch.nn.Module):
         edge_feats = self.edge_embedding(
             node_feats,
             data['node_attrs'],
-            edge_feats,
+            radial_basis,
             data['edge_index'],
             cutoff,
         )
@@ -370,7 +369,7 @@ class Representation(torch.nn.Module):
                 node_feats,
                 node_attrs_total, 
                 node_attrs_slice, 
-                edge_feats,
+                radial_basis,
                 this_edge_feats, 
                 edge_attrs, 
                 data['edge_index'],

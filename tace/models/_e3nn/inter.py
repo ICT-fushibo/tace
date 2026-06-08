@@ -156,7 +156,7 @@ class CgtpInteraction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
-        edge_feats_radial,
+        radial_basis,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
@@ -384,7 +384,7 @@ class uuSO2Interaction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
-        edge_feats_radial,
+        radial_basis,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
@@ -569,8 +569,8 @@ class uvSO2Interaction(Interaction):
             linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
-            # o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
-            self.irreps_out,
+            o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
+            # self.irreps_out,
             linear_down_irreps_out,
             bias=self.use_bias,
         )
@@ -659,7 +659,7 @@ class uvSO2Interaction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
-        edge_feats_radial,
+        radial_basis,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
@@ -779,7 +779,7 @@ class AttentionInteraction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
-            edge_feats_channel=self.edge_feats_channel,
+            num_radial_basis=self.num_radial_basis,
             num_head=self.num_head,
             use_temperature=self.use_temperature,
             edge_wise_hidden=self.edge_wise_hidden,
@@ -896,7 +896,7 @@ class AttentionInteraction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
-        edge_feats_radial,
+        radial_basis,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
@@ -939,7 +939,7 @@ class AttentionInteraction(Interaction):
                 cutoff,
                 wigner,
                 wigner_inv,
-                edge_feats,
+                radial_basis,
             ), 
             nlocal
         )

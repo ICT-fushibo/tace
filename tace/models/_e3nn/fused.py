@@ -25,6 +25,7 @@ from ..mlp import SmoothLeakyReLU
 from ..softmax import GraphSoftmax
 from ..linear import  torchLinear
 
+
 class O3ScatterTensorProduct(torch.nn.Module):
     def __init__(
         self,
@@ -321,7 +322,7 @@ class uvSO2TensorProduct(torch.nn.Module):
             mmax,
             lmax,
             self.edge_wise_hidden,     
-            self.num_channel,     
+            self.edge_wise_hidden,
             num_components_in=[lmax+1] * (mmax+1),
             weight_type=self.so2_linear_type,
         )
@@ -419,7 +420,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         num_head: int,
         use_temperature: bool,
         edge_wise_hidden: int,
-        edge_feats_channel: int,
+        num_radial_basis: int,
         so2_linear_type: str,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
@@ -480,7 +481,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             self.edge_wise_hidden,   
             weight_type=self.so2_linear_type,
         )
-        self.radial_proj = torchLinear(edge_feats_channel, 2 * self.num_head)
+        self.radial_proj = torchLinear(num_radial_basis, 2 * self.num_head)
         torch.nn.init.zeros_(self.radial_proj.weight)
         torch.nn.init.zeros_(self.radial_proj.bias)
         self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
@@ -582,7 +583,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             cutoff: torch.Tensor,
             wigner: torch.Tensor,
             wigner_inv: torch.Tensor,
-            edge_feats: torch.Tensor,
+            radial_basis: torch.Tensor,
         ) -> torch.Tensor:
 
         num_nodes = x.size(0)
@@ -593,7 +594,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
 
         key = self.key_proj(m_ij[:, :, :self.num_channel])
         query = self.query_proj(m_ij[:, :, self.num_channel:])
-        real_alpha = self._complex_qk_attention(query, key, edge_feats)
+        real_alpha = self._complex_qk_attention(query, key, radial_basis)
 
         w = w.view(num_edges, self.num_components, -1)
         w = torch.index_select(w, dim=1, index=self.expand_index)
