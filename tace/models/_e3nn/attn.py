@@ -12,7 +12,7 @@ import torch
 
 
 from ..layout import LayoutTransform
-from ..so2 import SO3Rotation, so2_expand_index
+from ..so2 import WignerD, so2_expand_index
 from ..mlp import SmoothLeakyReLU
 from ..softmax import GraphSoftmax
 from ..linear import torchLinear
@@ -25,7 +25,7 @@ class SO2Attention(torch.nn.Module):
         lmax: int,
         num_channel: int,
         edge_wise_hidden: int,
-        so2_angular_basis: SO3Rotation,
+        so2_angular_basis: WignerD,
         reshape_in: LayoutTransform,
         num_head: int,
         weights_shape: int, 

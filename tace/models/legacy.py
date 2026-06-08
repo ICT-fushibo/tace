@@ -87,7 +87,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         use_so2_edge_ace: bool,
 #         edge_nonlinear: Union[str, None],
 #         num_elements: int,
-#         so2_angular_basis: SO3Rotation,
+#         so2_angular_basis: WignerD,
 #         reshape_in: LayoutTransform,
 #         reshape_out: LayoutTransform,
 #     ) -> None:
@@ -351,7 +351,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         use_so2_edge_ace: bool,
 #         edge_nonlinear: Union[str, None],
 #         num_elements: int,
-#         so2_angular_basis: SO3Rotation,
+#         so2_angular_basis: WignerD,
 #         reshape_in: LayoutTransform,
 #         reshape_out: LayoutTransform,
 #         scatter: Union[str, None],

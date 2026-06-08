@@ -297,7 +297,7 @@ class CoefficientMappingModule(torch.nn.Module):
         return f"{self.__class__.__name__}(mmax={self.mmax}, lmax={self.lmax})"
 
 
-class SO3Rotation(torch.nn.Module):
+class WignerD(torch.nn.Module):
     def __init__(
         self,
         lmax,
@@ -481,7 +481,7 @@ class SO3Rotation(torch.nn.Module):
         return 'mmax={}, lmax={}'.format(self.mmax, self.lmax)
 
 
-# class SO3Rotation(torch.nn.Module):
+# class WignerD(torch.nn.Module):
 #     def __init__(
 #         self,
 #         lmax,

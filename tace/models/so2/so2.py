@@ -251,6 +251,10 @@ class SO2Gate(torch.nn.Module):
         g = torch.index_select(g, dim=1, index=self.expand_index)
         return g * x 
     
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__} + "f"(act='sigmoid')"
+        )
 
 class SO2Norm(torch.nn.Module):
     def __init__(
@@ -338,6 +342,10 @@ class SO2Norm(torch.nn.Module):
             out.append(xm)
         return torch.cat(out, dim=1)
 
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(act=sigmoid)"
+        )
 
 class SO2ComplexMul(torch.nn.Module):
 

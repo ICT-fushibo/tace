@@ -14,7 +14,7 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 from ..so2 import (
-    SO3Rotation, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear,
+    WignerD, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear,
     so2_expand_index, so3_expand_index, SO3Linear, 
 )
 from .paths import generate_paths
@@ -344,7 +344,7 @@ class uvSO2TensorProduct(torch.nn.Module):
             self.real_alpha_dot = torch.nn.Parameter(torch.randn(self.num_head, self.num_channel_per_head))
             torch.nn.init.uniform_(self.real_alpha_dot, -std, std)
 
-        # self.wigner = SO3Rotation(lmax, mmax)
+        # self.wigner = WignerD(lmax, mmax)
 
     def forward(
             self, 
@@ -435,6 +435,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         assert self.edge_wise_hidden % self.num_head == 0
         self.so2_linear_type = so2_linear_type
         self.use_temperature = use_temperature
+        # self.use_temperature = True
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
 
@@ -462,7 +463,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             mmax,
             lmax,
             self.edge_wise_hidden,     
-            self.num_channel,     
+            self.edge_wise_hidden,     
             weight_type=self.so2_linear_type,
         )
         self.query_proj = uvSO2Linear(
@@ -485,7 +486,6 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
         self.graph_softmax = GraphSoftmax()
 
-        # self.use_temperature = True
         if self.use_temperature:
             self.temperature_min = 0.25
             self.temperature_max = 4.0
@@ -610,7 +610,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         real_alpha = real_alpha.view(num_edges, 1, self.num_head, 1)
         m_ij = m_ij.view(num_edges, -1, self.num_head, self.num_channel_per_head)
         m_ij = real_alpha * m_ij 
-        m_ij = m_ij.view(num_edges, -1, self.num_channel)
+        m_ij = m_ij.view(num_edges, -1, self.edge_wise_hidden)
         m_ij = torch.bmm(wigner_inv, m_ij)
         
         return self.reshape_out.inverse(

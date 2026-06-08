@@ -819,6 +819,9 @@ class RadialBasis(torch.nn.Module):
     ):
         super().__init__()
 
+        assert isinstance(trainable, bool)
+        assert isinstance(apply_cutoff, bool)
+
         if cutoff_fn == 'mollifier':
             self.cutoff_fn = MollifierCutoff(cutoff=cutoff)
         elif cutoff_fn == 'cosine': 

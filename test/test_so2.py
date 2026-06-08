@@ -33,12 +33,12 @@ rotation_matrix = Q
 rotated_vector2 = random_vector2 @ rotation_matrix.T
 
 
-from tace.models.so2 import SO3Rotation, so2_expand_index
+from tace.models.so2 import WignerD, so2_expand_index
 
 num_components, expand_index = so2_expand_index(mmax, lmax)
 
 
-so3_rotation = SO3Rotation(
+so3_rotation = WignerD(
     lmax,
     mmax,
 )

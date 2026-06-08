@@ -156,12 +156,13 @@ class CgtpInteraction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
+        edge_feats_radial,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
         graph,
-        wigner,
+        wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
     ):
 
@@ -383,12 +384,13 @@ class uuSO2Interaction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
+        edge_feats_radial,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
         graph,
-        wigner,
+        wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
     ):
 
@@ -657,14 +659,15 @@ class uvSO2Interaction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
+        edge_feats_radial,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
         graph,
-        wigner,
+        wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
-):
+    ):
     
         lmp_data = graph.lmp_data
         lmp_natoms = graph.lmp_natoms
@@ -782,7 +785,8 @@ class AttentionInteraction(Interaction):
             edge_wise_hidden=self.edge_wise_hidden,
             so2_linear_type=self.so2_linear_type,
             reshape_in=LayoutTransform(self.irreps_in),
-            reshape_out=LayoutTransform(self.irreps_out),
+            # reshape_out=LayoutTransform(self.irreps_out),
+            reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -818,8 +822,8 @@ class AttentionInteraction(Interaction):
             linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
-            # o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
-            self.irreps_out,
+            o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
+            # self.irreps_out,
             linear_down_irreps_out,
             bias=self.use_bias,
         )
@@ -892,14 +896,15 @@ class AttentionInteraction(Interaction):
         node_feats: torch.Tensor,
         node_attrs_total: torch.Tensor,
         node_attrs_slice: torch.Tensor,
+        edge_feats_radial,
         edge_feats: torch.Tensor,
         edge_attrs: torch.Tensor,
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
         graph,
-        wigner,
+        wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
-):
+    ):
     
         lmp_data = graph.lmp_data
         lmp_natoms = graph.lmp_natoms

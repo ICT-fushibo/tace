@@ -15,7 +15,7 @@ from e3nn import o3
 from ...utils.env import get_tace_use_dens
 from ..radial import RadialBasis
 from ..angular import SphericalHarmonics
-from ..so2 import SO3Rotation
+from ..so2 import WignerD
 from ..layout import LayoutTransform
 from .node import NODE_EMBEDDING
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
@@ -90,7 +90,7 @@ class Representation(torch.nn.Module):
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
             # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
-            self.so2_angular_basis = SO3Rotation(Lmax, mmax, use_rotation_mask=True)
+            self.so2_angular_basis = WignerD(Lmax, mmax, use_rotation_mask=True)
         else:
             self.so2_angular_basis = None
         if self.use_o3:
@@ -370,6 +370,7 @@ class Representation(torch.nn.Module):
                 node_feats,
                 node_attrs_total, 
                 node_attrs_slice, 
+                edge_feats,
                 this_edge_feats, 
                 edge_attrs, 
                 data['edge_index'],

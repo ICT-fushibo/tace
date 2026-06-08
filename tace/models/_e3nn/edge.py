@@ -108,64 +108,64 @@ class NonLinearEdgeEmbedding(EdgeEmbedding):
         return self.act1(self.radial_proj(edge_feats))
 
 
-class ElementEdgeEmbedding(EdgeEmbedding):
-    """
-    An edge embedding module that incorporates both radial and element information.
+# class ElementEdgeEmbedding(EdgeEmbedding):
+#     """
+#     An edge embedding module that incorporates both radial and element information.
 
-    This class combines transformed edge features with embeddings of the source
-    and target nodes, allowing the edge representation to depend not only on
-    geometric information but also on the types of connected elements.
+#     This class combines transformed edge features with embeddings of the source
+#     and target nodes, allowing the edge representation to depend not only on
+#     geometric information but also on the types of connected elements.
 
-    Note:
-        When using this module, it is recommended not to additionally use
-        edge update modules that rely purely on element information, as this
-        may lead to an overemphasis on element features in the edge representation.
-    """
+#     Note:
+#         When using this module, it is recommended not to additionally use
+#         edge update modules that rely purely on element information, as this
+#         may lead to an overemphasis on element features in the edge representation.
+#     """
 
-    def _setup(self) -> None:
+#     def _setup(self) -> None:
 
-        self.out_dim = self.num_channel * 3
+#         self.out_dim = self.num_channel * 3
 
-        self.radial_proj = e3nnLinear(
-            f"{self.num_radial_basis}x0e",
-            f"{self.num_channel}x0e",
-            bias=self.bias,
-        )
-        self.source_embedding = e3nnLinear(
-            f"{self.num_elements}x0e",
-            f"{self.num_channel}x0e",
-            bias=self.bias,
-        )
-        self.target_embedding = e3nnLinear(
-            f"{self.num_elements}x0e",
-            f"{self.num_channel}x0e",
-            bias=self.bias,
-        )
-        self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
+#         self.radial_proj = e3nnLinear(
+#             f"{self.num_radial_basis}x0e",
+#             f"{self.num_channel}x0e",
+#             bias=self.bias,
+#         )
+#         self.source_embedding = e3nnLinear(
+#             f"{self.num_elements}x0e",
+#             f"{self.num_channel}x0e",
+#             bias=self.bias,
+#         )
+#         self.target_embedding = e3nnLinear(
+#             f"{self.num_elements}x0e",
+#             f"{self.num_channel}x0e",
+#             bias=self.bias,
+#         )
+#         self.act1 = Activation(self.radial_proj.irreps_out, [torch.nn.SiLU()])
 
-        if isinstance(self.source_embedding.weight, torch.Tensor):
-            torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
-            torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
-        else:
-            torch.nn.init.uniform_(self.source_embedding.weight[0], a=-0.001, b=0.001)
-            torch.nn.init.uniform_(self.target_embedding.weight[0], a=-0.001, b=0.001)
+#         if isinstance(self.source_embedding.weight, torch.Tensor):
+#             torch.nn.init.uniform_(self.source_embedding.weight, a=-0.001, b=0.001)
+#             torch.nn.init.uniform_(self.target_embedding.weight, a=-0.001, b=0.001)
+#         else:
+#             torch.nn.init.uniform_(self.source_embedding.weight[0], a=-0.001, b=0.001)
+#             torch.nn.init.uniform_(self.target_embedding.weight[0], a=-0.001, b=0.001)
 
-    def forward(
-        self,
-        node_feats: torch.Tensor,
-        node_attrs: torch.Tensor,
-        edge_feats: torch.Tensor,
-        edge_index: torch.Tensor,
-        cutoff: Union[torch.Tensor, None],
-    ) -> torch.Tensor:
+#     def forward(
+#         self,
+#         node_feats: torch.Tensor,
+#         node_attrs: torch.Tensor,
+#         edge_feats: torch.Tensor,
+#         edge_index: torch.Tensor,
+#         cutoff: Union[torch.Tensor, None],
+#     ) -> torch.Tensor:
         
-        assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
+#         assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
         
-        x_j = self.source_embedding(node_attrs)[edge_index[0]]
-        x_i = self.target_embedding(node_attrs)[edge_index[1]]
-        edge_feats = self.radial_proj(edge_feats)
+#         x_j = self.source_embedding(node_attrs)[edge_index[0]]
+#         x_i = self.target_embedding(node_attrs)[edge_index[1]]
+#         edge_feats = self.radial_proj(edge_feats)
 
-        return self.act1(torch.cat([edge_feats, x_i, x_j], dim=-1))
+#         return self.act1(torch.cat([edge_feats, x_i, x_j], dim=-1))
 
 
 class IdentityEdgeUpdate(EdgeUpdate):
@@ -263,7 +263,7 @@ EDGE_EMBEDDING = {
     "identity": IdentityEdgeEmbedding,
     "linear": LinearEdgeEmbedding,
     "nonlinear": NonLinearEdgeEmbedding,
-    "element": ElementEdgeEmbedding,
+    # "element": ElementEdgeEmbedding,
 }
 
 EDGE_UPDATE = {

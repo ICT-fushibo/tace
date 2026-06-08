@@ -52,6 +52,9 @@ class LinearNodeEmbedding(NodeEmbedding):
         
         return self.elem_emb1(node_attrs)
 
+    def __repr__(self) -> str:
+        return repr(self.elem_emb1)
+        
 
 class NonLinearNodeEmbedding(NodeEmbedding):
     """
