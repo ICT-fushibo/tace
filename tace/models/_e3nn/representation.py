@@ -90,7 +90,7 @@ class Representation(torch.nn.Module):
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
             # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
-            self.so2_angular_basis = WignerD(Lmax, mmax, use_rotation_mask=True)
+            self.so2_angular_basis = WignerD(Lmax, mmax)
         else:
             self.so2_angular_basis = None
         if self.use_o3:

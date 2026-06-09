@@ -37,7 +37,6 @@ tmp/
 xzm/
 draw/
 3bpa/
-_transformer/
 
 # Ignore specific files
 .DS_Store

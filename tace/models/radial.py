@@ -82,50 +82,6 @@ class j0SphericalBesselBasis(torch.nn.Module):
         )
 
 
-class j0ElementSphericalBesselBasis(torch.nn.Module):
-    def __init__(
-        self, cutoff: float = 6.0, num_basis: int = 8, num_elements: int = -1,
-    ) -> None:
-        super().__init__()
-        self.num_basis = num_basis
-        bessel_roots = (
-            math.pi
-            / cutoff
-            * torch.linspace(
-                start=1.0,
-                end=num_basis,
-                steps=num_basis,
-                dtype=torch.get_default_dtype(),
-            )
-        )
-
-        self.source_k = torch.nn.Parameter(
-            bessel_roots.unsqueeze(0).repeat(num_elements, 1)
-        )
-        self.target_k = torch.nn.Parameter(
-            bessel_roots.unsqueeze(0).repeat(num_elements, 1)
-        )
-        self.register_buffer(
-            "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
-        )
-        self.register_buffer(
-            "prefactor",
-            torch.tensor(math.sqrt(2.0 / cutoff), dtype=torch.get_default_dtype()),
-        )
-
-    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
-        source_k = torch.einsum("bz, zi -> bi", node_attrs, self.source_k)
-        target_k = torch.einsum("bz, zi -> bi", node_attrs, self.target_k)
-        k = (source_k[edge_index[0]] + target_k[edge_index[1]]) * 0.5
-        numerator = torch.sin(k * r)  # [..., num_basis]
-        return self.prefactor * (numerator / r)
-
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}(cutoff={self.cutoff}, num_basis={self.num_basis}"
-        )
-    
-
 class jnTaylorSphericalBessel(torch.nn.Module):
     def __init__(self, n: int, K: int =6):
         super().__init__()
@@ -368,7 +324,7 @@ class GaussianBasis(torch.nn.Module):
     def __repr__(self):
         return f"{self.__class__.__name__}(cutoff={self.cutoff}, width={self.width})"
     
-    
+
 class CosineCutoff(torch.nn.Module):
     """
     The fourth derivative and above are discontinuous
@@ -855,12 +811,6 @@ class RadialBasis(torch.nn.Module):
                 num_basis=num_basis,
                 trainable=trainable,
             )
-        elif radial_basis == "ej0":
-            self.radial_fn = j0ElementSphericalBesselBasis(
-                cutoff=cutoff, 
-                num_basis=num_basis, 
-                num_elements=num_elements,
-            )
         # elif radial_basis == "chebychev":
         #     self.radial_fn = ChebyshevTBasis(
         #         cutoff=cutoff,
@@ -892,7 +842,7 @@ class RadialBasis(torch.nn.Module):
         else:
             self.out_dim = num_basis
             self.num_basis = num_basis
-
+        # self.num_basis = self.radial_fn.num_basis
         self.apply_cutoff = apply_cutoff
         self.use_dydynamic_cutoff = use_dydynamic_cutoff
 
