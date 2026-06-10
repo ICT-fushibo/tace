@@ -203,6 +203,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.resnet_linear_type = resnet_linear_type
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
+        self.nonlinear = nonlinear
         self.edge_nonlinear = edge_nonlinear
         self.stochastic_depth_p = stochastic_depth
         self.parity = parity

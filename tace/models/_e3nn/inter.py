@@ -47,32 +47,6 @@ class CgtpInteraction(Interaction):
             l1l2=self.l1l2,
         )
 
-        # if self.irreps_in.lmax > 0 and self.use_graph_softmax:
-        #     if self.scatter_norm is None:
-        #         pass
-        #     elif self.scatter_norm == 'avg_num_neighbors':
-        #         self.scatter_norm = None
-        #     else:
-        #         self.avg_num_neighbors = 1.0
-
-        #     self.scatter_norm = None
-        #     self.attention = SO2Attention(
-        #         mmax=0,
-        #         lmax=self.Lmax,
-        #         num_channel=self.num_channel,
-        #         edge_wise_hidden=self.edge_wise_hidden,
-        #         so2_angular_basis=self.so2_angular_basis,
-        #         reshape_in=LayoutTransform(self.irreps_in),
-        #         num_head=self.num_head,
-        #         weights_shape=[ins.path_shape for ins in self.rejector.tp.instructions if ins.has_weight],
-        #     )
-        #     self.edge_info_attn = FFN[self.edge_info_type](
-        #         [self.edge_feats_channel] + self.radial_mlp + [self.attention.weight_numel],
-        #         bias=self.radial_bias,
-        #         layer_norm=self.radial_layer_norm,
-        #         act=self.radial_act,
-        #     )
-
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
         if self.nonlinear_type == 'gate':
             irreps_gated = irreps_node_wise_hidden
@@ -127,8 +101,7 @@ class CgtpInteraction(Interaction):
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
-
-        if (self.use_first_resnet or self.layer > 0):
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
                 self.resnetBB = e3nnLinear(
                     irreps_in=self.irreps_in,
@@ -144,12 +117,13 @@ class CgtpInteraction(Interaction):
                 )
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            self.norm1 = get_normalization_layer(
-                self.pre_norm_type,
-                ls=self.irreps_in.lmax,
-                num_channels=self.num_channel,
-            )
-            self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type in ['BB']:
+                self.norm1 = get_normalization_layer(
+                    self.pre_norm_type,
+                    ls=self.irreps_in.lmax,
+                    num_channels=self.num_channel,
+                )
+                self.reshape1 = LayoutTransform(self.irreps_in)
 
     def forward(
         self,
@@ -188,18 +162,6 @@ class CgtpInteraction(Interaction):
         conv_weights = self.edge_info(edge_feats)
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
-
-        # if self.irreps_in.lmax > 0 and self.use_graph_softmax:
-        #     conv_weights = self.attention(
-        #         node_feats,
-        #         self.edge_info_attn(edge_feats),
-        #         edge_index,
-        #         cutoff,
-        #         conv_weights,
-        #     )
-        # else:
-        #     if cutoff is not None:
-        #         conv_weights = conv_weights * cutoff
 
         m_i = self.linear_down(
             self.truncate_ghosts(
@@ -307,7 +269,8 @@ class uuSO2Interaction(Interaction):
             act=self.radial_act,
         )
 
-        if self.scatter_norm == 'density' or self.scatter_norm == 'no_cutoff_density': 
+        self.apply_density_cutoff = True
+        if self.scatter_norm == 'density': 
             self.edge_density = FFN[self.edge_info_type](
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
@@ -333,51 +296,14 @@ class uuSO2Interaction(Interaction):
                     num_elements=self.num_elements,
                 )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
-
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
-
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
+            if self.resnet_type in ['BB']:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
-                self.norm2 = get_normalization_layer(
-                    self.pre_norm_type,
-                    ls=self.irreps_out.lmax,
-                    num_channels=self.num_channel,
-                )
-                self.reshape2 = LayoutTransform(self.irreps_out)
 
     def forward(
         self,
@@ -422,6 +348,7 @@ class uuSO2Interaction(Interaction):
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
 
         conv_weights = self.edge_info(edge_feats)
+        
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
 
@@ -493,12 +420,11 @@ class uuSO2Interaction(Interaction):
         return m_i, self.truncate_ghosts(sc, nlocal)
     
 
-class uvSO2Interaction(Interaction):
+class uvSO2InteractionArchitecture2(Interaction):
     """
-    An interaction module based on uvSO2Linear.
+    An interaction module based on uvSO2Linear and Edge Complex Product Basis.
 
     This block is primarily designed for uMLIP. 
-    They incorporate edge-level many-body expansions and an attention-based architecture. 
     In general, there is little need to use this module unless you are specifically training uMLIP. 
     It sacrifices some extrapolation capability in exchange for improved fitting accuracy.
 
@@ -508,11 +434,10 @@ class uvSO2Interaction(Interaction):
 
         assert self.parity == False, "uvSO2Interaction not support O(3) group"
         assert self.irreps_in.lmax > 0, (
-            "uvSO2Interaction's irreps_in.lmax must > 0, "
-            "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
+            "uvSO2InteractionArchitecture2's irreps_in.lmax must > 0, "
+            "use uvSO2InteractionArchitecture2 from the second layer or use other node_embedding with l > 0"
         )
-        # assert self.edge_nonlinear == 'so2_sigmoid_gate'
-        if self.use_graph_softmax: self.scatter_norm = None
+        assert self.edge_nonlinear == 'so2_sigmoid_gate'
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -525,15 +450,12 @@ class uvSO2Interaction(Interaction):
             lmax=self.lmax,
             num_channel=self.num_channel,
             edge_wise_hidden=self.edge_wise_hidden,
+            so2_linear_type=self.so2_linear_type,
             num_elements=self.num_elements,
+            use_so2_edge_ace=self.use_so2_edge_ace,
+            agnostic=self.so2_agnostic,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
-
-            num_head=self.num_head,
-            use_graph_softmax=self.use_graph_softmax,
-            use_so2_edge_ace=self.use_so2_edge_ace,
-            so2_linear_type=self.so2_linear_type,
-            agnostic=self.so2_agnostic,
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -569,8 +491,7 @@ class uvSO2Interaction(Interaction):
             linear_down_irreps_out = irreps_node_wise_hidden
 
         self.linear_down = e3nnLinear(
-            o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
-            # self.irreps_out,
+            self.irreps_out,
             linear_down_irreps_out,
             bias=self.use_bias,
         )
@@ -582,7 +503,8 @@ class uvSO2Interaction(Interaction):
             act=self.radial_act,
         )
 
-        if self.scatter_norm == 'density' or self.scatter_norm == 'no_cutoff_density': 
+        self.apply_density_cutoff = True
+        if self.scatter_norm == 'density': 
             self.edge_density = FFN[self.edge_info_type](
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
@@ -608,51 +530,14 @@ class uvSO2Interaction(Interaction):
                     num_elements=self.num_elements,
                 )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
-
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
-
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
+            if self.resnet_type in ['BB']:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
-                self.norm2 = get_normalization_layer(
-                    self.pre_norm_type,
-                    ls=self.irreps_out.lmax,
-                    num_channels=self.num_channel,
-                )
-                self.reshape2 = LayoutTransform(self.irreps_out)
 
     def forward(
         self,
@@ -698,8 +583,8 @@ class uvSO2Interaction(Interaction):
 
         conv_weights = self.edge_info(edge_feats)
 
-        # if cutoff is not None:
-        #     conv_weights = conv_weights * cutoff
+        if cutoff is not None:
+            conv_weights = conv_weights * cutoff
             
         m_i = self.linear_down(
             self.truncate_ghosts(
@@ -755,8 +640,7 @@ class uvSO2Interaction(Interaction):
 
 
         return m_i, self.truncate_ghosts(sc, nlocal)
-
-
+    
 class AttentionInteraction(Interaction):
     def _setup(self) -> None:
 
