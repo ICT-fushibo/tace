@@ -114,13 +114,12 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
-        reshape_in: LayoutTransform,
-        reshape_out: LayoutTransform,
         l1l3: Union[str, None],
         num_elements: int,
         use_so2_edge_ace: bool,
-        weight_type: str = "w1",
-        path_mode: str = 'sum',
+        weight_type: str,
+        reshape_in: LayoutTransform,
+        reshape_out: LayoutTransform,
     ) -> None:
         super().__init__()
 
@@ -130,7 +129,7 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
         self.weight_type = weight_type
-        self.path_mode = path_mode
+        self.path_mode = "sum"
         self.l1l3 = l1l3
         self.num_elements = num_elements
         self.use_so2_edge_ace = use_so2_edge_ace
@@ -145,20 +144,9 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         )
         self.weight_numel = self.linear_up.weight_numel
 
-        if self.use_so2_edge_ace:
-            self.ace = ComplexProductBasisV2(
-                mmax, 
-                lmax, 
-                self.num_channel,
-                num_elements=self.num_elements,
-                m1m2='<=',
-                agnostic=True,
-            )
-
     def forward(
             self, 
             x: torch.Tensor, 
-            node_attrs: torch.Tensor,
             w: torch.Tensor, 
             edge_index: torch.Tensor,
             wigner: torch.Tensor,
@@ -166,14 +154,13 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         ) -> torch.Tensor:
         
         num_nodes = x.size(0)
-
         x = self.reshape_in(x)
+
         m_ij = x[edge_index[0]]
         m_ij = torch.bmm(wigner, m_ij)
-        m_ij = self.linear_up(m_ij, w) # tensor product here
-        if hasattr(self, "ace"):
-            m_ij = self.ace(m_ij, node_attrs, edge_index)
+        m_ij = self.linear_up(m_ij, w)
         m_ij = torch.bmm(wigner_inv, m_ij)
+
         return self.reshape_out.inverse(
             scatter_sum(
                 m_ij, 
@@ -252,10 +239,10 @@ class uvSO2TensorProduct(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
-        num_elements: int,
         edge_wise_hidden: int,
-        use_so2_edge_ace: bool,
         so2_linear_type: str,
+        num_elements: int,
+        use_so2_edge_ace: bool,
         agnostic: bool,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
@@ -271,7 +258,7 @@ class uvSO2TensorProduct(torch.nn.Module):
         self.reshape_out = reshape_out
         self.so2_linear_type = so2_linear_type
         self.agnostic = agnostic
-        
+
         self.use_so2_edge_ace = use_so2_edge_ace
         self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
         self.weight_numel = (self.num_components * self.num_channel * 2)

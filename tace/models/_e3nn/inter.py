@@ -193,7 +193,7 @@ class CgtpInteraction(Interaction):
         return m_i, self.truncate_ghosts(resBB, nlocal)
     
 
-class uuSO2Interaction(Interaction):
+class uuSO2InteractionArchitecture1(Interaction):
     """
     An interaction module based on uuSO2Linear.
 
@@ -207,6 +207,13 @@ class uuSO2Interaction(Interaction):
 
     def _setup(self) -> None:
 
+        assert self.parity == False, "uuSO2InteractionArchitecture1 not support O(3) group"
+        assert self.irreps_in.lmax > 0, (
+            "uuSO2InteractionArchitecture1's irreps_in.lmax must > 0, "
+            "use uuSO2InteractionArchitecture1 from the second layer or use other node_embedding with l > 0"
+        )
+        assert self.edge_nonlinear == None
+
         self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
@@ -217,12 +224,11 @@ class uuSO2Interaction(Interaction):
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=self.num_channel,
-            reshape_in=LayoutTransform(self.irreps_in),
-            reshape_out=LayoutTransform(self.irreps_out),
             weight_type=self.so2_linear_type,
             l1l3=self.so2_l1l3,
             num_elements=self.num_elements,
-            use_so2_edge_ace=self.use_so2_edge_ace,
+            reshape_in=LayoutTransform(self.irreps_in),
+            reshape_out=LayoutTransform(self.irreps_out),
         )
 
         irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
@@ -326,20 +332,12 @@ class uuSO2Interaction(Interaction):
 
         density = None
         resBB = None
-        resBA = None
-        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
-
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
-                resBA = self.resnetBA(node_feats, node_attrs_slice)
-            else:
-                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -352,23 +350,10 @@ class uuSO2Interaction(Interaction):
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
 
-        # if self.irreps_in.lmax > 0 and self.use_graph_softmax:
-        #     conv_weights = self.attention(
-        #         node_feats,
-        #         self.edge_info_attn(edge_feats),
-        #         edge_index,
-        #         cutoff,
-        #         conv_weights,
-        #     )
-        # else:
-        #     if cutoff is not None:
-        #         conv_weights = conv_weights * cutoff
-
         m_i = self.linear_down(
             self.truncate_ghosts(
                 self.rejector(
                     node_feats, 
-                    node_attrs_slice,
                     conv_weights, 
                     edge_index,
                     wigner,
@@ -382,12 +367,10 @@ class uuSO2Interaction(Interaction):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
             if cutoff is not None and self.apply_density_cutoff:
                 density = density * cutoff
-            # density = density * cutoff
             density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
             density  = self.truncate_ghosts(density , nlocal)
             density = density * self.beta + self.alpha
             density = density.masked_fill(density == 0, 1e-9)
-
 
         if self.scatter_norm is None:
             pass
@@ -398,26 +381,7 @@ class uuSO2Interaction(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        if resBA is not None:
-            m_i = m_i + resBA
-
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
-                resAB = self.resnetAB(m_i, node_attrs_slice)
-            else:
-                resAB = self.resnetAB(m_i)
-
-        if hasattr(self, 'norm2'):
-            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
-
-        if resBB is not None:
-            sc = resBB
-        elif resAB is not None:
-            sc = resAB
-        else:
-            sc = None
-
-        return m_i, self.truncate_ghosts(sc, nlocal)
+        return m_i, self.truncate_ghosts(resBB, nlocal)
     
 
 class uvSO2InteractionArchitecture2(Interaction):
@@ -432,7 +396,7 @@ class uvSO2InteractionArchitecture2(Interaction):
     """
     def _setup(self) -> None:
 
-        assert self.parity == False, "uvSO2Interaction not support O(3) group"
+        assert self.parity == False, "uvSO2InteractionArchitecture2 not support O(3) group"
         assert self.irreps_in.lmax > 0, (
             "uvSO2InteractionArchitecture2's irreps_in.lmax must > 0, "
             "use uvSO2InteractionArchitecture2 from the second layer or use other node_embedding with l > 0"
@@ -560,20 +524,12 @@ class uvSO2InteractionArchitecture2(Interaction):
 
         density = None
         resBB = None
-        resBA = None
-        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
-
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
-                resBA = self.resnetBA(node_feats, node_attrs_slice)
-            else:
-                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -619,29 +575,10 @@ class uvSO2InteractionArchitecture2(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        if resBA is not None:
-            m_i = m_i + resBA
-
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
-                resAB = self.resnetAB(m_i, node_attrs_slice)
-            else:
-                resAB = self.resnetAB(m_i)
-
-        if hasattr(self, 'norm2'):
-            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
-
-        if resBB is not None:
-            sc = resBB
-        elif resAB is not None:
-            sc = resAB
-        else:
-            sc = None
-
-
-        return m_i, self.truncate_ghosts(sc, nlocal)
+        return m_i, self.truncate_ghosts(resBB, nlocal)
     
-class AttentionInteraction(Interaction):
+
+class AttentionInteractionArchitecture3(Interaction):
     def _setup(self) -> None:
 
         assert self.parity == False, "uvSO2Interaction not support O(3) group"
@@ -649,9 +586,8 @@ class AttentionInteraction(Interaction):
             "uvSO2Interaction's irreps_in.lmax must > 0, "
             "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
         )
-        # assert self.edge_nonlinear == 'so2_sigmoid_gate'
-        # if self.use_graph_softmax: self.scatter_norm = None
-        self.use_graph_softmax = True
+        assert self.edge_nonlinear == 'so2_sigmoid_gate'
+        self.scatter_norm = None
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -669,7 +605,6 @@ class AttentionInteraction(Interaction):
             edge_wise_hidden=self.edge_wise_hidden,
             so2_linear_type=self.so2_linear_type,
             reshape_in=LayoutTransform(self.irreps_in),
-            # reshape_out=LayoutTransform(self.irreps_out),
             reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
         )
 
@@ -858,12 +793,12 @@ INTERACTION: Dict[str, Interaction] = {
     "spectral": CgtpInteraction,
     "cgtp": CgtpInteraction,
 
-    "so2": uvSO2Interaction,
-    "uv_so2": uvSO2Interaction,
+    "uu_so2": uuSO2InteractionArchitecture1,
 
-    "uu_so2": uuSO2Interaction,
+    "so2": uvSO2InteractionArchitecture2,
+    "uv_so2": uvSO2InteractionArchitecture2,
 
-    "attn": AttentionInteraction,
+    "attn": AttentionInteractionArchitecture3,
 
     # "w6j": Wigner6jInteraction,
     # "wigner6j": Wigner6jInteraction,
