@@ -18,7 +18,7 @@ from ..so2 import (
     so2_expand_index, so3_expand_index, SO3Linear, 
 )
 from .paths import generate_paths
-from .edge_prod import ComplexProductBasisV1, ComplexProductBasisV2, VectorSwiGLU
+from .edge_prod import ComplexProductBasisV1, VectorSwiGLU
 
 
 from ..mlp import SmoothLeakyReLU
@@ -115,8 +115,6 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         lmax: int,
         num_channel: int,
         l1l3: Union[str, None],
-        num_elements: int,
-        use_so2_edge_ace: bool,
         weight_type: str,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
@@ -131,8 +129,6 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         self.weight_type = weight_type
         self.path_mode = "sum"
         self.l1l3 = l1l3
-        self.num_elements = num_elements
-        self.use_so2_edge_ace = use_so2_edge_ace
         self.linear_up = uuSO2Linear(
             self.mmax,
             self.lmax,

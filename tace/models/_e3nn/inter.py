@@ -34,6 +34,8 @@ class CgtpInteraction(Interaction):
 
     def _setup(self) -> None:
 
+        assert self.edge_wise_hidden == self.num_channel
+
         self.linear_up = e3nnLinear(
             self.irreps_in,
             self.irreps_in,
@@ -213,6 +215,7 @@ class uuSO2InteractionArchitecture1(Interaction):
             "use uuSO2InteractionArchitecture1 from the second layer or use other node_embedding with l > 0"
         )
         assert self.edge_nonlinear == None
+        assert self.edge_wise_hidden == self.num_channel
 
         self.linear_up = e3nnLinear(
             self.irreps_in,
@@ -226,7 +229,6 @@ class uuSO2InteractionArchitecture1(Interaction):
             num_channel=self.num_channel,
             weight_type=self.so2_linear_type,
             l1l3=self.so2_l1l3,
-            num_elements=self.num_elements,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(self.irreps_out),
         )
