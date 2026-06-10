@@ -53,7 +53,7 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
-        "edge_nonlinear": None,
+        "edge_nonlinear": "so2_sigmoid_gate",
         "l1l2": None,
         "so2_l1l3": None,
         "so2_linear_type": 'w1_w2',
@@ -85,6 +85,7 @@ DEFAULT_MODEL_CONFIG = {
         "resolution": None,
         "return_components": None,
         "nonlinear": None,
+        "use_softmax": False,
     },
     "readout_emlp": {
         "bias": False,

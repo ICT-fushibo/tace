@@ -239,6 +239,7 @@ class Representation(torch.nn.Module):
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
                     irreps_in=prod_irreps_in,
+                    use_softmax=product_basis["use_softmax"],
                 )
             )
             self.irreps_out = self.products[-1].irreps_out

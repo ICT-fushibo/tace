@@ -259,6 +259,7 @@ class Product(torch.nn.Module):
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
+        use_softmax: bool = False,
     ) -> None:
         super().__init__()
 
@@ -289,6 +290,7 @@ class Product(torch.nn.Module):
         self.last_layer = layer == num_layers -1
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
+        self.use_softmax = use_softmax
 
         self.irreps_tp_out_list = []
         for nu in range(2, self.correlation+1):

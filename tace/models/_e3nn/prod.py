@@ -19,6 +19,114 @@ from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
 
 
+# class CgtpACE(Product):
+#     """
+#     The most expressive ACE implementation based on Clebsch-Gordan tensor products.
+
+#     This class computes all possible many-body tensor product paths and couples
+#     all channels, forming a highly expressive product basis.
+
+#     Note:
+#         It is recommended to use no more than 64 channels, as increasing the
+#         number of channels beyond this does not necessarily lead to better
+#         performance and may introduce unnecessary computational overhead.
+#     """
+
+#     def _setup(self):
+
+#         self.linear_up = e3nnLinear(
+#             self.irreps_in,
+#             self.irreps_hidden,
+#             bias=self.use_bias,
+#         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+#         for_coefs = {
+#             "irreps_out": self.irreps_coefs_out,
+#             "bias": self.use_bias,
+#             "num_elements": self.num_elements,
+#         }
+#         coefs_cls = e3nnElementLinear
+#         if self.num_expert > 1:
+#             coefs_cls = e3nnMoEElementLinear
+#             for_coefs["num_experts"] = self.num_expert
+
+#         self.aces = torch.nn.ModuleList()
+#         self.coefs = torch.nn.ModuleList()
+#         self.coefs.append(
+#             coefs_cls(
+#                 o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]).simplify(),
+#                 **for_coefs,
+#             )
+#         )
+
+#         product_in1 = self.irreps_hidden
+
+#         for nu in range(2, self.correlation+1):
+#             this_ace = uuuTensorProduct(
+#                 irreps_in1=product_in1,
+#                 irreps_in2=self.irreps_hidden,
+#                 irreps_out=self.irreps_tp_out_list[nu-2],
+#                 l1l2=self.l1l2,
+#             )
+#             self.aces.append(this_ace)
+#             self.coefs.append(coefs_cls(
+#                 o3.Irreps([(self.num_hidden_channel, ir) for _, ir in this_ace.irreps_out]).simplify(), 
+#                 **for_coefs,
+#                 )
+#             )
+#             product_in1 = this_ace.irreps_out
+
+#         if self.nonlinear_type == 'cwnorm':
+#             from .nonlinear import ChannelWiseO3NormGate
+#             from ..mlp import ScaledSigmoid
+#             self.nonlinearty = ChannelWiseO3NormGate(
+#                 for_coefs["irreps_out"],
+#                 ScaledSigmoid(),
+#             )
+
+#         self.linear = e3nnLinear(
+#             o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]),
+#             self.irreps_out,
+#             bias=self.use_bias,
+#         )    
+
+#         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+
+#     def forward(
+#             self, 
+#             node_feats: torch.Tensor, 
+#             node_attrs: torch.Tensor,
+#             sc: torch.Tensor,
+#             batch: torch.Tensor,
+#         ) -> torch.Tensor:
+
+#         node_feats = self.linear_up(node_feats)
+
+#         corr_feats = {
+#             1: node_feats,
+#         }
+
+#         outs = self.coefs[0](corr_feats[1], node_attrs)
+
+#         for nu in range(2, self.correlation+1):
+#             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+#             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+
+#         if hasattr(self, "nonlinearty"):
+#             outs = self.nonlinearty(outs)
+
+#         outs = self.linear(outs)
+
+#         if hasattr(self, "stochastic_depth"):
+#             outs = self.stochastic_depth(outs, batch)
+        
+#         if sc is not None:
+#             outs = outs + sc
+
+#         return outs
+
+    
 class CgtpACE(Product):
     """
     The most expressive ACE implementation based on Clebsch-Gordan tensor products.
@@ -49,6 +157,15 @@ class CgtpACE(Product):
         if self.num_expert > 1:
             coefs_cls = e3nnMoEElementLinear
             for_coefs["num_experts"] = self.num_expert
+            if self.use_softmax:
+                self.router = e3nnLinear(
+                    self.irreps_hidden,
+                    o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
+                    bias=False,
+                )
+                with torch.no_grad():
+                    self.router.weight.mul_(1e-2)
+                self._routed_irreps = self.irreps_coefs_out
 
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -93,6 +210,34 @@ class CgtpACE(Product):
         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
 
+    def _softmax_router_weights(self, node_feats: torch.Tensor) -> torch.Tensor:
+        probabilities = torch.softmax(self.router(node_feats), dim=-1)
+        # print(probabilities[0])
+        rms = probabilities.square().mean(dim=-1, keepdim=True).sqrt()
+        return probabilities / rms
+
+    def _route_experts(
+        self,
+        x: torch.Tensor,
+        router_weights: torch.Tensor,
+    ) -> torch.Tensor:
+        routed_fields = []
+        for tensor_slice, (mul, ir) in zip(
+            self._routed_irreps.slices(),
+            self._routed_irreps,
+        ):
+            expert_mul = mul // self.num_expert
+            field = x[:, tensor_slice].reshape(
+                x.shape[0],
+                self.num_expert,
+                expert_mul,
+                ir.dim,
+            )
+            routed_fields.append(
+                (field * router_weights[:, :, None, None]).reshape(x.shape[0], -1)
+            )
+        return torch.cat(routed_fields, dim=-1)
+
     def forward(
             self, 
             node_feats: torch.Tensor, 
@@ -102,6 +247,12 @@ class CgtpACE(Product):
         ) -> torch.Tensor:
 
         node_feats = self.linear_up(node_feats)
+
+        router_weights = (
+            self._softmax_router_weights(node_feats)
+            if hasattr(self, "router")
+            else None
+        )
 
         corr_feats = {
             1: node_feats,
@@ -116,6 +267,9 @@ class CgtpACE(Product):
         if hasattr(self, "nonlinearty"):
             outs = self.nonlinearty(outs)
 
+        if router_weights is not None:
+            outs = self._route_experts(outs, router_weights)
+
         outs = self.linear(outs)
 
         if hasattr(self, "stochastic_depth"):
@@ -125,7 +279,6 @@ class CgtpACE(Product):
             outs = outs + sc
 
         return outs
-
     
 # TODO, refactor
 class GtpACE(Product):
