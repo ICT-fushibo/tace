@@ -79,6 +79,7 @@ class e3nnTACE(torch.nn.Module):
         # === Will be called by in this module ===
         self.use_alllayer = cfg['readout_emlp']['use_alllayer']
         self.num_channel = cfg['num_channel']
+        self.scale_zbl = cfg['readout_emlp']['scale_zbl']
 
         # === Will be used in __init__ ===
         target_irreps = get_target_irreps(self.target_property)
@@ -281,7 +282,8 @@ class e3nnTACE(torch.nn.Module):
                     data["edge_index"],
                     self.atomic_numbers,
                 )[num_atoms_arange]
-                e_node = e_node + e_zbl_node
+                if self.scale_zbl:
+                    e_node = e_node + e_zbl_node
             # === scale and shift ===
             if hasattr(self, 'scale_shift'):
                 e_node = self.scale_shift(
@@ -292,6 +294,8 @@ class e3nnTACE(torch.nn.Module):
                     data['batch'],
                     node_fidelity,
                 )    
+            if hasattr(self, "zbl") and not self.scale_zbl:
+                e_node = e_node + e_zbl_node
             # === uie ===
             if hasattr(self, "uie_readout"):
                 e_uie_node = self.uie_readout(from_representation['uie_feats'])

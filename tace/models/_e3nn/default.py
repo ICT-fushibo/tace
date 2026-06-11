@@ -103,6 +103,7 @@ DEFAULT_MODEL_CONFIG = {
         "scale_trainable": False,
         "shift_trainable": False,
         "all_atoms": False,
+        "scale_zbl": True,
     },
     "short_range": {
         "zbl": {
