@@ -373,6 +373,11 @@ class uuSO2InteractionArchitecture1(Interaction):
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
+            if (
+                self.layer > 0 or self.use_first_dropout
+            ) and self.stochastic_depth_p > 0.0:
+                from .dropout import GraphDropPath
+                self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             self.resnetAB = get_resnet_layer(
@@ -479,6 +484,8 @@ class uuSO2InteractionArchitecture1(Interaction):
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
+            if hasattr(self, "stochastic_depth"):
+                m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
         if hasattr(self, 'resnetAB'):
@@ -619,7 +626,11 @@ class uvSO2InteractionArchitecture2(Interaction):
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
-
+            if (
+                self.layer > 0 or self.use_first_dropout
+            ) and self.stochastic_depth_p > 0.0:
+                from .dropout import GraphDropPath
+                self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             self.resnetAB = get_resnet_layer(
                 self.irreps_out, 
@@ -727,6 +738,8 @@ class uvSO2InteractionArchitecture2(Interaction):
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
+            if hasattr(self, "stochastic_depth"):
+                m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
         if hasattr(self, 'resnetAB'):
@@ -849,6 +862,11 @@ class AttentionInteractionArchitecture3(Interaction):
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
+            if (
+                self.layer > 0 or self.use_first_dropout
+            ) and self.stochastic_depth_p > 0.0:
+                from .dropout import GraphDropPath
+                self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
             self.resnetAB = get_resnet_layer(
@@ -933,6 +951,8 @@ class AttentionInteractionArchitecture3(Interaction):
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
+            if hasattr(self, "stochastic_depth"):
+                m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
         if hasattr(self, 'resnetAB'):
