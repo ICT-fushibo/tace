@@ -33,6 +33,7 @@ DEFAULT_MODEL_CONFIG = {
     },
     "radial_basis": {
         "bias": False,
+        "r_min": 0.0,
         "radial_basis": "j0",
         "num_radial_basis": 8,
         "distance_transform": None,
@@ -93,6 +94,7 @@ DEFAULT_MODEL_CONFIG = {
         "hidden": [16],
         "use_alllayer": False,
         "use_uie": False,
+        "is_linear": False,
     },
     "scale_shift": {
         'enable': True,

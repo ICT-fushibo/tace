@@ -286,10 +286,10 @@ class CgtpACE(Product):
         ) -> torch.Tensor:
 
         node_feats = self.linear_up(node_feats)
-        if hasattr(self, "router"):
-            router_weights = self._softmax_router_weights(node_feats)
-        else:
-            router_weights = None
+        # if hasattr(self, "router"):
+        #     router_weights = self._softmax_router_weights(node_feats)
+        # else:
+        #     router_weights = None
 
         corr_feats = {
             1: node_feats,
@@ -499,6 +499,46 @@ class MACE(Product):
         return outs
 
 
+class SwiGLUACE(Product):
+    def _setup(self):
+        from .nonlinear import O3BilinearGate
+        self.nonlinearity = O3BilinearGate(self.irreps_hidden)
+        self.linear_up = e3nnElementLinear(
+            irreps_in=self.irreps_in,
+            irreps_out=self.nonlinearity.irreps_in,
+            bias=self.use_bias,
+            num_elements=self.num_elements,
+        )
+        self.linear_down = e3nnLinear(
+            irreps_in=self.nonlinearity.irreps_out,
+            irreps_out=self.irreps_out,
+            bias=self.use_bias,
+        )
+        if (
+            self.layer > 0 or self.use_first_dropout
+        ) and self.stochastic_depth_p > 0.0:
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
+
+    def forward(
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        sc: torch.Tensor,
+        batch: torch.Tensor,
+    ) -> torch.Tensor:
+        outs = self.linear_up(node_feats, node_attrs)
+        outs = self.nonlinearity(outs)
+        outs = self.linear_down(outs)
+
+        if hasattr(self, "stochastic_depth"):
+            outs = self.stochastic_depth(outs, batch)
+
+        if sc is not None:
+            outs = outs + sc
+
+        return outs
+    
+
 PRODUCT: Dict[str, torch.nn.Module] = {
     "spatial": CgtpACE,
     "coupled": CgtpACE,
@@ -510,6 +550,8 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "gtp": GtpACE,
 
     "mace": MACE,
+
+    "swiglu": SwiGLUACE
 
     # "so2": So2ACE,
 

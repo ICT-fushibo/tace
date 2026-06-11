@@ -333,6 +333,7 @@ class ReadOut(torch.nn.Module):
         parity: bool,
         irreps_in: o3.Irreps,
         irreps_out: o3.Irreps,
+        is_linear: bool,
     ) -> None:
         super().__init__()
 
@@ -343,6 +344,7 @@ class ReadOut(torch.nn.Module):
         self.use_bias = bias
         self.num_fidelities = num_fidelities
         self.parity = parity
+        self.is_linear = is_linear
 
         self.irreps_in = o3.Irreps(irreps_in)
         self.irreps_out = (irreps_out * num_fidelities).regroup()

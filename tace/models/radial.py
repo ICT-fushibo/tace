@@ -563,6 +563,45 @@ class SmoothDynamicCutoff(torch.nn.Module):
         return dcutoff.unsqueeze(-1)
     
 
+class XPLORCutoff(torch.nn.Module):
+    """
+    https://hoomd-blue.readthedocs.io/en/latest/module-md-pair.html
+    """
+
+    def __init__(
+        self,
+        cutoff: float,
+        cutoff_on: float,
+    ):
+        super().__init__()
+        self.r_on = cutoff_on
+        self.r_cut = cutoff
+        assert self.r_on < self.r_cut
+
+    def forward(self, r: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+        if cutoff is None:
+            cutoff = self.r_cut
+        return self.calculate_envelope(r, cutoff, self.r_on)
+    
+    @staticmethod
+    def calculate_envelope(
+        r: torch.Tensor, r_cut: Union[torch.Tensor, float], r_on: Union[torch.Tensor, float] = 0.0,
+    ) -> torch.Tensor:
+        r_sq = r * r
+        r_on_sq = r_on * r_on
+        r_cut_sq = r_cut * r_cut
+        return torch.where(
+            r < r_on,
+            1.0,
+            (r_cut_sq - r_sq) ** 2
+            * (r_cut_sq + 2 * r_sq - 3 * r_on_sq)
+            / (r_cut_sq - r_on_sq) ** 3,
+        )
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(r_on={self.r_on}, r_cut={self.r_cut})"
+    
+
 class AgnesiTransform(torch.nn.Module):
     """
     See https://doi.org/10.1063/5.0158783
@@ -711,6 +750,8 @@ class ZBLBasis(torch.nn.Module):
             self.cutoff_fn = MollifierCutoff.calculate_envelope
         elif cutoff_fn == 'cosine': 
             self.cutoff_fn = CosineCutoff.calculate_envelope
+        elif cutoff_fn == 'xplor':
+            self.cutoff_fn = XPLORCutoff.calculate_envelope # TODO
         elif cutoff_fn == 'c3poly': 
             self.is_polynomial_cutoff = True
             self.cutoff_fn = C3PolynomialCutoff.calculate_envelope
@@ -760,6 +801,7 @@ class RadialBasis(torch.nn.Module):
     def __init__(
         self,
         cutoff: float = 6.0,
+        r_min: float = 0.0,
         num_basis: int = 8,
         polynomial_cutoff: int = 5,
         radial_basis: str = "j0",
@@ -784,6 +826,8 @@ class RadialBasis(torch.nn.Module):
             self.cutoff_fn = CosineCutoff(cutoff=cutoff)
         elif cutoff_fn == 'c3poly':
             self.cutoff_fn = C3PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
+        elif cutoff_fn == 'xplor':
+            self.cutoff_fn = XPLORCutoff(cutoff=cutoff, cutoff_on=r_min)
         else:
             self.cutoff_fn = C2PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
 

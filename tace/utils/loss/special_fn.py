@@ -147,3 +147,121 @@ def mse_direct_forces_curl(
         losses.append(curl_ab**2)
 
     return torch.mean(torch.stack(losses))
+
+
+def _voigt6_stress(stress: Tensor) -> Tensor:
+    return stress.reshape(-1, 9)[:, [0, 1, 2, 4, 5, 8]]
+
+
+@register_loss
+def mae_voigt_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.stress_weight
+    error = _voigt6_stress(pred["stress"] - label["stress"])
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
+
+
+@register_loss
+def mse_voigt_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.stress_weight
+    error = _voigt6_stress(pred["stress"] - label["stress"])
+    return torch.mean(torch.square(error) * total_weight.unsqueeze(-1))
+
+
+@register_loss
+def l2mae_voigt_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.stress_weight
+    error = _voigt6_stress(pred["stress"] - label["stress"])
+    return torch.mean(
+        torch.linalg.vector_norm(error, ord=2, dim=-1)
+        * total_weight
+    )
+
+
+@register_loss
+def huber_voigt_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = (label.entropy * label.stress_weight).unsqueeze(-1)
+    return torch.nn.functional.huber_loss(
+        total_weight * _voigt6_stress(label["stress"]),
+        total_weight * _voigt6_stress(pred["stress"]),
+        reduction="mean",
+        delta=huber_delta,
+    )
+
+
+@register_loss
+def mae_voigt_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.direct_stress_weight
+    error = _voigt6_stress(pred["direct_stress"] - label["direct_stress"])
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
+
+
+@register_loss
+def mse_voigt_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.direct_stress_weight
+    error = _voigt6_stress(pred["direct_stress"] - label["direct_stress"])
+    return torch.mean(torch.square(error) * total_weight.unsqueeze(-1))
+
+
+@register_loss
+def l2mae_voigt_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.direct_stress_weight
+    error = _voigt6_stress(pred["direct_stress"] - label["direct_stress"])
+    return torch.mean(
+        torch.linalg.vector_norm(error, ord=2, dim=-1)
+        * total_weight
+    )
+
+
+@register_loss
+def huber_voigt_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = (label.entropy * label.direct_stress_weight).unsqueeze(-1)
+    return torch.nn.functional.huber_loss(
+        total_weight * _voigt6_stress(label["direct_stress"]),
+        total_weight * _voigt6_stress(pred["direct_stress"]),
+        reduction="mean",
+        delta=huber_delta,
+    )
+
+def _dens_voigt6_stress_error(
+    pred: Dict[str, Tensor],
+    label: Dict[str, Tensor],
+    key: str,
+) -> Tensor:
+    error = _voigt6_stress(pred[key] - label[key])
+    return error * (~label["dens_batch_mask"]).unsqueeze(-1)
+
+
+@register_loss
+def mae_dens_voigt_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.stress_weight
+    error = _dens_voigt6_stress_error(pred, label, "stress")
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
+
+@register_loss
+def mae_dens_voigt_direct_stress(
+    pred: Dict[str, Tensor], label: Dict[str, Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    total_weight = label.entropy * label.direct_stress_weight
+    error = _dens_voigt6_stress_error(pred, label, "direct_stress")
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
+
+
+

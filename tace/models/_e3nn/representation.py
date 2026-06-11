@@ -67,6 +67,7 @@ class Representation(torch.nn.Module):
         # === radial basis ===
         self.radial_basis = RadialBasis(
             cutoff=cutoff,
+            r_min=radial_basis['r_min'],
             num_basis=radial_basis['num_radial_basis'],
             cutoff_fn=radial_basis['cutoff_fn'],
             polynomial_cutoff=radial_basis['polynomial_cutoff'],
@@ -85,7 +86,7 @@ class Representation(torch.nn.Module):
         self.use_so2 = (
             any(t.endswith('so2') for t in atomic_basis['type'])
             or node_embedding["type"] == 'so2_tensor' 
-            # or True in atomic_basis["use_graph_softmax"]
+            or True in atomic_basis["use_graph_softmax"]
         )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
@@ -379,6 +380,7 @@ class Representation(torch.nn.Module):
                 graph,
                 wigner,
                 wigner_inv,
+                data["batch"],
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 

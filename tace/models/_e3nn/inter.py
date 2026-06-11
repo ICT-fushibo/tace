@@ -19,6 +19,7 @@ from ..linear import e3nnLinear, e3nnElementLinear
 from .fused import O3ScatterTensorProduct, uvSO2TensorProduct, uuSO2ScatterTensorProduct, AttentionSO2TensorProduct
 from .nonlinear import O3Gate, O3Norm, O3BilinearGate
 from .layer_norm import get_normalization_layer
+from .residual import get_resnet_layer
 
 
 class CgtpInteraction(Interaction):
@@ -73,7 +74,7 @@ class CgtpInteraction(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
-        if self.nonlinear_type == 'bilineargate':
+        elif self.nonlinear_type == 'bilineargate':
             self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
             linear_down_irreps_out = self.nonlinearity.irreps_in
             self.linear_nonlinearity = e3nnLinear(
@@ -110,49 +111,36 @@ class CgtpInteraction(Interaction):
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = e3nnLinear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_sc,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBB = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBB = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBA = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_out,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
+            if (
+                self.layer > 0 or self.use_first_dropout
+            ) and self.stochastic_depth_p > 0.0:
+                from .dropout import GraphDropPath
+                self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
+            self.resnetAB = get_resnet_layer(
+                self.irreps_out, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
             if self.resnet_type in ['BB', "BAB"]:
@@ -183,6 +171,7 @@ class CgtpInteraction(Interaction):
         graph,
         wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
+        batch,
     ):
 
         lmp_data = graph.lmp_data
@@ -233,7 +222,6 @@ class CgtpInteraction(Interaction):
             density = density * self.beta + self.alpha
             density = density.masked_fill(density == 0, 1e-9)
 
-
         if self.scatter_norm is None:
             pass
         elif self.scatter_norm == 'avg_num_neighbors':
@@ -244,6 +232,8 @@ class CgtpInteraction(Interaction):
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBA is not None:
+            if hasattr(self, "stochastic_depth"):
+                m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
         if hasattr(self, 'resnetAB'):
@@ -328,6 +318,14 @@ class uuSO2InteractionArchitecture1(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        elif self.nonlinear_type == 'bilineargate':
+            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
+            linear_down_irreps_out = self.nonlinearity.irreps_in
+            self.linear_nonlinearity = e3nnLinear(
+                self.nonlinearity.irreps_out,
+                self.irreps_out,
+                bias=self.use_bias,
+            )
         else:
             self.nonlinearity = torch.nn.Identity()
             self.linear_nonlinearity = torch.nn.Identity()
@@ -359,49 +357,31 @@ class uuSO2InteractionArchitecture1(Interaction):
 
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = e3nnLinear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_sc,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBB = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBB = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBA = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_out,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
+            self.resnetAB = get_resnet_layer(
+                self.irreps_out, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
             if self.resnet_type in ['BB', "BAB"]:
@@ -432,6 +412,7 @@ class uuSO2InteractionArchitecture1(Interaction):
         graph,
         wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
+        batch,
     ):
 
         lmp_data = graph.lmp_data
@@ -584,6 +565,14 @@ class uvSO2InteractionArchitecture2(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        elif self.nonlinear_type == 'bilineargate':
+            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
+            linear_down_irreps_out = self.nonlinearity.irreps_in
+            self.linear_nonlinearity = e3nnLinear(
+                self.nonlinearity.irreps_out,
+                self.irreps_out,
+                bias=self.use_bias,
+            )
         else:
             self.nonlinearity = torch.nn.Identity()
             self.linear_nonlinearity = torch.nn.Identity()
@@ -613,51 +602,32 @@ class uvSO2InteractionArchitecture2(Interaction):
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
-
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = e3nnLinear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_sc,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBB = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBB = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBA = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_out,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
+            self.resnetAB = get_resnet_layer(
+                self.irreps_out, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
             if self.resnet_type in ['BB', "BAB"]:
@@ -688,6 +658,7 @@ class uvSO2InteractionArchitecture2(Interaction):
         graph,
         wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
+        batch,
     ):
     
         lmp_data = graph.lmp_data
@@ -834,6 +805,14 @@ class AttentionInteractionArchitecture3(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        elif self.nonlinear_type == 'bilineargate':
+            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
+            linear_down_irreps_out = self.nonlinearity.irreps_in
+            self.linear_nonlinearity = e3nnLinear(
+                self.nonlinearity.irreps_out,
+                self.irreps_out,
+                bias=self.use_bias,
+            )
         else:
             self.nonlinearity = torch.nn.Identity()
             self.linear_nonlinearity = torch.nn.Identity()
@@ -852,50 +831,33 @@ class AttentionInteractionArchitecture3(Interaction):
             layer_norm=self.radial_layer_norm,
             act=self.radial_act,
         )
+        
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBB = e3nnLinear(
-                    irreps_in=self.irreps_in,
-                    irreps_out=self.irreps_sc,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBB = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBB = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetBA = e3nnLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                )
-            else:
-                self.resnetBA = e3nnElementLinear(
-                    irreps_in = self.irreps_in,
-                    irreps_out = self.irreps_out,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                )
+            self.resnetBA = get_resnet_layer(
+                self.irreps_in, 
+                self.irreps_out,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-            if self.resnet_linear_type == 'agnostic':
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
-            else:
-                self.resnetAB = e3nnElementLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                    num_elements=self.num_elements,
-                ) 
+            self.resnetAB = get_resnet_layer(
+                self.irreps_out, 
+                self.irreps_sc,
+                bias=self.use_bias,
+                num_elements=self.num_elements,
+                resnet_type=self.resnet_linear_type,
+            )
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
             if self.resnet_type in ['BB', "BAB"]:
@@ -926,6 +888,7 @@ class AttentionInteractionArchitecture3(Interaction):
         graph,
         wigner: Union[torch.Tensor, None],
         wigner_inv: Union[torch.Tensor, None],
+        batch,
     ):
     
         lmp_data = graph.lmp_data

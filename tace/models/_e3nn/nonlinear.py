@@ -140,7 +140,7 @@ class ChannelWiseO3NormGate(torch.nn.Module):
 
 
 class O3BilinearGate(torch.nn.Module):
-    """Based on https://github.com/SamsungDS/GGNN"""
+    """CGTP-based SwiGLU, Based on https://github.com/SamsungDS/GGNN"""
 
     def __init__(self, irreps: o3.Irreps, l1l2: Union[str, None] = ">=") -> None:
         super().__init__()
@@ -167,7 +167,7 @@ class O3BilinearGate(torch.nn.Module):
             self.irreps_gate
             + self.irreps_act
             + o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps])
-        )
+        ).simplify()
         self.irreps_out = (self.irreps_act + self.tp.irreps_out).simplify()
 
         self._gate_dim = self.irreps_gate.dim

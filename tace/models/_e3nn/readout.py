@@ -40,11 +40,14 @@ class ScalarReadOut(ReadOut):
 
         if self.layer == self.num_layers-1: 
             self.linear2 = torch.nn.ModuleList()
-            self.acts = torch.nn.ModuleList(
-                Activation(
-                    irreps_in=hidden, acts=[ACTIVATION[self.scalar_act]()]
-                ) for hidden in self.irreps_hidden
-            )
+            if self.is_linear:
+                pass
+            else:
+                self.acts = torch.nn.ModuleList(
+                    Activation(
+                        irreps_in=hidden, acts=[ACTIVATION[self.scalar_act]()]
+                    ) for hidden in self.irreps_hidden
+                )
             for irreps_in, irreps_out in zip(
                 ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[:-1],
                 ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:]
@@ -75,7 +78,9 @@ class ScalarReadOut(ReadOut):
         if not self.last_layer:
             return self.linear1[0](x)
         for idx, linear in enumerate(self.linear2[:-1]):
-            x = self.acts[idx](linear(x))
+            x = linear(x)
+            if not self.is_linear:
+                x = self.acts[idx](x)
             if self.num_fidelities > 1:
                 x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
         return self.linear2[-1](x)
@@ -83,6 +88,7 @@ class ScalarReadOut(ReadOut):
 
 class TensorReadOut(ReadOut):
     def _setup(self):
+        assert self.is_linear == False # TODO
 
         if self.layer == self.num_layers-1: 
 
@@ -149,7 +155,8 @@ def build_scalar_readout(
     use_alllayer: bool,
     parity: bool,
     irreps_in: list[o3.Irreps],
-    irreps_out: Union[str, o3.Irreps]
+    irreps_out: Union[str, o3.Irreps],
+    is_linear: bool,
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -163,6 +170,7 @@ def build_scalar_readout(
                 parity=parity,
                 irreps_in=irreps_in[layer],
                 irreps_out=o3.Irreps(irreps_out),
+                is_linear=is_linear,
             )
         )
     if use_alllayer:
@@ -178,7 +186,8 @@ def build_tensor_readout(
     use_alllayer: bool,
     parity: bool,
     irreps_in: list[o3.Irreps],
-    irreps_out: Union[str, o3.Irreps]
+    irreps_out: Union[str, o3.Irreps],
+    is_linear: bool,
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -192,6 +201,7 @@ def build_tensor_readout(
                 parity=parity,
                 irreps_in=irreps_in[layer],
                 irreps_out=o3.Irreps(irreps_out),
+                is_linear=is_linear,
             )
         )
     if use_alllayer:

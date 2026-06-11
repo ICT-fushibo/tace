@@ -122,6 +122,7 @@ class e3nnTACE(torch.nn.Module):
             'use_alllayer': self.use_alllayer,
             'parity': cfg['parity'],
             'irreps_in': [prod.irreps_out for prod in self.representation.products],
+            'is_linear': cfg['readout_emlp']['is_linear'],
             # 'Lmax': cfg["Lmax"],
             # 'lmax': cfg["lmax"],
             # 'num_channel': cfg['num_channel'],
@@ -134,7 +135,8 @@ class e3nnTACE(torch.nn.Module):
             'num_fidelities': len(cfg['fidelity']),
             'use_alllayer': self.use_alllayer,
             'parity': cfg['parity'],
-            'irreps_in': [prod.irreps_out for prod in self.representation.products]
+            'irreps_in': [prod.irreps_out for prod in self.representation.products],
+            'is_linear': cfg['readout_emlp']['is_linear'],
         }
 
         # === Energy ===
