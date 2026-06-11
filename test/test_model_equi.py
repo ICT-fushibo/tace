@@ -6,7 +6,7 @@ import numpy as np
 import ase.io
 
 import torch
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
 from torch_geometric.loader import DataLoader
 
 from tace.lightning import load_tace
@@ -49,8 +49,8 @@ def random_rotation_matrix(device="cpu"):
 
 def rotate_atoms(atoms, R):
     atoms_r = atoms.copy()
-    pos = torch.tensor(atoms.get_positions(), dtype=torch.float64)
-    cell = torch.tensor(atoms.get_cell().array, dtype=torch.float64)
+    pos = torch.tensor(atoms.get_positions(), dtype=torch.get_default_dtype())
+    cell = torch.tensor(atoms.get_cell().array, dtype=torch.get_default_dtype())
     R = R.cpu()
     pos_r = pos @ R.T
     cell_r = cell @ R.T

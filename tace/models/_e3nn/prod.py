@@ -161,10 +161,16 @@ class CgtpACE(Product):
                 self.router = e3nnLinear(
                     self.irreps_hidden,
                     o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
-                    bias=False,
+                    # bias=False,
+                    bias=True,
                 )
+    
                 with torch.no_grad():
-                    self.router.weight.mul_(1e-2)
+                    if isinstance(self.router.weight, torch.nn.ParameterList):
+                        for p in self.router.weight:
+                            p.mul_(1e-2)
+                    else:
+                        self.router.weight.mul_(1e-2)
                 self._routed_irreps = self.irreps_coefs_out
 
         self.aces = torch.nn.ModuleList()
