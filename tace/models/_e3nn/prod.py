@@ -158,25 +158,25 @@ class CgtpACE(Product):
         if self.num_expert > 1:
             coefs_cls = e3nnMoEElementLinear
             for_coefs["num_experts"] = self.num_expert
-            if self.use_softmax:
-                self.router = e3nnLinear(
-                    self.irreps_hidden,
-                    o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
-                    bias=False,
-                )
-                with torch.no_grad():
-                    if isinstance(self.router.weight, torch.nn.ParameterList):
-                        for p in self.router.weight:
-                            p.mul_(1e-2)
-                    else:
-                        self.router.weight.mul_(1e-2)
-                self._routed_metadata = [
-                    (tensor_slice, mul // self.num_expert, ir.dim)
-                    for tensor_slice, (mul, ir) in zip(
-                        self.irreps_coefs_out.slices(),
-                        self.irreps_coefs_out,
-                    )
-                ]
+            # if self.use_softmax:
+            #     self.router = e3nnLinear(
+            #         self.irreps_hidden,
+            #         o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
+            #         bias=False,
+            #     )
+            #     with torch.no_grad():
+            #         if isinstance(self.router.weight, torch.nn.ParameterList):
+            #             for p in self.router.weight:
+            #                 p.mul_(1e-2)
+            #         else:
+            #             self.router.weight.mul_(1e-2)
+            #     self._routed_metadata = [
+            #         (tensor_slice, mul // self.num_expert, ir.dim)
+            #         for tensor_slice, (mul, ir) in zip(
+            #             self.irreps_coefs_out.slices(),
+            #             self.irreps_coefs_out,
+            #         )
+            #     ]
 
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -247,10 +247,10 @@ class CgtpACE(Product):
             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
         
 
-    def _softmax_router_weights(self, node_feats: torch.Tensor) -> torch.Tensor:
-        probabilities = torch.softmax(self.router(node_feats), dim=-1)
-        rms = probabilities.square().mean(dim=-1, keepdim=True).sqrt()
-        return probabilities / rms
+    # def _softmax_router_weights(self, node_feats: torch.Tensor) -> torch.Tensor:
+    #     probabilities = torch.softmax(self.router(node_feats), dim=-1)
+    #     rms = probabilities.square().mean(dim=-1, keepdim=True).sqrt()
+    #     return probabilities / rms
 
     def _merge_shared_expert(
         self,
@@ -259,23 +259,23 @@ class CgtpACE(Product):
     ) -> torch.Tensor:
         return (grouped + shared) * self.scale
 
-    def _route_experts(
-        self,
-        x: torch.Tensor,
-        router_weights: torch.Tensor,
-    ) -> torch.Tensor:
-        routed_fields = []
-        for tensor_slice, expert_mul, ir_dim in self._routed_metadata:
-            field = x[:, tensor_slice].reshape(
-                x.shape[0],
-                self.num_expert,
-                expert_mul,
-                ir_dim,
-            )
-            routed_fields.append(
-                (field * router_weights[:, :, None, None]).reshape(x.shape[0], -1)
-            )
-        return torch.cat(routed_fields, dim=-1)
+    # def _route_experts(
+    #     self,
+    #     x: torch.Tensor,
+    #     router_weights: torch.Tensor,
+    # ) -> torch.Tensor:
+    #     routed_fields = []
+    #     for tensor_slice, expert_mul, ir_dim in self._routed_metadata:
+    #         field = x[:, tensor_slice].reshape(
+    #             x.shape[0],
+    #             self.num_expert,
+    #             expert_mul,
+    #             ir_dim,
+    #         )
+    #         routed_fields.append(
+    #             (field * router_weights[:, :, None, None]).reshape(x.shape[0], -1)
+    #         )
+    #     return torch.cat(routed_fields, dim=-1)
 
     def forward(
             self, 
@@ -308,8 +308,14 @@ class CgtpACE(Product):
             if shared_outs is not None:
                 shared_outs = shared_outs + self.shared_coefs[nu-1](corr_feats[nu])
 
-        if router_weights is not None:
-            outs = self._route_experts(outs, router_weights)
+        # if hasattr(self, "nonlinearty"):
+        #     outs = self.nonlinearty(outs)
+
+        # # if router_weights is not None:
+        # #     outs = self._route_experts(outs, router_weights)
+
+        # if shared_outs is not None:
+        #     outs = self._merge_shared_expert(outs, shared_outs)
 
         if shared_outs is not None:
             outs = self._merge_shared_expert(outs, shared_outs)

@@ -17,7 +17,7 @@ from ..layout import LayoutTransform
 from .base import Interaction
 from ..linear import e3nnLinear, e3nnElementLinear
 from .fused import O3ScatterTensorProduct, uvSO2TensorProduct, uuSO2ScatterTensorProduct, AttentionSO2TensorProduct
-from .nonlinear import O3Gate, O3Norm
+from .nonlinear import O3Gate, O3Norm, O3BilinearGate
 from .layer_norm import get_normalization_layer
 
 
@@ -73,6 +73,14 @@ class CgtpInteraction(Interaction):
                 self.irreps_out,  
                 bias=self.use_bias,
             )
+        if self.nonlinear_type == 'bilineargate':
+            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
+            linear_down_irreps_out = self.nonlinearity.irreps_in
+            self.linear_nonlinearity = e3nnLinear(
+                self.nonlinearity.irreps_out,
+                self.irreps_out,
+                bias=self.use_bias,
+            )
         else:
             self.nonlinearity = torch.nn.Identity()
             self.linear_nonlinearity = torch.nn.Identity()
@@ -116,14 +124,51 @@ class CgtpInteraction(Interaction):
                     num_elements=self.num_elements,
                 )
 
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetBA = e3nnLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                )
+            else:
+                self.resnetBA = e3nnElementLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )
+
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetAB = e3nnLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
+            else:
+                self.resnetAB = e3nnElementLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                ) 
+
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB']:
+            if self.resnet_type in ['BB', "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type in ['AB', "BAB"]:
+                self.norm2 = get_normalization_layer(
+                    self.pre_norm_type,
+                    ls=self.irreps_out.lmax,
+                    num_channels=self.num_channel,
+                )
+                self.reshape2 = LayoutTransform(self.irreps_out)
 
     def forward(
         self,
@@ -146,12 +191,20 @@ class CgtpInteraction(Interaction):
 
         density = None
         resBB = None
+        resBA = None
+        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
+
+        if hasattr(self, 'resnetBA'):
+            if self.resnet_linear_type == 'aware':
+                resBA = self.resnetBA(node_feats, node_attrs_slice)
+            else:
+                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -190,7 +243,26 @@ class CgtpInteraction(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        return m_i, self.truncate_ghosts(resBB, nlocal)
+        if resBA is not None:
+            m_i = m_i + resBA
+
+        if hasattr(self, 'resnetAB'):
+            if self.resnet_linear_type == 'aware':
+                resAB = self.resnetAB(m_i, node_attrs_slice)
+            else:
+                resAB = self.resnetAB(m_i)
+
+        if hasattr(self, 'norm2'):
+            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
+
+        if resBB is not None:
+            sc = resBB
+        elif resAB is not None:
+            sc = resAB
+        else:
+            sc = None
+
+        return m_i, self.truncate_ghosts(sc, nlocal)
     
 
 class uuSO2InteractionArchitecture1(Interaction):
@@ -301,14 +373,51 @@ class uuSO2InteractionArchitecture1(Interaction):
                     num_elements=self.num_elements,
                 )
 
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetBA = e3nnLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                )
+            else:
+                self.resnetBA = e3nnElementLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )
+
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetAB = e3nnLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
+            else:
+                self.resnetAB = e3nnElementLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                ) 
+
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB']:
+            if self.resnet_type in ['BB', "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type in ['AB', "BAB"]:
+                self.norm2 = get_normalization_layer(
+                    self.pre_norm_type,
+                    ls=self.irreps_out.lmax,
+                    num_channels=self.num_channel,
+                )
+                self.reshape2 = LayoutTransform(self.irreps_out)
 
     def forward(
         self,
@@ -331,12 +440,20 @@ class uuSO2InteractionArchitecture1(Interaction):
 
         density = None
         resBB = None
+        resBA = None
+        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
+
+        if hasattr(self, 'resnetBA'):
+            if self.resnet_linear_type == 'aware':
+                resBA = self.resnetBA(node_feats, node_attrs_slice)
+            else:
+                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -380,7 +497,26 @@ class uuSO2InteractionArchitecture1(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        return m_i, self.truncate_ghosts(resBB, nlocal)
+        if resBA is not None:
+            m_i = m_i + resBA
+
+        if hasattr(self, 'resnetAB'):
+            if self.resnet_linear_type == 'aware':
+                resAB = self.resnetAB(m_i, node_attrs_slice)
+            else:
+                resAB = self.resnetAB(m_i)
+
+        if hasattr(self, 'norm2'):
+            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
+
+        if resBB is not None:
+            sc = resBB
+        elif resAB is not None:
+            sc = resAB
+        else:
+            sc = None
+
+        return m_i, self.truncate_ghosts(sc, nlocal)
     
 
 class uvSO2InteractionArchitecture2(Interaction):
@@ -493,14 +629,51 @@ class uvSO2InteractionArchitecture2(Interaction):
                     num_elements=self.num_elements,
                 )
 
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetBA = e3nnLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                )
+            else:
+                self.resnetBA = e3nnElementLinear(
+                    irreps_in = self.irreps_in,
+                    irreps_out = self.irreps_out,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                )
+
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetAB = e3nnLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
+            else:
+                self.resnetAB = e3nnElementLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                    num_elements=self.num_elements,
+                ) 
+
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB']:
+            if self.resnet_type in ['BB', "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type in ['AB', "BAB"]:
+                self.norm2 = get_normalization_layer(
+                    self.pre_norm_type,
+                    ls=self.irreps_out.lmax,
+                    num_channels=self.num_channel,
+                )
+                self.reshape2 = LayoutTransform(self.irreps_out)
 
     def forward(
         self,
@@ -523,12 +696,20 @@ class uvSO2InteractionArchitecture2(Interaction):
 
         density = None
         resBB = None
+        resBA = None
+        resAB = None
 
         if hasattr(self, 'resnetBB'):
             if self.resnet_linear_type == 'aware':
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
                 resBB = self.resnetBB(node_feats) 
+
+        if hasattr(self, 'resnetBA'):
+            if self.resnet_linear_type == 'aware':
+                resBA = self.resnetBA(node_feats, node_attrs_slice)
+            else:
+                resBA = self.resnetBA(node_feats)
 
         if hasattr(self, 'norm1'):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
@@ -574,7 +755,26 @@ class uvSO2InteractionArchitecture2(Interaction):
 
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
-        return m_i, self.truncate_ghosts(resBB, nlocal)
+        if resBA is not None:
+            m_i = m_i + resBA
+
+        if hasattr(self, 'resnetAB'):
+            if self.resnet_linear_type == 'aware':
+                resAB = self.resnetAB(m_i, node_attrs_slice)
+            else:
+                resAB = self.resnetAB(m_i)
+
+        if hasattr(self, 'norm2'):
+            m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
+
+        if resBB is not None:
+            sc = resBB
+        elif resAB is not None:
+            sc = resAB
+        else:
+            sc = None
+
+        return m_i, self.truncate_ghosts(sc, nlocal)
     
 
 class AttentionInteractionArchitecture3(Interaction):
@@ -652,7 +852,6 @@ class AttentionInteractionArchitecture3(Interaction):
             layer_norm=self.radial_layer_norm,
             act=self.radial_act,
         )
-
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
             if self.resnet_linear_type == 'agnostic':
                 self.resnetBB = e3nnLinear(
@@ -675,11 +874,6 @@ class AttentionInteractionArchitecture3(Interaction):
                     irreps_out = self.irreps_out,
                     bias=self.use_bias,
                 )
-                self.resnetAB = e3nnLinear(
-                    irreps_in = self.irreps_out,
-                    irreps_out = self.irreps_sc,
-                    bias=self.use_bias,
-                ) 
             else:
                 self.resnetBA = e3nnElementLinear(
                     irreps_in = self.irreps_in,
@@ -687,6 +881,15 @@ class AttentionInteractionArchitecture3(Interaction):
                     bias=self.use_bias,
                     num_elements=self.num_elements,
                 )
+
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+            if self.resnet_linear_type == 'agnostic':
+                self.resnetAB = e3nnLinear(
+                    irreps_in = self.irreps_out,
+                    irreps_out = self.irreps_sc,
+                    bias=self.use_bias,
+                ) 
+            else:
                 self.resnetAB = e3nnElementLinear(
                     irreps_in = self.irreps_out,
                     irreps_out = self.irreps_sc,
@@ -695,13 +898,14 @@ class AttentionInteractionArchitecture3(Interaction):
                 ) 
 
         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            self.norm1 = get_normalization_layer(
-                self.pre_norm_type,
-                ls=self.irreps_in.lmax,
-                num_channels=self.num_channel,
-            )
-            self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type == "BAB":
+            if self.resnet_type in ['BB', "BAB"]:
+                self.norm1 = get_normalization_layer(
+                    self.pre_norm_type,
+                    ls=self.irreps_in.lmax,
+                    num_channels=self.num_channel,
+                )
+                self.reshape1 = LayoutTransform(self.irreps_in)
+            if self.resnet_type in ['AB', "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_out.lmax,
@@ -728,6 +932,7 @@ class AttentionInteractionArchitecture3(Interaction):
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
 
+        density = None
         resBB = None
         resBA = None
         resAB = None

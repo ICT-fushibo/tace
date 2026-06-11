@@ -85,7 +85,7 @@ class Representation(torch.nn.Module):
         self.use_so2 = (
             any(t.endswith('so2') for t in atomic_basis['type'])
             or node_embedding["type"] == 'so2_tensor' 
-            or True in atomic_basis["use_graph_softmax"]
+            # or True in atomic_basis["use_graph_softmax"]
         )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
