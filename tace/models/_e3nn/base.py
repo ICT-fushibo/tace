@@ -260,6 +260,7 @@ class Product(torch.nn.Module):
         use_first_dropout: bool = False,
         parity: bool = False,
         use_softmax: bool = False,
+        use_shared_expert: bool = False,
     ) -> None:
         super().__init__()
 
@@ -291,6 +292,7 @@ class Product(torch.nn.Module):
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
         self.use_softmax = use_softmax
+        self.use_shared_expert = use_shared_expert
 
         self.irreps_tp_out_list = []
         for nu in range(2, self.correlation+1):

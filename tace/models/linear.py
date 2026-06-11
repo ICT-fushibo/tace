@@ -390,6 +390,109 @@ class e3nnMoEElementLinear(torch.nn.Module):
         return "MoE" + repr(self.linear) + f"(bias={self.bias is not None}, num_experts={self.num_experts})"
     
 
+class e3nnMoEElementLinearV2(torch.nn.Module):
+    """Element-dependent experts that each consume the complete input."""
+
+    def __init__(
+        self,
+        irreps_in: o3.Irreps,
+        irreps_out: o3.Irreps,
+        *,
+        bias: bool = True,
+        num_elements: int,
+        num_experts: int,
+        use_matrix_weight: bool = get_tace_use_matrix_weight(),
+    ) -> None:
+        super().__init__()
+
+        self.irreps_in = o3.Irreps(irreps_in)
+        self.irreps_out = o3.Irreps(irreps_out)
+        self.num_elements = num_elements
+        self.num_experts = num_experts
+        self.use_matrix_weight = use_matrix_weight == "1"
+
+        if num_experts < 1:
+            raise ValueError(f"num_experts must be positive, got {num_experts}")
+
+        self.linear = o3.Linear(
+            self.irreps_in,
+            self.irreps_out,
+            internal_weights=False,
+            shared_weights=False,
+        )
+        self._path_shapes = [
+            tuple(ins.path_shape) for ins in self.linear.instructions
+        ]
+
+        if self.use_matrix_weight:
+            self.weight = torch.nn.ParameterList(
+                [
+                    torch.nn.Parameter(
+                        torch.randn(num_elements, num_experts, *ins.path_shape)
+                    )
+                    for ins in self.linear.instructions
+                ]
+            )
+        else:
+            self.weight = torch.nn.Parameter(
+                torch.randn(num_elements, num_experts, self.linear.weight_numel)
+            )
+
+        self._0e_slices = []
+        self._bias_slices = []
+        output_offset = 0
+        bias_offset = 0
+        for mul, ir in self.irreps_out:
+            field_dim = mul * ir.dim
+            if ir.l == 0 and ir.p == 1:
+                self._0e_slices.append(slice(output_offset, output_offset + field_dim))
+                self._bias_slices.append(slice(bias_offset, bias_offset + mul))
+                bias_offset += mul
+            output_offset += field_dim
+
+        if bias and bias_offset > 0:
+            self.bias = torch.nn.Parameter(
+                torch.zeros(num_elements, num_experts, bias_offset)
+            )
+        else:
+            self.register_parameter("bias", None)
+
+    def _weights(self, node_type: torch.Tensor) -> torch.Tensor:
+        if self.use_matrix_weight:
+            return torch.cat(
+                [
+                    weight[node_type].reshape(node_type.shape[0], self.num_experts, -1)
+                    for weight in self.weight
+                ],
+                dim=-1,
+            )
+        return self.weight[node_type]
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        node_type = y.argmax(dim=-1)
+        batch_size = x.shape[0]
+        expert_inputs = x[:, None, :].expand(-1, self.num_experts, -1)
+        outputs = self.linear(
+            expert_inputs.reshape(batch_size * self.num_experts, -1),
+            self._weights(node_type).reshape(batch_size * self.num_experts, -1),
+        ).reshape(batch_size, self.num_experts, -1)
+
+        if self.bias is not None:
+            bias = self.bias[node_type]
+            for output_slice, bias_slice in zip(self._0e_slices, self._bias_slices):
+                outputs[:, :, output_slice] = (
+                    outputs[:, :, output_slice] + bias[:, :, bias_slice]
+                )
+        return outputs
+
+    def __repr__(self):
+        return (
+            "MoE"
+            + repr(self.linear)
+            + f"(bias={self.bias is not None}, num_experts={self.num_experts})"
+        )
+    
+
 def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") -> torch.nn.Module:
 
     assert target in {"toggle", "flat", "matrix"}
@@ -425,18 +528,26 @@ def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") ->
 
         with torch.no_grad():
             if is_element_linear(m):
-                # old_weight: [num_elements, weight_numel]
+                has_experts = hasattr(m, "num_experts")
                 for ins in m.linear.instructions:
                     size = int(torch.tensor(ins.path_shape).prod().item())
-                    chunk = old_weight[:, offset:offset + size]
-                    chunk = chunk.reshape(m.num_elements, *ins.path_shape)
+                    if has_experts:
+                        chunk = old_weight[:, :, offset:offset + size]
+                        chunk = chunk.reshape(
+                            m.num_elements,
+                            m.num_experts,
+                            *ins.path_shape,
+                        )
+                    else:
+                        chunk = old_weight[:, offset:offset + size]
+                        chunk = chunk.reshape(m.num_elements, *ins.path_shape)
                     matrix_weights.append(torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad))
                     offset += size
 
                 # bias:
                 # flat layout:   [num_elements, bias_dim]
                 # matrix layout: [num_elements * bias_dim]
-                if m.bias is not None and m.bias.dim() == 2:
+                if not has_experts and m.bias is not None and m.bias.dim() == 2:
                     m.bias = torch.nn.Parameter(
                         m.bias.reshape(-1).clone(),
                         requires_grad=m.bias.requires_grad,
@@ -464,13 +575,20 @@ def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") ->
         with torch.no_grad():
             if is_element_linear(m):
                 # 每个 w: [num_elements, *path_shape]
-                chunks = [w.reshape(m.num_elements, -1) for w in old_weights]
+                has_experts = hasattr(m, "num_experts")
+                if has_experts:
+                    chunks = [
+                        w.reshape(m.num_elements, m.num_experts, -1)
+                        for w in old_weights
+                    ]
+                else:
+                    chunks = [w.reshape(m.num_elements, -1) for w in old_weights]
                 flat_weight = torch.cat(chunks, dim=-1)
 
                 # bias:
                 # matrix layout: [num_elements * bias_dim]
                 # flat layout:   [num_elements, bias_dim]
-                if m.bias is not None and m.bias.dim() == 1:
+                if not has_experts and m.bias is not None and m.bias.dim() == 1:
                     m.bias = torch.nn.Parameter(
                         m.bias.reshape(m.num_elements, -1).clone(),
                         requires_grad=m.bias.requires_grad,

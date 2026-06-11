@@ -86,6 +86,7 @@ DEFAULT_MODEL_CONFIG = {
         "return_components": None,
         "nonlinear": None,
         "use_softmax": False,
+        "use_shared_expert": False,
     },
     "readout_emlp": {
         "bias": False,
