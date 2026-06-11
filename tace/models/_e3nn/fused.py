@@ -352,6 +352,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         so2_linear_type: str,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
+        gate_m0: bool = False,
     ) -> None:
         super().__init__()
 
@@ -371,7 +372,11 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
         self.weight_numel = (self.num_components * self.num_channel * 2)
         self.register_buffer('expand_index', expand_index, persistent=False)
-        self.num_gates = sum(lmax+1-m for m in range(mmax+1))
+
+        if gate_m0:
+            self.num_gates = sum(lmax+1-m for m in range(mmax+1))
+        else:
+            self.num_gates = sum(lmax+1-m for m in range(1, mmax+1))
 
         self.linear_up = uvSO2Linear(
             mmax,
@@ -387,6 +392,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             lmax,
             self.edge_wise_hidden,   
             channel_wise=False,
+            gate_m0=gate_m0,
         )
         self.linear_down = uvSO2Linear(
             mmax,

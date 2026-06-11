@@ -503,11 +503,12 @@ class SwiGLUACE(Product):
     def _setup(self):
         from .nonlinear import O3BilinearGate
         self.nonlinearity = O3BilinearGate(self.irreps_hidden)
-        self.linear_up = e3nnElementLinear(
+        # self.linear_up = e3nnElementLinear(
+        self.linear_up = e3nnLinear(
             irreps_in=self.irreps_in,
             irreps_out=self.nonlinearity.irreps_in,
             bias=self.use_bias,
-            num_elements=self.num_elements,
+            # num_elements=self.num_elements,
         )
         self.linear_down = e3nnLinear(
             irreps_in=self.nonlinearity.irreps_out,
@@ -526,7 +527,8 @@ class SwiGLUACE(Product):
         sc: torch.Tensor,
         batch: torch.Tensor,
     ) -> torch.Tensor:
-        outs = self.linear_up(node_feats, node_attrs)
+        # outs = self.linear_up(node_feats, node_attrs)
+        outs = self.linear_up(node_feats)
         outs = self.nonlinearity(outs)
         outs = self.linear_down(outs)
 

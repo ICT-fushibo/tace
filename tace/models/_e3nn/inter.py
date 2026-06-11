@@ -929,7 +929,9 @@ class AttentionInteractionArchitecture3(Interaction):
             ), 
             nlocal
         )
-    
+        m_i = self.linear_down(m_i)
+        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
+
         if resBA is not None:
             m_i = m_i + resBA
 
@@ -941,9 +943,6 @@ class AttentionInteractionArchitecture3(Interaction):
 
         if hasattr(self, 'norm2'):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
-
-        m_i = self.linear_down(m_i)
-        m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
 
         if resBB is not None:
             sc = resBB

@@ -79,7 +79,7 @@ class e3nnTACE(torch.nn.Module):
         # === Will be called by in this module ===
         self.use_alllayer = cfg['readout_emlp']['use_alllayer']
         self.num_channel = cfg['num_channel']
-        self.scale_zbl = cfg['readout_emlp']['scale_zbl']
+        self.scale_zbl = cfg['scale_shift']['scale_zbl']
 
         # === Will be used in __init__ ===
         target_irreps = get_target_irreps(self.target_property)
