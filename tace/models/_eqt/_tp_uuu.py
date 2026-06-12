@@ -22,10 +22,9 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         irreps_out: o3.Irreps,
         num_channel: int,
         path: list[tuple[int, int, int]],
+        trainable: bool,
     ):
         super().__init__()
-
-        trainable = False
 
         self.reshap1 = LayoutTransform(irreps_in1)
         self.reshap2 = LayoutTransform(irreps_in2)

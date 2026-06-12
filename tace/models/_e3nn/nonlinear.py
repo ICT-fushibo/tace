@@ -140,7 +140,7 @@ class ChannelWiseO3NormGate(torch.nn.Module):
 
 
 class O3BilinearGate(torch.nn.Module):
-    """CGTP-based SwiGLU, Based on https://github.com/SamsungDS/GGNN"""
+    """Based on https://github.com/SamsungDS/GGNN"""
 
     def __init__(self, irreps: o3.Irreps, l1l2: Union[str, None] = ">=") -> None:
         super().__init__()
@@ -205,4 +205,85 @@ class O3BilinearGate(torch.nn.Module):
         return (
             f"{self.__class__.__name__}("
             f"{self.irreps_in} -> {self.irreps_out})"
+        )
+    
+
+
+class O3BilinearGate(torch.nn.Module):
+    """CGTP-based SwiGLU, based on EquFlashV2."""
+
+    def __init__(
+        self,
+        irreps: o3.Irreps,
+        l1l2: Union[str, None] = ">=",
+    ) -> None:
+        super().__init__()
+
+        irreps = o3.Irreps(irreps)
+        non_scalar_irreps = irreps[1:]
+        from .fused import uuuTensorProduct
+
+        self.irreps_target = irreps
+        self.irreps_act = irreps[:1]
+        self.irreps_non_scalar = non_scalar_irreps
+
+        tp = uuuTensorProduct(
+            non_scalar_irreps,
+            irreps,
+            irreps,
+            l1l2=l1l2,
+            trainable=True,
+        )
+        self.irreps_gate = o3.Irreps(f"{tp.weight_numel}x0e")
+        tp_irreps_out = tp.irreps_out
+        self.tp = tp if tp_irreps_out.dim > 0 else None
+
+        self.irreps_in = (
+            self.irreps_gate
+            + self.irreps_act
+            + o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps])
+        ).simplify()
+        self.irreps_out = (self.irreps_act + tp_irreps_out).simplify()
+
+        self._gate_dim = self.irreps_gate.dim
+        self._act_dim = self.irreps_act.dim
+        self._non_scalar_slices = list(
+            o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps]).slices()
+        )
+        self._non_scalar_muls = [mul for mul, _ in non_scalar_irreps]
+        self._non_scalar_dims = [ir.dim for _, ir in non_scalar_irreps]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    
+        weights = torch.nn.functional.silu(x[:, : self._gate_dim])
+        scalars = torch.nn.functional.silu(
+            x[:, self._gate_dim : self._gate_dim + self._act_dim]
+        )
+        if self.tp is None:
+            return torch.cat([scalars, weights], dim=-1)
+
+        non_scalars = x[:, self._gate_dim + self._act_dim :]
+
+        x1_fields = []
+        x2_fields = []
+        for tensor_slice, mul, ir_dim in zip(
+            self._non_scalar_slices,
+            self._non_scalar_muls,
+            self._non_scalar_dims,
+        ):
+            field = non_scalars[:, tensor_slice].reshape(
+                x.shape[0], 2 * mul, ir_dim
+            )
+            x1_fields.append(field[:, :mul].reshape(x.shape[0], -1))
+            x2_fields.append(field[:, mul:].reshape(x.shape[0], -1))
+
+        x1 = torch.cat(x1_fields, dim=-1)
+        x2 = torch.cat([torch.ones_like(scalars), *x2_fields], dim=-1)
+        coupled = self.tp(x1, x2, weights)
+        return torch.cat([scalars, coupled], dim=-1)
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"{self.irreps_in} -> {self.irreps_out})" # + repr(self.tp)
         )

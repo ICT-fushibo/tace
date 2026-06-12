@@ -217,6 +217,7 @@ class uuuTensorProduct(torch.nn.Module):
                 irreps_out=actual_irreps_out,
                 num_channel=irreps_in2.count("1o"),
                 path=instructions,
+                trainable=trainable,
             )
         else:
             pass
@@ -352,7 +353,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         so2_linear_type: str,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
-        gate_m0: bool = False,
+        gate_m0: bool = True,
     ) -> None:
         super().__init__()
 

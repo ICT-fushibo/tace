@@ -4,7 +4,7 @@
 ################################################################################
 
 import math
-from typing import Dict
+from typing import Dict, Union
 
 
 import torch
@@ -34,11 +34,17 @@ from .dropout import GraphDropPath
 
 #     def _setup(self):
 
+#         self.scale = (1.0 / math.sqrt(2.0))
+
+ 
+
 #         self.linear_up = e3nnLinear(
 #             self.irreps_in,
 #             self.irreps_hidden,
 #             bias=self.use_bias,
 #         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
+
 
 #         for_coefs = {
 #             "irreps_out": self.irreps_coefs_out,
@@ -49,15 +55,46 @@ from .dropout import GraphDropPath
 #         if self.num_expert > 1:
 #             coefs_cls = e3nnMoEElementLinear
 #             for_coefs["num_experts"] = self.num_expert
+#             # if self.use_softmax:
+#             #     self.router = e3nnLinear(
+#             #         self.irreps_hidden,
+#             #         o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
+#             #         bias=False,
+#             #     )
+#             #     with torch.no_grad():
+#             #         if isinstance(self.router.weight, torch.nn.ParameterList):
+#             #             for p in self.router.weight:
+#             #                 p.mul_(1e-2)
+#             #         else:
+#             #             self.router.weight.mul_(1e-2)
+#             #     self._routed_metadata = [
+#             #         (tensor_slice, mul // self.num_expert, ir.dim)
+#             #         for tensor_slice, (mul, ir) in zip(
+#             #             self.irreps_coefs_out.slices(),
+#             #             self.irreps_coefs_out,
+#             #         )
+#             #     ]
 
 #         self.aces = torch.nn.ModuleList()
 #         self.coefs = torch.nn.ModuleList()
+#         if self.use_shared_expert and self.num_expert > 1:
+#             self.shared_coefs = torch.nn.ModuleList()
 #         self.coefs.append(
 #             coefs_cls(
 #                 o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]).simplify(),
 #                 **for_coefs,
 #             )
 #         )
+#         if hasattr(self, "shared_coefs"):
+#             self.shared_coefs.append(
+#                 e3nnLinear(
+#                     o3.Irreps(
+#                         [(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]
+#                     ).simplify(),
+#                     self.irreps_coefs_out,
+#                     bias=self.use_bias,
+#                 )
+#             )
 
 #         product_in1 = self.irreps_hidden
 
@@ -74,8 +111,23 @@ from .dropout import GraphDropPath
 #                 **for_coefs,
 #                 )
 #             )
+#             if hasattr(self, "shared_coefs"):
+#                 self.shared_coefs.append(
+#                     e3nnLinear(
+#                         o3.Irreps(
+#                             [
+#                                 (self.num_hidden_channel, ir)
+#                                 for _, ir in this_ace.irreps_out
+#                             ]
+#                         ).simplify(),
+#                         self.irreps_coefs_out,
+#                         bias=self.use_bias,
+#                     )
+#                 )
 #             product_in1 = this_ace.irreps_out
 
+
+#         linear_irreps_in = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out])
 #         if self.nonlinear_type == 'cwnorm':
 #             from .nonlinear import ChannelWiseO3NormGate
 #             from ..mlp import ScaledSigmoid
@@ -83,15 +135,54 @@ from .dropout import GraphDropPath
 #                 for_coefs["irreps_out"],
 #                 ScaledSigmoid(),
 #             )
+#         # elif self.nonlinear_type == 'bilineargate':
+#         #     from .nonlinear import O3BilinearGate
+#         #     self.nonlinearty = O3BilinearGate(linear_irreps_in)
+#         #     self.linear_up2 = e3nnLinear(
+#         #         linear_irreps_in,
+#         #         self.nonlinearty.irreps_in
+#         #     )
+#         #     linear_irreps_in = self.nonlinearty.irreps_out
 
 #         self.linear = e3nnLinear(
-#             o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]),
+#             linear_irreps_in,
 #             self.irreps_out,
 #             bias=self.use_bias,
 #         )    
 
 #         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
 #             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+        
+
+#     # def _softmax_router_weights(self, node_feats: torch.Tensor) -> torch.Tensor:
+#     #     probabilities = torch.softmax(self.router(node_feats), dim=-1)
+#     #     rms = probabilities.square().mean(dim=-1, keepdim=True).sqrt()
+#     #     return probabilities / rms
+
+#     def _merge_shared_expert(
+#         self,
+#         grouped: torch.Tensor,
+#         shared: torch.Tensor,
+#     ) -> torch.Tensor:
+#         return (grouped + shared) * self.scale
+
+#     # def _route_experts(
+#     #     self,
+#     #     x: torch.Tensor,
+#     #     router_weights: torch.Tensor,
+#     # ) -> torch.Tensor:
+#     #     routed_fields = []
+#     #     for tensor_slice, expert_mul, ir_dim in self._routed_metadata:
+#     #         field = x[:, tensor_slice].reshape(
+#     #             x.shape[0],
+#     #             self.num_expert,
+#     #             expert_mul,
+#     #             ir_dim,
+#     #         )
+#     #         routed_fields.append(
+#     #             (field * router_weights[:, :, None, None]).reshape(x.shape[0], -1)
+#     #         )
+#     #     return torch.cat(routed_fields, dim=-1)
 
 #     def forward(
 #             self, 
@@ -102,18 +193,43 @@ from .dropout import GraphDropPath
 #         ) -> torch.Tensor:
 
 #         node_feats = self.linear_up(node_feats)
+#         # if hasattr(self, "router"):
+#         #     router_weights = self._softmax_router_weights(node_feats)
+#         # else:
+#         #     router_weights = None
 
 #         corr_feats = {
 #             1: node_feats,
 #         }
 
 #         outs = self.coefs[0](corr_feats[1], node_attrs)
+#         shared_outs = (
+#             self.shared_coefs[0](corr_feats[1])
+#             if hasattr(self, "shared_coefs")
+#             else None
+#         )
 
 #         for nu in range(2, self.correlation+1):
 #             corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
 #             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+#             if shared_outs is not None:
+#                 shared_outs = shared_outs + self.shared_coefs[nu-1](corr_feats[nu])
+
+#         # if hasattr(self, "nonlinearty"):
+#         #     outs = self.nonlinearty(outs)
+
+#         # # if router_weights is not None:
+#         # #     outs = self._route_experts(outs, router_weights)
+
+#         # if shared_outs is not None:
+#         #     outs = self._merge_shared_expert(outs, shared_outs)
+
+#         if shared_outs is not None:
+#             outs = self._merge_shared_expert(outs, shared_outs)
 
 #         if hasattr(self, "nonlinearty"):
+#             if self.nonlinear_type == 'bilineargate':
+#                 outs = self.linear_up2(outs)
 #             outs = self.nonlinearty(outs)
 
 #         outs = self.linear(outs)
@@ -125,7 +241,7 @@ from .dropout import GraphDropPath
 #             outs = outs + sc
 
 #         return outs
-
+    
 class CgtpACE(Product):
     """
     The most expressive ACE implementation based on Clebsch-Gordan tensor products.
@@ -141,14 +257,6 @@ class CgtpACE(Product):
 
     def _setup(self):
 
-        self.scale = (1.0 / math.sqrt(2.0))
-
-        self.linear_up = e3nnLinear(
-            self.irreps_in,
-            self.irreps_hidden,
-            bias=self.use_bias,
-        ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
-
         for_coefs = {
             "irreps_out": self.irreps_coefs_out,
             "bias": self.use_bias,
@@ -158,25 +266,6 @@ class CgtpACE(Product):
         if self.num_expert > 1:
             coefs_cls = e3nnMoEElementLinear
             for_coefs["num_experts"] = self.num_expert
-            # if self.use_softmax:
-            #     self.router = e3nnLinear(
-            #         self.irreps_hidden,
-            #         o3.Irreps([(self.num_expert, o3.Irrep("0e"))]),
-            #         bias=False,
-            #     )
-            #     with torch.no_grad():
-            #         if isinstance(self.router.weight, torch.nn.ParameterList):
-            #             for p in self.router.weight:
-            #                 p.mul_(1e-2)
-            #         else:
-            #             self.router.weight.mul_(1e-2)
-            #     self._routed_metadata = [
-            #         (tensor_slice, mul // self.num_expert, ir.dim)
-            #         for tensor_slice, (mul, ir) in zip(
-            #             self.irreps_coefs_out.slices(),
-            #             self.irreps_coefs_out,
-            #         )
-            #     ]
 
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -199,6 +288,8 @@ class CgtpACE(Product):
                 )
             )
 
+        self.use_bilinear_ace = self.nonlinear_type == "bilineargate"
+
         product_in1 = self.irreps_hidden
 
         for nu in range(2, self.correlation+1):
@@ -207,6 +298,7 @@ class CgtpACE(Product):
                 irreps_in2=self.irreps_hidden,
                 irreps_out=self.irreps_tp_out_list[nu-2],
                 l1l2=self.l1l2,
+                trainable=self.use_bilinear_ace,
             )
             self.aces.append(this_ace)
             self.coefs.append(coefs_cls(
@@ -229,6 +321,41 @@ class CgtpACE(Product):
                 )
             product_in1 = this_ace.irreps_out
 
+        if self.use_bilinear_ace:
+            assert self.nonlinear_act == 'silu'
+            from ..mlp import ScaledSiLU
+            self.act = ScaledSiLU()
+            self._ace_gate_slices = []
+            gate_offset = 0
+            for ace in self.aces:
+                self._ace_gate_slices.append(
+                    slice(gate_offset, gate_offset + ace.weight_numel)
+                )
+                gate_offset += ace.weight_numel
+            self.num_ace_gate_weights = gate_offset
+
+            self.irreps_double_hidden = o3.Irreps(
+                [(2 * mul, ir) for mul, ir in self.irreps_hidden]
+            )
+            self.irreps_linear_up = (
+                o3.Irreps(f"{self.num_ace_gate_weights}x0e")
+                + self.irreps_double_hidden
+            )
+            self.linear_up = e3nnLinear(
+                self.irreps_in,
+                self.irreps_linear_up,
+                bias=self.use_bias,
+            )
+            self._double_hidden_slices = list(self.irreps_double_hidden.slices())
+            self._hidden_muls = [mul for mul, _ in self.irreps_hidden]
+            self._hidden_ir_dims = [ir.dim for _, ir in self.irreps_hidden]
+        else:
+            self.linear_up = e3nnLinear(
+                self.irreps_in,
+                self.irreps_hidden,
+                bias=self.use_bias,
+            ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
+
         if self.nonlinear_type == 'cwnorm':
             from .nonlinear import ChannelWiseO3NormGate
             from ..mlp import ScaledSigmoid
@@ -245,37 +372,47 @@ class CgtpACE(Product):
 
         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
-        
-
-    # def _softmax_router_weights(self, node_feats: torch.Tensor) -> torch.Tensor:
-    #     probabilities = torch.softmax(self.router(node_feats), dim=-1)
-    #     rms = probabilities.square().mean(dim=-1, keepdim=True).sqrt()
-    #     return probabilities / rms
 
     def _merge_shared_expert(
         self,
         grouped: torch.Tensor,
         shared: torch.Tensor,
     ) -> torch.Tensor:
-        return (grouped + shared) * self.scale
+        return (grouped + shared) * (1.0 / math.sqrt(2.0))
 
-    # def _route_experts(
-    #     self,
-    #     x: torch.Tensor,
-    #     router_weights: torch.Tensor,
-    # ) -> torch.Tensor:
-    #     routed_fields = []
-    #     for tensor_slice, expert_mul, ir_dim in self._routed_metadata:
-    #         field = x[:, tensor_slice].reshape(
-    #             x.shape[0],
-    #             self.num_expert,
-    #             expert_mul,
-    #             ir_dim,
-    #         )
-    #         routed_fields.append(
-    #             (field * router_weights[:, :, None, None]).reshape(x.shape[0], -1)
-    #         )
-    #     return torch.cat(routed_fields, dim=-1)
+    def _linear_up_features(
+        self,
+        x: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, Union[torch.Tensor, None]]:
+        
+        x = self.linear_up(x)
+
+        if not self.use_bilinear_ace:
+            return x, None, None
+
+        ace_weights = self.act(x[:, :self.num_ace_gate_weights])
+        double_features = x[:, self.num_ace_gate_weights:]
+
+        node_fields = []
+        base_fields = []
+        for tensor_slice, mul, ir_dim in zip(
+            self._double_hidden_slices,
+            self._hidden_muls,
+            self._hidden_ir_dims,
+        ):
+            field = double_features[:, tensor_slice].reshape(
+                x.shape[0],
+                2 * mul,
+                ir_dim,
+            )
+            node_fields.append(field[:, :mul].reshape(x.shape[0], -1))
+            base_fields.append(field[:, mul:].reshape(x.shape[0], -1))
+
+        return (
+            torch.cat(node_fields, dim=-1),
+            torch.cat(base_fields, dim=-1),
+            ace_weights,
+        )
 
     def forward(
             self, 
@@ -285,11 +422,7 @@ class CgtpACE(Product):
             batch: torch.Tensor,
         ) -> torch.Tensor:
 
-        node_feats = self.linear_up(node_feats)
-        # if hasattr(self, "router"):
-        #     router_weights = self._softmax_router_weights(node_feats)
-        # else:
-        #     router_weights = None
+        node_feats, base_feats, ace_weights = self._linear_up_features(node_feats)
 
         corr_feats = {
             1: node_feats,
@@ -303,19 +436,18 @@ class CgtpACE(Product):
         )
 
         for nu in range(2, self.correlation+1):
-            corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+            if self.use_bilinear_ace:
+                corr_feats[nu] = self.aces[nu-2](
+                    corr_feats[nu-1],
+                    base_feats,
+                    ace_weights[:, self._ace_gate_slices[nu-2]],
+                )
+            else:
+                corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
+
             outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
             if shared_outs is not None:
                 shared_outs = shared_outs + self.shared_coefs[nu-1](corr_feats[nu])
-
-        # if hasattr(self, "nonlinearty"):
-        #     outs = self.nonlinearty(outs)
-
-        # # if router_weights is not None:
-        # #     outs = self._route_experts(outs, router_weights)
-
-        # if shared_outs is not None:
-        #     outs = self._merge_shared_expert(outs, shared_outs)
 
         if shared_outs is not None:
             outs = self._merge_shared_expert(outs, shared_outs)
@@ -332,7 +464,6 @@ class CgtpACE(Product):
             outs = outs + sc
 
         return outs
-    
 
 # TODO, refactor
 class GtpACE(Product):
@@ -499,48 +630,6 @@ class MACE(Product):
         return outs
 
 
-class SwiGLUACE(Product):
-    def _setup(self):
-        from .nonlinear import O3BilinearGate
-        self.nonlinearity = O3BilinearGate(self.irreps_hidden)
-        # self.linear_up = e3nnElementLinear(
-        self.linear_up = e3nnLinear(
-            irreps_in=self.irreps_in,
-            irreps_out=self.nonlinearity.irreps_in,
-            bias=self.use_bias,
-            # num_elements=self.num_elements,
-        )
-        self.linear_down = e3nnLinear(
-            irreps_in=self.nonlinearity.irreps_out,
-            irreps_out=self.irreps_out,
-            bias=self.use_bias,
-        )
-        if (
-            self.layer > 0 or self.use_first_dropout
-        ) and self.stochastic_depth_p > 0.0:
-            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
-
-    def forward(
-        self,
-        node_feats: torch.Tensor,
-        node_attrs: torch.Tensor,
-        sc: torch.Tensor,
-        batch: torch.Tensor,
-    ) -> torch.Tensor:
-        # outs = self.linear_up(node_feats, node_attrs)
-        outs = self.linear_up(node_feats)
-        outs = self.nonlinearity(outs)
-        outs = self.linear_down(outs)
-
-        if hasattr(self, "stochastic_depth"):
-            outs = self.stochastic_depth(outs, batch)
-
-        if sc is not None:
-            outs = outs + sc
-
-        return outs
-    
-
 PRODUCT: Dict[str, torch.nn.Module] = {
     "spatial": CgtpACE,
     "coupled": CgtpACE,
@@ -552,8 +641,6 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "gtp": GtpACE,
 
     "mace": MACE,
-
-    "swiglu": SwiGLUACE
 
     # "so2": So2ACE,
 
