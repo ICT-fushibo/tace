@@ -158,6 +158,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         so2_l1l3: Union[str, None] = None,
         resolution: Union[list[int], None] = None,
         so2_agnostic: bool = True,
+        gate_m0: bool = True,
     ) -> None:
         super().__init__()
 
@@ -195,6 +196,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         else:
             self.radial_act = 'sigmoid'
         self.use_temperature = use_temperature
+        self.gate_m0 = gate_m0
 
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type

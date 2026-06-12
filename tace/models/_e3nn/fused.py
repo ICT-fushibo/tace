@@ -353,7 +353,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         so2_linear_type: str,
         reshape_in: LayoutTransform,
         reshape_out: LayoutTransform,
-        gate_m0: bool = True,
+        gate_m0: bool,
     ) -> None:
         super().__init__()
 

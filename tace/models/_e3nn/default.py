@@ -66,6 +66,7 @@ DEFAULT_MODEL_CONFIG = {
         "node_wise_hidden": None,
         "edge_wise_hidden": None,
         "resolution": None,
+        "gate_m0": True,
     },
     "resnet": {
         "type": "BB",
