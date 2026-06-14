@@ -31,13 +31,15 @@ class uuSO2TensorProduct(torch.nn.Module):
         self.m1m2 = m1m2
         self.instructions = []
 
+        self.num_paths = 0
         weight_numel = 0
         for m3 in range(mmax + 1):
             paths = self.enumerate_paths(m3)
             self.instructions.append(paths)
             weight_numel += num_channels * (lmax+1) * len(paths) 
-            
+            self.num_paths += len(paths)
         self.weight_numel = weight_numel
+
         if internal_weights:
             self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
         else:
@@ -250,29 +252,8 @@ class ComplexProductBasisV1(torch.nn.Module):
             m1m2=self.m1m2, 
             internal_weights=agnostic,
         )   # TODO, rename to tp
-        self.weight_numel = self.ace.weight_numel
+        self.ace.nu
 
-        if not agnostic:
-            self.nu1_weight_numel = (mmax+1) * (lmax+1) * num_channel
-            self.weight_numel += self.nu1_weight_numel
-            self.source_coefs = torch.nn.Parameter(torch.randn(num_elements, self.weight_numel))
-            self.target_coefs = torch.nn.Parameter(torch.randn(num_elements, self.weight_numel))
-            self.source_coefs.data.mul_(1 / math.sqrt(2)) # TODO
-            self.target_coefs.data.mul_(1 / math.sqrt(2)) # TODO
-
-            expand_index = []
-            offset = 0
-            for m in range(mmax + 1):
-                index = torch.arange((lmax + 1))
-                index = index + offset
-                expand_index.append(index)
-                if m > 0:
-                    expand_index.append(index)    # +- m
-                offset = offset + len(index)
-            expand_index = torch.cat(expand_index, dim=0)
-            expand_index = expand_index.long()
-            self.num_components = offset
-            self.register_buffer('expand_index', expand_index, persistent=False)
             
     def forward(self, x: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         if self.agnostic:
@@ -298,6 +279,32 @@ class ComplexProductBasisV1(torch.nn.Module):
 
         return corr_feats1 + corr_feats2
 
+
+class ComplexProductBasisV2(torch.nn.Module):
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channel: int,
+        m1m2: Union[str, None] = '>=',
+    ):
+        super().__init__()
+        self.mmax = mmax
+        self.lmax = lmax
+        self.num_channel = num_channel
+        self.m1m2 = m1m2
+        self.tp = uuSO2TensorProduct(
+            self.mmax, 
+            self.lmax,
+            self.num_channel, 
+            m1m2=self.m1m2, 
+            internal_weights=False,
+        ) 
+        self.weight_numel = self.tp.weight_numel
+            
+    def forward(self, x: torch.Tensor, y: torch.Tensor, ws: torch.Tensor) -> torch.Tensor:
+        return self.tp(x, y, ws)
+    
 
 class VectorSwiGLU(torch.nn.Module):
     """

@@ -64,9 +64,12 @@ DEFAULT_MODEL_CONFIG = {
         "use_graph_softmax": False,
         "use_temperature": False,
         "node_wise_hidden": None,
+        "edge_ace_hidden": None,
         "edge_wise_hidden": None,
         "resolution": None,
         "gate_m0": True,
+        "scalar_act": None,
+        "tensor_act": None,
     },
     "resnet": {
         "type": "BB",

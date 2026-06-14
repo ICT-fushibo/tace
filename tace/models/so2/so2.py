@@ -10,7 +10,7 @@ from typing import Union, NamedTuple, Iterator
 import torch
 
 
-from ..mlp import ScaledSigmoid
+from ..mlp import ScaledSigmoid, ScaledSiLU
 from ..linear import torchLinear
 from .utils import so2_expand_index, satisfy
 
@@ -217,6 +217,8 @@ class SO2Gate(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
+        scalar_act,
+        tensor_act,
         channel_wise: bool = False,
         gate_m0: bool = True,
     ):
@@ -257,25 +259,24 @@ class SO2Gate(torch.nn.Module):
 
         self.register_buffer('expand_index', expand_index, persistent=False)
 
-        self.act1 = ScaledSigmoid()
-        self.act2 = ScaledSigmoid()
+        self.scalar_act = scalar_act
+        self.tensor_act = tensor_act
 
     def forward(self, x: torch.Tensor, g: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
-        g = self.act2(g).view(B, self.num_components, self.num_channel)
+        g = self.tensor_act(g).view(B, self.num_components, self.num_channel)
         g = torch.index_select(g, dim=1, index=self.expand_index)
         if self.gate_m0:
             return g * x
-
-        x_m0 = self.act1(x[:, :self.num_m0_components])
+        x_m0 = self.scalar_act(x[:, :self.num_m0_components])
         x_m = g * x[:, self.num_m0_components:]
         return torch.cat((x_m0, x_m), dim=1)
     
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__} + "
-            f"(act='sigmoid', gate_m0={self.gate_m0})"
-        )
+    # def __repr__(self) -> str:
+    #     return (
+    #         f"{self.__class__.__name__} + "
+    #         f"(act='sigmoid', gate_m0={self.gate_m0})"
+    #     )
 
 class SO2Norm(torch.nn.Module):
     def __init__(

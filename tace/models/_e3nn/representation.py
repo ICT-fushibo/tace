@@ -181,6 +181,9 @@ class Representation(torch.nn.Module):
             "so2_agnostic": atomic_basis["so2_agnostic"],
             "use_temperature": atomic_basis["use_temperature"],
             "gate_m0": atomic_basis["gate_m0"],
+            "scalar_act": atomic_basis["scalar_act"],
+            "tensor_act": atomic_basis["tensor_act"],
+            "edge_ace_hidden": atomic_basis["edge_ace_hidden"],
         }
 
         self.interactions = torch.nn.ModuleList()

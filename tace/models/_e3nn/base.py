@@ -135,6 +135,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         radial_mlp: list[int],
         radial_bias: bool,
         irreps_in: o3.Irreps,
+        scalar_act: str,
+        tensor_act: str,
+        edge_ace_hidden: Union[int, None],
         l1l2: Union[str, None] = None,
         scatter_norm: str = 'avg_num_neighbors',
         bias: bool = True,
@@ -179,6 +182,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.radial_bias = radial_bias
         self.use_bias = bias
         self.scatter_norm = scatter_norm
+        self.scalar_act = scalar_act
+        self.tensor_act = tensor_act
+        self.edge_ace_hidden = edge_ace_hidden or num_channel
         if self.scatter_norm == 'no_cutoff_density':
             self.apply_density_cutoff = False
         else:
