@@ -2,9 +2,6 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-''''
-Some components are from eqv3 and Fair.
-'''
 
 import os
 import math
