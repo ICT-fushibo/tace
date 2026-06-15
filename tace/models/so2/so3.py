@@ -15,7 +15,7 @@ from e3nn import o3
 from e3nn.o3 import FromS2Grid, ToS2Grid
 
 
-# from .triton_wigner import fused_sparse_wigner_bmm
+from tace.models.ictd import ICTD
 from .utils import so2_expand_index, so3_expand_index
 
 
@@ -280,11 +280,24 @@ class WignerD(torch.nn.Module):
         self,
         lmax,
         mmax,
+        wigner_type: str = "euler",
     ):
         super().__init__()
         self.lmax = lmax
         self.mmax = mmax
-
+        self.wigner_type = wigner_type
+        if self.wigner_type not in {"flash", "ictd", "euler"}:
+            raise ValueError(
+                f"Unknown wigner_type={self.wigner_type!r}; "
+                "expected 'flash', 'ictd', or 'euler'."
+            )
+        if self.wigner_type == "flash":
+            for l in range(2, self.lmax + 1):
+                self.register_buffer(f"CG_{l}", o3.wigner_3j(1, l - 1, l), persistent=False)
+        elif self.wigner_type == "ictd":
+            for l in range(self.lmax + 1):
+                _, _, C, _ = ICTD(l, l, False)
+                self.register_buffer(f"C_{l}", C[0], persistent=False)
         mapping = CoefficientMappingModule(
             lmax=self.lmax, 
             mmax=self.lmax, 
@@ -312,28 +325,6 @@ class WignerD(torch.nn.Module):
         self.register_buffer('wigner_index_to_m_array', wigner_index_to_m_array)
         self.register_buffer('wigner_inv_rescale', wigner_inv_rescale) # [1, 16, 14]
 
-    def _sparse_wigner_indices(self, output_to_input, transpose):
-        """Build the fixed CSR pattern while keeping TACE's existing layouts."""
-        rows = (self.lmax + 1) ** 2 if transpose else output_to_input.numel()
-        row_ptr = [0]
-        col_idx = []
-        for row in range(rows):
-            if transpose:
-                l = math.isqrt(row)
-                columns = torch.nonzero(
-                    (output_to_input >= l * l)
-                    & (output_to_input < (l + 1) * (l + 1)),
-                    as_tuple=False,
-                ).flatten()
-            else:
-                l = math.isqrt(int(output_to_input[row]))
-                columns = torch.arange(l * l, (l + 1) * (l + 1))
-            col_idx.extend(columns.tolist())
-            row_ptr.append(len(col_idx))
-        return torch.tensor(row_ptr, dtype=torch.int32), torch.tensor(
-            col_idx, dtype=torch.int32
-        )
-    
     def set_wigner(self, edge_vector):
         rot_mat3x3 = init_edge_rot_mat(edge_vector)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
@@ -350,8 +341,103 @@ class WignerD(torch.nn.Module):
         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
         wigner_inv = wigner_inv * self.wigner_inv_rescale
         return wigner, wigner_inv
-
+    
     def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
+        if self.wigner_type == "flash":
+            return self._rotation_to_wigner_matrix_flash(
+                edge_rot_mat,
+                start_lmax,
+                end_lmax,
+            )
+        if self.wigner_type == "ictd":
+            return self._rotation_to_wigner_matrix_ictd(
+                edge_rot_mat,
+                start_lmax,
+                end_lmax,
+            )
+        return self._rotation_to_wigner_matrix_euler(
+            edge_rot_mat,
+            start_lmax,
+            end_lmax,
+        )
+
+    def _rotate_cartesian_basis(
+        self,
+        cartesian_basis: torch.Tensor,
+        rotation: torch.Tensor,
+        degree: int,
+    ) -> torch.Tensor:
+        out = cartesian_basis
+        for axis in range(1, degree + 1):
+            out = out.movedim(axis, -1)
+            out = torch.einsum("bij,b...j->b...i", rotation, out)
+            out = out.movedim(-1, axis)
+        return out
+
+    def _rotation_to_wigner_matrix_ictd(
+        self,
+        edge_rot_mat: torch.Tensor,
+        start_lmax: int,
+        end_lmax: int,
+    ) -> torch.Tensor:
+        blocks = []
+        batch = edge_rot_mat.shape[0]
+        for degree in range(start_lmax, end_lmax + 1):
+            C = getattr(self, f"C_{degree}").to(
+                dtype=edge_rot_mat.dtype,
+                device=edge_rot_mat.device,
+            )
+            width = 2 * degree + 1
+            cartesian_basis = C.unsqueeze(0).expand(batch, -1, -1)
+            cartesian_basis = cartesian_basis.reshape(
+                batch,
+                *([3] * degree),
+                width,
+            )
+            rotated_basis = self._rotate_cartesian_basis(
+                cartesian_basis,
+                edge_rot_mat,
+                degree,
+            )
+            rotated_basis = rotated_basis.reshape(batch, 3**degree, width)
+            blocks.append(torch.einsum("pi,bpj->bij", C, rotated_basis))
+
+        size = int((end_lmax + 1) ** 2) - int(start_lmax**2)
+        wigner = edge_rot_mat.new_zeros(batch, size, size)
+        offset = 0
+        for block in blocks:
+            width = block.shape[-1]
+            wigner[:, offset : offset + width, offset : offset + width] = block
+            offset += width
+        return wigner
+
+    def _rotation_to_wigner_matrix_flash(
+        self,
+        edge_rot_mat: torch.Tensor,
+        start_lmax: int,
+        end_lmax: int,
+    ) -> torch.Tensor:
+        batch = edge_rot_mat.shape[0]
+        all_blocks = [edge_rot_mat.new_ones(batch, 1, 1)]
+        if end_lmax >= 1:
+            all_blocks.append(edge_rot_mat)
+        for degree in range(2, end_lmax + 1):
+            cg = getattr(self, f"CG_{degree}").to(edge_rot_mat)
+            left = torch.einsum("abm,eac->ebmc", cg, all_blocks[1])
+            left = torch.einsum("ebmc,ebd->emcd", left, all_blocks[degree - 1])
+            block = torch.einsum("emcd,cdn->emn", left, cg)
+            all_blocks.append(block * (2 * degree + 1))
+        blocks = all_blocks[start_lmax : end_lmax + 1]
+        size = int((end_lmax + 1) ** 2) - int(start_lmax**2)
+        wigner = edge_rot_mat.new_zeros(batch, size, size)
+        offset = 0
+        for block in blocks:
+            width = block.shape[-1]
+            wigner[:, offset : offset + width, offset : offset + width] = block
+            offset += width
+        return wigner
+    
+    def _rotation_to_wigner_matrix_euler(self, edge_rot_mat, start_lmax, end_lmax):
         x = edge_rot_mat[:, :, 1]
 
         alpha, beta = o3.xyz_to_angles(x)
@@ -393,7 +479,7 @@ class WignerD(torch.nn.Module):
         return wigner
 
     def extra_repr(self):
-        return 'mmax={}, lmax={}'.format(self.mmax, self.lmax)
+        return 'mmax={}, lmax={}, wigner={}'.format(self.mmax, self.lmax, self.wigner_type)
 
 
 class SO3Grid(torch.nn.Module):
