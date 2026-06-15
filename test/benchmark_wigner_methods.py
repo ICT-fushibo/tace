@@ -1,16 +1,5 @@
-"""Benchmark TACE Wigner-D generation methods.
-
-Edit the configuration values below, then run:
-
-    python test/benchmark_wigner_methods.py
-"""
-
-from __future__ import annotations
-
 import time
-
 import torch
-
 from tace.models.so2.so3 import WignerD, init_edge_rot_mat
 
 
@@ -19,20 +8,16 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float32
 LMAX = 6
 MMAX = 6
-
 NUM_EDGES = 100_000
-WARMUP_STEPS = 10
-BENCHMARK_STEPS = 50
-
-METHODS = ("cartesian", "efficient", "euler")
+WARMUP_STEPS = 100
+BENCHMARK_STEPS = 500
+METHODS = ("flash", "ictd", "euler")
 BENCHMARK_BACKWARD = False
 USE_TORCH_COMPILE = False
-
 
 def synchronize() -> None:
     if torch.device(DEVICE).type == "cuda":
         torch.cuda.synchronize()
-
 
 def benchmark(
     fn,
@@ -90,11 +75,6 @@ def benchmark_backward(
 
 
 def main() -> None:
-    if MMAX > LMAX:
-        raise ValueError(f"MMAX={MMAX} must not exceed LMAX={LMAX}")
-    if torch.device(DEVICE).type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA was selected but is not available")
-
     torch.manual_seed(0)
     edge_vector = torch.randn(NUM_EDGES, 3, dtype=DTYPE, device=DEVICE)
     rotation = init_edge_rot_mat(edge_vector)

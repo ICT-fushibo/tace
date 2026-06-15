@@ -62,7 +62,7 @@ def _z_rot_mat(angle, l):
 _ROTATION_MASK_THRESHOLD = 0.999999
 
 
-def init_edge_rot_mat(edge_distance_vec):
+def init_edge_rot_mat_random(edge_distance_vec):
     edge_vec_0 = edge_distance_vec
     edge_vec_0_distance = torch.sqrt(torch.sum(edge_vec_0**2, dim=1))
 
@@ -121,6 +121,75 @@ def init_edge_rot_mat(edge_distance_vec):
     return edge_rot_mat
 
         
+def _norm(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+    return torch.sqrt(torch.sum(x * x, dim=-1, keepdim=True) + eps * eps)
+
+
+def _quaternion_normalize(q: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
+    return q / _norm(q, eps)
+
+
+def _smooth_step_cinf(x: torch.Tensor) -> torch.Tensor:
+    x = x.clamp(0.0, 1.0)
+    eps = torch.finfo(x.dtype).eps
+    left = torch.exp(-1.0 / torch.clamp(x, min=eps))
+    right = torch.exp(-1.0 / torch.clamp(1.0 - x, min=eps))
+    interior = left / (left + right)
+    return torch.where(
+        x <= 0.0,
+        torch.zeros_like(x),
+        torch.where(x >= 1.0, torch.ones_like(x), interior),
+    )
+
+
+def _quaternion_nlerp(
+    q0: torch.Tensor,
+    q1: torch.Tensor,
+    weight: torch.Tensor,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    dot = torch.sum(q0 * q1, dim=-1, keepdim=True)
+    q1 = torch.where(dot < 0.0, -q1, q1)
+    blended = (1.0 - weight.unsqueeze(-1)) * q0 + weight.unsqueeze(-1) * q1
+    return _quaternion_normalize(blended, eps)
+
+
+def _quaternion_to_rotation_matrix(q: torch.Tensor) -> torch.Tensor:
+    w, x, y, z = q.unbind(dim=-1)
+    x2, y2, z2 = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
+    return torch.stack(
+        [
+            torch.stack(
+                [1.0 - 2.0 * (y2 + z2), 2.0 * (xy - wz), 2.0 * (xz + wy)],
+                dim=-1,
+            ),
+            torch.stack(
+                [2.0 * (xy + wz), 1.0 - 2.0 * (x2 + z2), 2.0 * (yz - wx)],
+                dim=-1,
+            ),
+            torch.stack(
+                [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (x2 + y2)],
+                dim=-1,
+            ),
+        ],
+        dim=-2,
+    )
+
+
+def init_edge_rot_mat_quaternion(
+    edge_distance_vec: torch.Tensor,
+    eps: float = 1e-7,
+) -> torch.Tensor:
+    edge_unit = edge_distance_vec / _norm(edge_distance_vec, eps)
+    x, y, z = edge_unit.unbind(dim=-1)
+    q_pos = _quaternion_normalize(torch.stack([1.0 + y, -z, torch.zeros_like(x), x], dim=-1), eps)
+    q_neg = _quaternion_normalize(torch.stack([-z, 1.0 - y, x, torch.zeros_like(x)], dim=-1), eps)
+    blend = _smooth_step_cinf(0.5 * (y + 1.0))
+    quaternion = _quaternion_nlerp(q_neg, q_pos, blend, eps)
+    return _quaternion_to_rotation_matrix(quaternion)
+
 
 class CoefficientMappingModule(torch.nn.Module):
     """
@@ -280,24 +349,39 @@ class WignerD(torch.nn.Module):
         self,
         lmax,
         mmax,
+        rotation_type: str = "random",
         wigner_type: str = "euler",
     ):
         super().__init__()
+
+        self.rotation_type = "random"
+        # self.rotation_type = "quaternion"
+
         self.lmax = lmax
         self.mmax = mmax
+        self.rotation_type = rotation_type
         self.wigner_type = wigner_type
+        if self.rotation_type not in {"random", "quaternion"}:
+            raise ValueError(
+                f"Unknown rotation_type={rotation_type!r}; "
+                "expected 'random' or 'quaternion'."
+            )
         if self.wigner_type not in {"flash", "ictd", "euler"}:
             raise ValueError(
                 f"Unknown wigner_type={self.wigner_type!r}; "
                 "expected 'flash', 'ictd', or 'euler'."
             )
-        if self.wigner_type == "flash":
-            for l in range(2, self.lmax + 1):
-                self.register_buffer(f"CG_{l}", o3.wigner_3j(1, l - 1, l), persistent=False)
-        elif self.wigner_type == "ictd":
-            for l in range(self.lmax + 1):
-                _, _, C, _ = ICTD(l, l, False)
-                self.register_buffer(f"C_{l}", C[0], persistent=False)
+        if self.rotation_type == "random":
+            self.rotate_fn = init_edge_rot_mat_random
+        else:
+            self.rotate_fn = init_edge_rot_mat_quaternion
+
+        for l in range(2, self.lmax + 1):
+            self.register_buffer(f"CG_{l}", o3.wigner_3j(1, l - 1, l), persistent=False)
+        for l in range(self.lmax + 1):
+            _, _, C, _ = ICTD(l, l, False)
+            self.register_buffer(f"C_{l}", C[0], persistent=False)
+
         mapping = CoefficientMappingModule(
             lmax=self.lmax, 
             mmax=self.lmax, 
@@ -326,7 +410,7 @@ class WignerD(torch.nn.Module):
         self.register_buffer('wigner_inv_rescale', wigner_inv_rescale) # [1, 16, 14]
 
     def set_wigner(self, edge_vector):
-        rot_mat3x3 = init_edge_rot_mat(edge_vector)
+        rot_mat3x3 = self.rotate_fn(edge_vector)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
         wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner) # [14, 16] @ [16, 16]
         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
@@ -335,7 +419,7 @@ class WignerD(torch.nn.Module):
         self.wigner_inv = wigner_inv
 
     def get_wigner(self, edge_vector) -> tuple[torch.Tensor]:
-        rot_mat3x3 = init_edge_rot_mat(edge_vector)
+        rot_mat3x3 = self.rotate_fn(edge_vector)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
         wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner) # [14, 16] @ [16, 16]
         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
@@ -361,6 +445,28 @@ class WignerD(torch.nn.Module):
             end_lmax,
         )
 
+    # def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
+    #     print("flash")
+    #     return self._rotation_to_wigner_matrix_flash(
+    #         edge_rot_mat,
+    #         start_lmax,
+    #         end_lmax,
+    #     )
+    # # def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
+    # #     print("ictd")
+    # #     return self._rotation_to_wigner_matrix_ictd(
+    # #         edge_rot_mat,
+    # #         start_lmax,
+    # #         end_lmax,
+    # #     )
+    # # def _rotation_to_wigner_matrix(self, edge_rot_mat, start_lmax, end_lmax):
+    # #     print("euler")
+    # #     return self._rotation_to_wigner_matrix_euler(
+    # #         edge_rot_mat,
+    # #         start_lmax,
+    # #         end_lmax,
+    # #     )
+
     def _rotate_cartesian_basis(
         self,
         cartesian_basis: torch.Tensor,
@@ -383,17 +489,10 @@ class WignerD(torch.nn.Module):
         blocks = []
         batch = edge_rot_mat.shape[0]
         for degree in range(start_lmax, end_lmax + 1):
-            C = getattr(self, f"C_{degree}").to(
-                dtype=edge_rot_mat.dtype,
-                device=edge_rot_mat.device,
-            )
+            C = getattr(self, f"C_{degree}")
             width = 2 * degree + 1
             cartesian_basis = C.unsqueeze(0).expand(batch, -1, -1)
-            cartesian_basis = cartesian_basis.reshape(
-                batch,
-                *([3] * degree),
-                width,
-            )
+            cartesian_basis = cartesian_basis.reshape(batch, *([3] * degree), width)
             rotated_basis = self._rotate_cartesian_basis(
                 cartesian_basis,
                 edge_rot_mat,
@@ -422,7 +521,7 @@ class WignerD(torch.nn.Module):
         if end_lmax >= 1:
             all_blocks.append(edge_rot_mat)
         for degree in range(2, end_lmax + 1):
-            cg = getattr(self, f"CG_{degree}").to(edge_rot_mat)
+            cg = getattr(self, f"CG_{degree}")
             left = torch.einsum("abm,eac->ebmc", cg, all_blocks[1])
             left = torch.einsum("ebmc,ebd->emcd", left, all_blocks[degree - 1])
             block = torch.einsum("emcd,cdn->emn", left, cg)
@@ -479,7 +578,7 @@ class WignerD(torch.nn.Module):
         return wigner
 
     def extra_repr(self):
-        return 'mmax={}, lmax={}, wigner={}'.format(self.mmax, self.lmax, self.wigner_type)
+        return 'mmax={}, lmax={}, rotation={}, wigner={}'.format(self.mmax, self.lmax, self.rotation_type, self.wigner_type)
 
 
 class SO3Grid(torch.nn.Module):

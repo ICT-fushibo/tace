@@ -10,9 +10,9 @@ rtol = 1e-5
 
 def test_cartesian_get_wigner_matches_euler_with_truncated_m() -> None:
     edge_vector = torch.randn(8, 3, dtype=dtype)
-    cartesian = WignerD(lmax, mmax, wigner_type="cartesian")
+    cartesian = WignerD(lmax, mmax, wigner_type="flash")
+    xuzemin = WignerD(lmax, mmax, wigner_type="ictd")
     euler = WignerD(lmax, mmax, wigner_type="euler")
-    xuzemin = WignerD(lmax, mmax, wigner_type="efficient")
     torch.manual_seed(7)
     actual, actual_inv = cartesian.get_wigner(edge_vector)
     torch.manual_seed(7)
