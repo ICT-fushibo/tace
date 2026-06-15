@@ -354,9 +354,6 @@ class WignerD(torch.nn.Module):
     ):
         super().__init__()
 
-        self.rotation_type = "random"
-        # self.rotation_type = "quaternion"
-
         self.lmax = lmax
         self.mmax = mmax
         self.rotation_type = rotation_type
