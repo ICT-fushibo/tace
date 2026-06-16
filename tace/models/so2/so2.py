@@ -278,6 +278,7 @@ class SO2Gate(torch.nn.Module):
     #         f"(act='sigmoid', gate_m0={self.gate_m0})"
     #     )
 
+
 class SO2Norm(torch.nn.Module):
     def __init__(
         self,
@@ -368,6 +369,7 @@ class SO2Norm(torch.nn.Module):
         return (
             f"{self.__class__.__name__}(act=sigmoid)"
         )
+
 
 class SO2ComplexMul(torch.nn.Module):
 
