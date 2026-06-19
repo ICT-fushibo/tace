@@ -419,7 +419,7 @@ class AttentionSO2TensorProduct(torch.nn.Module):
                 self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
                 num_components_out=num_components_out,
                 weight_type=self.so2_linear_type,
-            )
+            ) # BUG, TODO
             self.ece = ComplexProductBasisV2(
                 mmax, 
                 lmax, 
@@ -542,6 +542,11 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         if self.use_so2_edge_ace:
             coefs = self.nonlinearity.scalar_act(self.linear_coefs(m_ij).squeeze(-1))
             m_ij_2 = self.linear_glu(m_ij)
+            m_ij_2 = m_ij_2.narrow(
+                1,
+                self.num_gates,
+                self.split_list[1],
+            ) # TODO, BUG
             m_ij = self.linear_up(m_ij) 
             gate = m_ij.narrow(1, 0, self.split_list[0])
             m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])

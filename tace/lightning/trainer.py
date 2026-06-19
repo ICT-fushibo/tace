@@ -21,6 +21,34 @@ from ..utils.callbacks import PrintMetricsCallback
 from .lit_model import LightningWrapperModel
 from ..utils.utils import log_parameters
 
+def _maybe_start_wsd_decay_on_resume(cfg: Dict, resume_ckpt: str) -> None:
+    scheduler_cfg = cfg.get("scheduler", None)
+    if not scheduler_cfg:
+        return
+
+    scheduler_target = scheduler_cfg.get("_target_", "")
+    if not str(scheduler_target).endswith("WarmupStableDecay"):
+        return
+
+    scheduler_extra = scheduler_cfg.get("extra", {})
+    if not scheduler_extra.get("start_decay_on_resume", False):
+        return
+    import torch
+    checkpoint = torch.load(resume_ckpt, map_location="cpu", weights_only=False)
+    global_step = int(checkpoint.get("global_step", 0))
+    num_warmup_steps = int(scheduler_cfg.get("num_warmup_steps", 0))
+    old_num_stable_steps = int(scheduler_cfg.get("num_stable_steps", 0))
+    new_num_stable_steps = max(0, global_step - num_warmup_steps)
+    scheduler_cfg["num_stable_steps"] = new_num_stable_steps
+
+    logging.info(
+        "Start WSD decay on resume: global_step=%s, num_warmup_steps=%s, "
+        "num_stable_steps %s -> %s",
+        global_step,
+        num_warmup_steps,
+        old_num_stable_steps,
+        new_num_stable_steps,
+    )
 
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
@@ -155,6 +183,14 @@ def train(
     target_property,
     embedding_property: list[str] = []
 ):
+    
+    # resume_ckpt = cfg.get("resume_from_model", None)
+    # if resume_ckpt:
+    #     ckpt_path = Path(resume_ckpt)
+    #     if not ckpt_path.is_file():
+    #         raise FileNotFoundError(f"Checkpoint not exists: {ckpt_path}")
+    #     _maybe_start_wsd_decay_on_resume(cfg, resume_ckpt)
+
     lit_model = LightningWrapperModel(
         cfg, 
         model,

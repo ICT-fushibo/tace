@@ -245,19 +245,17 @@ class ComplexProductBasisV1(torch.nn.Module):
         self.m1m2 = m1m2
         self.agnostic = agnostic
         self.num_components = lmax+1
-        self.ace = uuSO2TensorProduct(
+        self.tp = uuSO2TensorProduct(
             self.mmax, 
             self.lmax,
             self.num_channel, 
             m1m2=self.m1m2, 
             internal_weights=agnostic,
-        )   # TODO, rename to tp
-        self.ace.nu
+        ) 
 
-            
     def forward(self, x: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         if self.agnostic:
-            return x + self.ace(x, x)
+            return x + self.tp(x, x)
         
         B = x.size(0)
         C = self.num_channel
@@ -275,7 +273,7 @@ class ComplexProductBasisV1(torch.nn.Module):
 
         # nu = 2
         w2 = source_coefs[:, self.nu1_weight_numel:] + target_coefs[:, self.nu1_weight_numel:]
-        corr_feats2 = self.ace(x, x, w2)
+        corr_feats2 = self.tp(x, x, w2)
 
         return corr_feats1 + corr_feats2
 
