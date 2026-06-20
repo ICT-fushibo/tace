@@ -332,7 +332,16 @@ class Representation(torch.nn.Module):
         wigner = None
         wigner_inv = None
         if self.use_so2:
-            wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
+            compute_dtype = (
+                torch.float64
+                if graph.edge_vector.dtype == torch.float64
+                else torch.float32
+            )
+            with torch.autocast(
+                device_type=graph.edge_vector.device.type,
+                enabled=False,
+            ):
+                wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector.to(dtype=compute_dtype))
         if self.use_o3:
             edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
             
