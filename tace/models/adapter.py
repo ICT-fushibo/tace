@@ -8,6 +8,7 @@ from typing import Dict, Union
 
 import torch
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 
 
 from tace.dataset.element import TorchElement

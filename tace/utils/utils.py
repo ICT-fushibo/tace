@@ -38,14 +38,10 @@ def set_precision(cfg: Dict) -> None:
     FLOAT16 = {"16-mixed", "16", 16}
     BFLOAT16 = {"bf16-mixed", "bf16"}
     ALLOWED_PRECISIONS = FLOAT64 | FLOAT32 | FLOAT16 | BFLOAT16
-    try:
-        assert precision is not None and precision in ALLOWED_PRECISIONS, (
-            f"Invalid precision setting: {precision!r}. "
-            f"Must be one of: {ALLOWED_PRECISIONS}"
-        )
-    except Exception as e:
-        raise RuntimeError(f"The cfg.trainer.precision value must be specified.") from e
-
+    assert precision is not None and precision in ALLOWED_PRECISIONS, (
+        f"Invalid precision setting: {precision!r}. "
+        f"Must be one of: {ALLOWED_PRECISIONS}"
+    )
     if precision in FLOAT64:
         torch.set_default_dtype(torch.float64)
     elif precision in FLOAT32:
