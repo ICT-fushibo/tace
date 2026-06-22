@@ -123,11 +123,6 @@ class e3nnTACE(torch.nn.Module):
             'use_alllayer': self.use_alllayer,
             'parity': cfg['parity'],
             'irreps_in': [prod.irreps_out for prod in self.representation.products],
-            'is_linear': cfg['readout_emlp']['is_linear'],
-            # 'Lmax': cfg["Lmax"],
-            # 'lmax': cfg["lmax"],
-            # 'num_channel': cfg['num_channel'],
-            # 'target_weight': self.target_weight,
         }
         for_tensor_readout = {
             'num_layers': cfg['num_layers'],
@@ -137,7 +132,6 @@ class e3nnTACE(torch.nn.Module):
             'use_alllayer': self.use_alllayer,
             'parity': cfg['parity'],
             'irreps_in': [prod.irreps_out for prod in self.representation.products],
-            'is_linear': cfg['readout_emlp']['is_linear'],
         }
 
         # === Energy ===

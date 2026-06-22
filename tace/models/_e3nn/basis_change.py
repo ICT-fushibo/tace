@@ -33,6 +33,7 @@ class DirectPolarizability(torch.nn.Module):
         t2 = torch.einsum('bk, kij -> bij', t2, self.two)
         return t0 + t2
     
+    
 class DirectVirials(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -53,6 +54,7 @@ class DirectVirials(torch.nn.Module):
         t0 = torch.einsum('b, ij -> bij', t0, self.zero)
         t2 = torch.einsum('bk, kij -> bij', t2, self.two)
         return t0 + t2
+
 
 class DirectDiagonalHessian(torch.nn.Module):
     def __init__(self) -> None:
@@ -75,7 +77,8 @@ class DirectDiagonalHessian(torch.nn.Module):
         t0 = torch.einsum('b, ij -> bij', t0, self.zero)
         t2 = torch.einsum('bk, kij -> bij', t2, self.two)
         return t0 + t2
-    
+
+
 class DirectHessian(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -98,6 +101,7 @@ class DirectHessian(torch.nn.Module):
         t2 = torch.einsum('bk, kij -> bij', t2, self.two)
         return t0 + t2
     
+
 PropertyBasisChange: Dict[str, Type[torch.nn.Module]] = {
     'direct_virials': DirectVirials,
     'direct_polarizability': DirectPolarizability,

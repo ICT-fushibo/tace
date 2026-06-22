@@ -796,6 +796,7 @@ class uvSO2Interaction(Interaction):
 
         return m_i, self.truncate_ghosts(sc, nlocal)
     
+    
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
