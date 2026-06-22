@@ -360,8 +360,8 @@ class WignerD(torch.nn.Module):
         self.wigner_type = wigner_type
         self.use_opt_einsum_fx = use_opt_einsum_fx
 
-        # self.rotation_type = "quaternion"
-        # self.wigner_type = "flash"
+        self.rotation_type = "quaternion"
+        self.wigner_type = "flash"
 
         if self.rotation_type not in {"random", "quaternion"}:
             raise ValueError(

@@ -547,7 +547,8 @@ class AttentionSO2TensorProduct(torch.nn.Module):
         num_edges = w.size(0)
         x = self.reshape_in(x)
         m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        m_ij = wigner_bmm(wigner, m_ij)
+        # m_ij = wigner_bmm(wigner, m_ij)
+        m_ij = torch.bmm(wigner, m_ij)
 
         if self.use_graph_softmax:
             key = self.key_proj(m_ij[:, :, :self.num_channel])
@@ -590,7 +591,8 @@ class AttentionSO2TensorProduct(torch.nn.Module):
             if cutoff is not None:
                 m_ij = m_ij * cutoff.unsqueeze(-1)
 
-        m_ij = wigner_bmm(wigner_inv, m_ij)
+        m_ij = torch.bmm(wigner_inv, m_ij)
+        # m_ij = wigner_bmm(wigner_inv, m_ij)
         
         return self.reshape_out.inverse(
             scatter_sum(
