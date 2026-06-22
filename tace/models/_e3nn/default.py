@@ -16,8 +16,6 @@ DEFAULT_MODEL_CONFIG = {
     "parity": False,
     "num_channel": 64,
     "num_layers": 2,
-    "rotation_type": "random",
-    "wignerD_type": "euler",
     "target_property": ["energy", "forces"],
     "embedding_property": [],
     "fidelity": {

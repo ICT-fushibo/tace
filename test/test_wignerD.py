@@ -1,5 +1,5 @@
 import torch
-from tace.models.so2.so3 import WignerD
+from tace.models.so2.wigner import WignerD
 
 mmax = 2
 lmax = 4

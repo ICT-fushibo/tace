@@ -1,18 +1,11 @@
-from .so2 import (
+from .blocks import (
     uvSO2Linear,
     uuSO2Linear, 
     SO2Gate, 
-    SO2Norm, 
-    SO2ComplexMul, 
-    SO2Rot90,
 ) 
 
-from .so3 import (
-    WignerD, 
-    SO3Linear, 
-    SO3Grid, 
-    SO3VstpGrid,
-)
+from .wigner import CoefficientMappingModule, WignerD
+
 
 from .utils import (
     satisfy,
@@ -22,19 +15,11 @@ from .utils import (
 
 __all__ = [
     "satisfy",
-
-    "so3_expand_index",
-    "WignerD",
-    "SO3Linear",
-    "SO3Grid",
-    "SO3VstpGrid",
-
     "so2_expand_index", 
+    "so3_expand_index",
+    "CoefficientMappingModule",
+    "WignerD",
     "uvSO2Linear",
     "uuSO2Linear",
     "SO2Gate",
-    "SO2Norm",
-    "SO2ComplexMul",
-    "SO2Rot90",
-
 ]

@@ -10,7 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import torch
 
-from tace.models.so2.so3 import WignerD
+from tace.models.so2.wigner import WignerD
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

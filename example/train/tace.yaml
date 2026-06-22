@@ -280,8 +280,6 @@ model:
     num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
     num_channel: 48 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
     parity: false # (bool) in test, not for users, always false
-    rotation_type: quaternion
-    wignerD_type: recursive
 
     radial_basis:
       radial_basis: j0   # [j0, jn, gaussian]

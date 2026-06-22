@@ -1,6 +1,6 @@
 import time
 import torch
-from tace.models.so2.so3 import WignerD, init_edge_rot_mat
+from tace.models.so2.wigner import WignerD, init_edge_rot_mat
 
 
 # === Configuration ===
