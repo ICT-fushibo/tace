@@ -3,8 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 '''
-The rotation matrix constructed here aligns the edge with the y-axis, [0,1,0], 
-for broader use within the community.
+The rotation matrix constructed here aligns the edge with the y-axis [0,1,0] for broader use within the community.
 
 For details on obtaining a rotation matrix from quaternions, see:
 https://en.wikipedia.org/wiki/Hopf_fibration#Explicit_formulae

@@ -14,8 +14,8 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 from ..so2 import (
-    WignerD, uvSO2Linear, SO2Gate, SO2Norm, SO2ComplexMul, uuSO2Linear,
-    so2_expand_index, so3_expand_index, SO3Linear, 
+    WignerD, uvSO2Linear, SO2Gate, uuSO2Linear,
+    so2_expand_index, so3_expand_index,
 )
 from .paths import generate_paths
 from .edge_prod import ComplexProductBasisV1, ComplexProductBasisV2, VectorSwiGLU
@@ -44,6 +44,69 @@ def wigner_bmm(
             features.to(dtype=compute_dtype),
         )  
     
+
+class uuuTensorProduct(torch.nn.Module):
+    def __init__(
+        self,
+        irreps_in1: o3.Irreps,
+        irreps_in2: o3.Irreps,
+        irreps_out: o3.Irreps,
+        l1l2: Union[str, None] = None,
+        l2l3: Union[str, None] = None,
+        l3l1: Union[str, None] = None,
+        trainable: bool = False,
+    ) -> None:
+        super().__init__()
+
+        instructions, actual_irreps_out = generate_paths(
+            irreps_out=irreps_out,
+            irreps_in1=irreps_in1,
+            irreps_in2=irreps_in2,
+            l1l2=l1l2,
+            l2l3=l2l3,
+            l3l1=l3l1,
+            e3nn_mode='uuu',
+            trainable=trainable,
+        )
+
+        self.tp = o3.TensorProduct(
+            irreps_in1,
+            irreps_in2,
+            actual_irreps_out,
+            instructions,
+            shared_weights=False,
+            internal_weights=False,
+        )
+
+        self.irreps_in1 = irreps_in1
+        self.irreps_in2 = irreps_in2
+        self.irreps_out = actual_irreps_out
+        self.instructions = instructions
+        self.weight_numel = self.tp.weight_numel
+        self.use_eqt = get_tace_use_eqt() == '1'
+        # self.use_oeq = TACE_USE_OEQ == '1'
+        # self.use_cue = TACE_USE_CUE == '1'
+
+        if self.use_eqt:
+            from .._eqt import e3nnEqtTensorProduct
+            self.fused_tp = e3nnEqtTensorProduct(
+                irreps_in1=irreps_in1,
+                irreps_in2=irreps_in2,
+                irreps_out=actual_irreps_out,
+                num_channel=irreps_in2.count("1o"),
+                path=instructions,
+                trainable=trainable,
+            )
+        else:
+            pass
+
+    def forward(
+            self, x: torch.Tensor, y: torch.Tensor, ws: Union[torch.Tensor, None] = None
+        ) -> torch.Tensor:
+            if hasattr(self, "fused_tp"):
+                return self.fused_tp(x, y, ws)
+            return self.tp(x, y, ws)
+
 
 class O3ScatterTensorProduct(torch.nn.Module):
     def __init__(
@@ -186,181 +249,7 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         )
     
 
-class uuuTensorProduct(torch.nn.Module):
-    def __init__(
-        self,
-        irreps_in1: o3.Irreps,
-        irreps_in2: o3.Irreps,
-        irreps_out: o3.Irreps,
-        l1l2: Union[str, None] = None,
-        l2l3: Union[str, None] = None,
-        l3l1: Union[str, None] = None,
-        trainable: bool = False,
-    ) -> None:
-        super().__init__()
-
-        instructions, actual_irreps_out = generate_paths(
-            irreps_out=irreps_out,
-            irreps_in1=irreps_in1,
-            irreps_in2=irreps_in2,
-            l1l2=l1l2,
-            l2l3=l2l3,
-            l3l1=l3l1,
-            e3nn_mode='uuu',
-            trainable=trainable,
-        )
-
-        self.tp = o3.TensorProduct(
-            irreps_in1,
-            irreps_in2,
-            actual_irreps_out,
-            instructions,
-            shared_weights=False,
-            internal_weights=False,
-        )
-
-        self.irreps_in1 = irreps_in1
-        self.irreps_in2 = irreps_in2
-        self.irreps_out = actual_irreps_out
-        self.instructions = instructions
-        self.weight_numel = self.tp.weight_numel
-        self.use_eqt = get_tace_use_eqt() == '1'
-        # self.use_oeq = TACE_USE_OEQ == '1'
-        # self.use_cue = TACE_USE_CUE == '1'
-
-        if self.use_eqt:
-            from .._eqt import e3nnEqtTensorProduct
-            self.fused_tp = e3nnEqtTensorProduct(
-                irreps_in1=irreps_in1,
-                irreps_in2=irreps_in2,
-                irreps_out=actual_irreps_out,
-                num_channel=irreps_in2.count("1o"),
-                path=instructions,
-                trainable=trainable,
-            )
-        else:
-            pass
-
-    def forward(
-            self, x: torch.Tensor, y: torch.Tensor, ws: Union[torch.Tensor, None] = None
-        ) -> torch.Tensor:
-            if hasattr(self, "fused_tp"):
-                return self.fused_tp(x, y, ws)
-            return self.tp(x, y, ws)
-    
-
 class uvSO2TensorProduct(torch.nn.Module):
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channel: int,
-        edge_wise_hidden: int,
-        so2_linear_type: str,
-        num_elements: int,
-        use_so2_edge_ace: bool,
-        agnostic: bool,
-        reshape_in: LayoutTransform,
-        reshape_out: LayoutTransform,
-    ) -> None:
-        super().__init__()
-
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.num_elements = num_elements
-        self.edge_wise_hidden = edge_wise_hidden or self.num_channel
-        self.reshape_in = reshape_in
-        self.reshape_out = reshape_out
-        self.so2_linear_type = so2_linear_type
-        self.agnostic = agnostic
-
-        self.use_so2_edge_ace = use_so2_edge_ace
-        self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
-        self.weight_numel = (self.num_components * self.num_channel * 2)
-        self.register_buffer('expand_index', expand_index, persistent=False)
-        self.num_gates = sum(lmax+1 for _ in range(mmax+1))
-
-        self.linear_up = uvSO2Linear(
-            mmax,
-            lmax,
-            self.num_channel * 2,
-            self.edge_wise_hidden,     
-            num_components_out=[self.num_gates + lmax+1] + [lmax+1 for m in range(1, mmax+1)],
-            weight_type=self.so2_linear_type,
-        )
-        self.split_list = [self.num_gates, (lmax+1) + (lmax+1) * mmax * 2]
-        if self.use_so2_edge_ace:
-            self.ace = ComplexProductBasisV1(
-                mmax, 
-                lmax, 
-                self.edge_wise_hidden,
-                num_elements=num_elements,
-                m1m2='<=',
-                agnostic=self.agnostic,
-            )
-        self.nonlinearity = SO2Gate(
-            mmax,
-            lmax,
-            self.edge_wise_hidden,   
-            channel_wise=True,
-        )
-        self.linear_down = uvSO2Linear(
-            mmax,
-            lmax,
-            self.edge_wise_hidden,     
-            self.num_channel,
-            num_components_in=[lmax+1] * (mmax+1),
-            weight_type=self.so2_linear_type,
-        )
-
-    def forward(
-            self, 
-            x: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            w: torch.Tensor, 
-            edge_index: torch.Tensor,
-            cutoff: torch.Tensor,
-            wigner: torch.Tensor,
-            wigner_inv: torch.Tensor,
-        ) -> torch.Tensor:
-
-        num_nodes = x.size(0)
-        num_edges = w.size(0)
-        x = self.reshape_in(x)
-
-        m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        m_ij = torch.bmm(wigner, m_ij)
-        w = w.view(num_edges, self.num_components, -1)
-        w = torch.index_select(w, dim=1, index=self.expand_index)
-        m_ij = w * m_ij
-
-        m_ij = self.linear_up(m_ij) 
-        gate = m_ij.narrow(1, 0, self.split_list[0])
-        m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
-
-        if self.use_so2_edge_ace:
-            m_ij = self.ace(m_ij, node_attrs, edge_index)
-
-        m_ij = self.nonlinearity(m_ij, gate) 
-        m_ij = self.linear_down(m_ij)
-
-        if cutoff is not None:
-            m_ij = m_ij * cutoff.unsqueeze(-1)
-
-        m_ij = torch.bmm(wigner_inv, m_ij)
-
-        return self.reshape_out.inverse(
-            scatter_sum(
-                m_ij, 
-                edge_index[1], 
-                dim=0, 
-                dim_size=num_nodes,
-            )
-        )
-
- 
-class AttentionSO2TensorProduct(torch.nn.Module):
     def __init__(
         self,
         mmax: int,

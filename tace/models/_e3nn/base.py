@@ -329,6 +329,7 @@ class Product(torch.nn.Module):
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
+   
     
 class ReadOut(torch.nn.Module):
     def __init__(
