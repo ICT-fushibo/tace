@@ -13,7 +13,7 @@ from e3nn import o3
 
 
 from tace.models.ictd import ICTD
-
+from .rotation_matrix import init_edge_rot_mat_quaternion
 
 _BATCH = 10000
 
@@ -174,8 +174,8 @@ class CoefficientMappingModule(torch.nn.Module):
 class WignerD(torch.nn.Module):
     def __init__(
         self,
-        lmax,
         mmax,
+        lmax,
         rotation_type: str = "quaternion",
         wigner_type: str = "recursive",
         use_opt_einsum_fx: bool = False,
@@ -184,9 +184,8 @@ class WignerD(torch.nn.Module):
 
         self.rotation_type = "quaternion"
         self.wigner_type = "recursive"
-
-        self.lmax = lmax
         self.mmax = mmax
+        self.lmax = lmax
         self.rotation_type = rotation_type
         self.wigner_type = wigner_type
         self.use_opt_einsum_fx = use_opt_einsum_fx
@@ -236,7 +235,7 @@ class WignerD(torch.nn.Module):
         self.register_buffer('wigner_inv_rescale', wigner_inv_rescale) # [1, 16, 14]
 
     def get_wigner(self, edge_vector) -> tuple[torch.Tensor]:
-        rot_mat3x3 = self.rotate_fn(edge_vector)
+        rot_mat3x3 = init_edge_rot_mat_quaternion(edge_vector)
         wigner = self._rotation_to_wigner_matrix(rot_mat3x3, 0, self.lmax)
         wigner = torch.einsum('mi, nij -> nmj', self.wigner_index_to_m_array, wigner) # [14, 16] @ [16, 16]
         wigner_inv = torch.transpose(wigner, 1, 2).contiguous()
@@ -250,7 +249,7 @@ class WignerD(torch.nn.Module):
                 start_lmax,
                 end_lmax,
             )
-        return self._rotation_to_wigner_matrix_flash(
+        return self._rotation_to_wigner_matrix_recursive(
             edge_rot_mat,
             start_lmax,
             end_lmax,

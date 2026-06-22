@@ -51,8 +51,6 @@ class e3nnTACE(torch.nn.Module):
         parity: bool = False,
         mmax: int = 2,
         dropout: Dict = {},
-        rotation_type: str = "random",
-        wignerD_type: str = "euler",
         **kwargs,
     ):
         cfg = {
@@ -113,8 +111,6 @@ class e3nnTACE(torch.nn.Module):
             layer_norm=cfg['layer_norm'],
             dropout=cfg['dropout'],
             parity=cfg['parity'],
-            rotation_type=cfg['rotation_type'],
-            wigner_type=cfg["wignerD_type"],
         )
 
         # === Readout ===

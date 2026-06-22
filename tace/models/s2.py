@@ -121,7 +121,7 @@ class HealpixLattice:
     def visualize(
         num_points: int,
         show: bool = True,
-        save_path: Optional[str] = None,
+        save_path: Union[str, None] = None,
         point_size: int = 10,
     ):
         points = HealpixLattice.generate(num_points)
@@ -280,7 +280,7 @@ class PlatonicSolidLattice:
     def visualize(
         num_points: int,
         show: bool = True,
-        save_path: Optional[str] = None,
+        save_path: Union[str, None] = None,
         point_size: int = 10,
     ):
         points = PlatonicSolidLattice.generate(num_points)

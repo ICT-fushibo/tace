@@ -5,10 +5,9 @@
 Tensor Atomic Cluster Expansion (TACE)
 ======================================
 .. = - ~ ^ "
-TACE is an atomistic machine learning model based on spherical tensors and irreducible Cartesian tensors. 
-It performs Atomic Cluster Expansion under :math:O(3) symmetry and Edge Cluster Expansion under :math:SO(2) symmetry, with optional attention mechanisms.
-
-TACE is designed with physical priors and extrapolation capability in mind, making it a highly competitive architecture for atomistic modeling.
+TACE is designed with physical priors and strong inductive biases to enhance extrapolation capability. 
+It performs Atomic Cluster Expansion and Edge Cluster Expansion based on spherical tensors 
+or irreducible Cartesian tensors, with an optional attention architecture.
 
 Docs
 ----

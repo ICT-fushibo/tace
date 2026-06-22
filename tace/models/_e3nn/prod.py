@@ -13,7 +13,7 @@ from e3nn import o3
 
 from ..layout import LayoutTransform, LayoutTransform2
 from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
-from ..so2 import SO3Grid
+from ..s2 import SO3Grid
 from .base import Product
 from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
