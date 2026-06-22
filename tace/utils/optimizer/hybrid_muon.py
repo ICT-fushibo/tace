@@ -1,5 +1,6 @@
-# From DeepMD-kit
 """
+From https://github.com/deepmodeling/deepmd-kit/blob/master/deepmd/pt/optimizer/hybrid_muon.py
+
 HybridMuon optimizer for DeePMD-kit PyTorch backend.
 
 HybridMuon is a hybrid optimizer that automatically combines Muon and Adam.

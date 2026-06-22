@@ -52,8 +52,6 @@ class Representation(torch.nn.Module):
         layer_norm: Dict,
         dropout: Dict,
         parity: bool,
-        rotation_type: str,
-        wigner_type: str,
     ):
         super().__init__()
 
@@ -93,13 +91,8 @@ class Representation(torch.nn.Module):
         )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
-            # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
-            self.so2_angular_basis = WignerD(
-                Lmax, 
-                mmax, 
-                rotation_type=rotation_type,
-                wigner_type=wigner_type,
-            )
+            assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
+            self.so2_angular_basis = WignerD(mmax, Lmax)
         else:
             self.so2_angular_basis = None
         if self.use_o3:
