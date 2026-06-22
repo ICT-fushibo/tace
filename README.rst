@@ -1,14 +1,14 @@
-Tensor Atomic Cluster Expansion
-===============================
-.. = - ~ ^ "
-
 .. image:: fig/logo.svg
    :width: 100%
    :align: center
 
-.. .. image:: arch.png
-..    :width: 100%
-..    :align: center
+Tensor Atomic Cluster Expansion (TACE)
+======================================
+.. = - ~ ^ "
+TACE is an atomistic machine learning model based on spherical tensors and irreducible Cartesian tensors. 
+It performs Atomic Cluster Expansion under :math:O(3) symmetry and Edge Cluster Expansion under :math:SO(2) symmetry, with optional attention mechanisms.
+
+TACE is designed with physical priors and extrapolation capability in mind, making it a highly competitive architecture for atomistic modeling.
 
 Docs
 ----
@@ -37,9 +37,6 @@ https://github.com/xvzemin/tace/tree/main/example
 Overview
 --------
 
-TACE is a Cartesian-based machine learning model designed to predict both scalar and tensorial properties.
-
-In principle, the framework supports any tensorial properties (either direct or conservative) determined by the underlying atomic structure. 
 Currently, the officially supported properties include:
 
 - Energy
