@@ -5,11 +5,10 @@ Tensor Atomic Cluster Expansion
 .. image:: fig/logo.svg
    :width: 100%
    :align: center
-   :alt: Logo
-   
-.. image:: arch.png
-   :width: 100%
-   :align: center
+
+.. .. image:: arch.png
+..    :width: 100%
+..    :align: center
 
 Docs
 ----
