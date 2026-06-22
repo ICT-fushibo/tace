@@ -14,14 +14,13 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
 from ..layout import LayoutTransform
 from ..so2 import (
-    WignerD, uvSO2Linear, SO2Gate, uuSO2Linear,
+    uvSO2Linear, SO2Gate, uuSO2Linear,
     so2_expand_index, so3_expand_index,
 )
 from .paths import generate_paths
 from .edge_prod import ComplexProductBasisV1, ComplexProductBasisV2, VectorSwiGLU
 
 
-from ..mlp import ScaledSigmoid, ScaledSiLU
 from ..softmax import GraphSoftmax
 from ..linear import  torchLinear
 

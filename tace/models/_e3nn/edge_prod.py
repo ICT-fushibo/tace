@@ -11,7 +11,8 @@ import torch
 
 
 from ..mlp import ScaledSigmoid
-from ..so2 import satisfy, SO3VstpGrid
+from ..so2 import satisfy 
+from ..s2 import SO3VstpGrid
 
 
 class uuSO2TensorProduct(torch.nn.Module):
@@ -306,7 +307,7 @@ class ComplexProductBasisV2(torch.nn.Module):
 
 class VectorSwiGLU(torch.nn.Module):
     """
-    in dev
+    in dev, not recommended for practical use
     """
     def __init__(
             self, 
