@@ -3,7 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import math
 from typing import Dict, Union
 
 
@@ -12,14 +11,15 @@ from e3nn import o3
 
 
 from tace.utils.torch_scatter import scatter_sum
-from ..mlp import ACTIVATION, FFN, ScaledSigmoid, ScaledSiLU
+from ..mlp import FFN, ScaledSigmoid, ScaledSiLU
 from ..layout import LayoutTransform
 from .base import Interaction
 from ..linear import e3nnLinear
 from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct
-from .nonlinear import O3Gate, O3Norm, O3BilinearGate
-from .layer_norm import get_normalization_layer
+from .nonlinear import get_nonlinear_layer
 from .residual import get_resnet_layer
+from .layer_norm import get_normalization_layer
+
 
 
 class CgtpInteraction(Interaction):
@@ -30,7 +30,7 @@ class CgtpInteraction(Interaction):
     products. It supports operator fusion via OpenEquivariance or CuEquivariance,
     which can significantly reduce memory consumption and improve efficiency.
 
-    This interaction block does not directly add nonlinearity to the message.
+    This interaction block does not directly add nonlinearity to the edge.
     """
 
     def _setup(self) -> None:
@@ -47,69 +47,20 @@ class CgtpInteraction(Interaction):
             self.irreps_out,
             l1l2=self.l1l2,
         )
-
-        irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
-        if self.nonlinear_type == 'gate': 
-            if self.gate_m0: 
-                irreps_gated = irreps_node_wise_hidden
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_node_wise_hidden)
-                self.nonlinearity = O3Gate(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-            else:
-                from e3nn.nn import Gate
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-        elif self.nonlinear_type == 'norm':
-            self.nonlinearity = O3Norm(
-                irreps=irreps_node_wise_hidden,
-                activation=[ACTIVATION[self.nonlinear_act]()],
-            )
-            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            self.linear_nonlinearity = e3nnLinear(
-                irreps_node_wise_hidden, 
-                self.irreps_out,  
-                bias=self.use_bias,
-            )
-        elif self.nonlinear_type == 'bilineargate':
-            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
-            linear_down_irreps_out = self.nonlinearity.irreps_in
-            self.linear_nonlinearity = e3nnLinear(
-                self.nonlinearity.irreps_out,
-                self.irreps_out,
-                bias=self.use_bias,
-            )
-        else:
-            self.nonlinearity = torch.nn.Identity()
-            self.linear_nonlinearity = torch.nn.Identity()
-            linear_down_irreps_out = irreps_node_wise_hidden
-
+        
+        (
+            self.nonlinearity,
+            self.linear_nonlinearity,
+            linear_down_irreps_out,
+        ) = get_nonlinear_layer(
+            self.nonlinear_type,
+            o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out]),
+            self.irreps_out,
+            gate_m0=self.gate_m0,
+            scalar_act=self.scalar_act,
+            tensor_act=self.tensor_act,
+        )
+        
         self.linear_down = e3nnLinear(
             self.rejector.irreps_out.simplify(),
             linear_down_irreps_out,
@@ -315,67 +266,18 @@ class uuSO2Interaction(Interaction):
             reshape_out=LayoutTransform(self.irreps_out),
         )
 
-        irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
-        if self.nonlinear_type == 'gate': 
-            if self.gate_m0: 
-                irreps_gated = irreps_node_wise_hidden
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_node_wise_hidden)
-                self.nonlinearity = O3Gate(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-            else:
-                from e3nn.nn import Gate
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-        elif self.nonlinear_type == 'norm':
-            self.nonlinearity = O3Norm(
-                irreps=irreps_node_wise_hidden,
-                activation=[ACTIVATION[self.nonlinear_act]()],
-            )
-            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            self.linear_nonlinearity = e3nnLinear(
-                irreps_node_wise_hidden, 
-                self.irreps_out,  
-                bias=self.use_bias,
-            )
-        elif self.nonlinear_type == 'bilineargate':
-            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
-            linear_down_irreps_out = self.nonlinearity.irreps_in
-            self.linear_nonlinearity = e3nnLinear(
-                self.nonlinearity.irreps_out,
-                self.irreps_out,
-                bias=self.use_bias,
-            )
-        else:
-            self.nonlinearity = torch.nn.Identity()
-            self.linear_nonlinearity = torch.nn.Identity()
-            linear_down_irreps_out = irreps_node_wise_hidden
+        (
+            self.nonlinearity,
+            self.linear_nonlinearity,
+            linear_down_irreps_out,
+        ) = get_nonlinear_layer(
+            self.nonlinear_type,
+            o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out]),
+            self.irreps_out,
+            gate_m0=self.gate_m0,
+            scalar_act=self.scalar_act,
+            tensor_act=self.tensor_act,
+        )
 
         self.linear_down = e3nnLinear(
             self.irreps_in,
@@ -563,8 +465,8 @@ class uvSO2Interaction(Interaction):
         )
         assert self.edge_nonlinear == 'so2_sigmoid_gate' or self.edge_nonlinear == 'so2_silu_gate'
         edge_act = self.edge_nonlinear.split("_")[1]
-        self.scalar_act = self.scalar_act or edge_act
-        self.tensor_act = self.tensor_act or edge_act
+        scalar_act = self.scalar_act or edge_act
+        tensor_act = self.tensor_act or edge_act
         self.scatter_norm = None if self.use_graph_softmax else self.scatter_norm
 
         self.linear_up = e3nnLinear(
@@ -587,77 +489,25 @@ class uvSO2Interaction(Interaction):
             use_graph_softmax=self.use_graph_softmax,
             reshape_in=LayoutTransform(self.irreps_in),
             reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
-            scalar_act=ScaledSigmoid() if self.scalar_act == 'sigmoid' else ScaledSiLU(),
-            tensor_act=ScaledSigmoid() if self.tensor_act == 'sigmoid' else ScaledSiLU(),
+            scalar_act=ScaledSigmoid() if scalar_act == 'sigmoid' else ScaledSiLU(),
+            tensor_act=ScaledSigmoid() if tensor_act == 'sigmoid' else ScaledSiLU(),
         )
 
-        irreps_node_wise_hidden = o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out])
-
-        if self.nonlinear_type == 'gate': 
-            if self.gate_m0: 
-                irreps_gated = irreps_node_wise_hidden
-                irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_node_wise_hidden)
-                self.nonlinearity = O3Gate(
-                    irreps_gates=irreps_gates,
-                    act_gates=[ACTIVATION[self.nonlinear_act]()] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-            else:
-                from e3nn.nn import Gate
-                irreps_scalars = o3.Irreps(
-                    [(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l == 0]
-                )
-                irreps_gated = o3.Irreps([(mul, ir) for mul, ir in irreps_node_wise_hidden if ir.l > 0])
-                irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
-                activation_fn = torch.nn.functional.silu
-                act_gates_fn = torch.nn.functional.sigmoid
-                self.nonlinearity = Gate(
-                    irreps_scalars=irreps_scalars,
-                    act_scalars=[activation_fn for _ in irreps_scalars],
-                    irreps_gates=irreps_gates,
-                    act_gates=[act_gates_fn] * len(irreps_gates),
-                    irreps_gated=irreps_gated,
-                )
-                linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-                self.linear_nonlinearity = e3nnLinear(
-                    irreps_node_wise_hidden, 
-                    self.irreps_out,  
-                    bias=self.use_bias,
-                )
-
-        elif self.nonlinear_type == 'norm':
-            self.nonlinearity = O3Norm(
-                irreps=irreps_node_wise_hidden,
-                activation=[ACTIVATION[self.nonlinear_act]()],
-            )
-            linear_down_irreps_out = self.nonlinearity.irreps_in.simplify()
-            self.linear_nonlinearity = e3nnLinear(
-                irreps_node_wise_hidden, 
-                self.irreps_out,  
-                bias=self.use_bias,
-            )
-        elif self.nonlinear_type == 'bilineargate':
-            self.nonlinearity = O3BilinearGate(irreps_node_wise_hidden)
-            linear_down_irreps_out = self.nonlinearity.irreps_in
-            self.linear_nonlinearity = e3nnLinear(
-                self.nonlinearity.irreps_out,
-                self.irreps_out,
-                bias=self.use_bias,
-            )
-        else:
-            self.nonlinearity = torch.nn.Identity()
-            self.linear_nonlinearity = torch.nn.Identity()
-            linear_down_irreps_out = irreps_node_wise_hidden
+        (
+            self.nonlinearity,
+            self.linear_nonlinearity,
+            linear_down_irreps_out,
+        ) = get_nonlinear_layer(
+            self.nonlinear_type,
+            o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out]),
+            self.irreps_out,
+            gate_m0=self.gate_m0,
+            scalar_act=self.scalar_act,
+            tensor_act=self.tensor_act,
+        )
 
         self.linear_down = e3nnLinear(
             o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
-            # self.irreps_out,
             linear_down_irreps_out,
             bias=self.use_bias,
         )

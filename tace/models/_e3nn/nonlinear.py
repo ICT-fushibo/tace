@@ -13,6 +13,73 @@ from e3nn.nn import Activation
 from e3nn.nn._gate import _Sortcut
 
 
+from ..mlp import ACTIVATION
+from ..linear import e3nnLinear
+
+
+def get_nonlinear_layer(
+    nonlinear_type,
+    irreps_in,
+    irreps_out,
+    gate_m0: bool,
+    scalar_act: Union[str, None] = None,
+    tensor_act: Union[str, None] = None,
+    bias: bool = True,
+):
+    if nonlinear_type == 'gate': 
+        if gate_m0:
+            irreps_gated = irreps_in
+            irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_in)
+            scalar_act = scalar_act or 'sigmoid'
+            tensor_act = tensor_act or 'sigmoid'
+            act_gates = [ACTIVATION[scalar_act]()]  + [ACTIVATION[tensor_act]()] * (len(irreps_gates) - 1)
+            nonlinearity = O3Gate(
+                irreps_gates=irreps_gates,
+                act_gates=act_gates,
+                irreps_gated=irreps_gated,
+            )
+            linear_down_irreps_out = nonlinearity.irreps_in.simplify()
+            linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
+        else:
+            from e3nn.nn import Gate
+            irreps_scalars = o3.Irreps([(mul, ir) for mul, ir in irreps_in if ir.l == 0])
+            irreps_gated = o3.Irreps([(mul, ir) for mul, ir in irreps_in if ir.l > 0])
+            irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
+            scalar_act = scalar_act or 'silu'
+            tensor_act = tensor_act or 'sigmoid'
+            activation_fn = ACTIVATION[scalar_act]()
+            act_gates_fn = ACTIVATION[tensor_act]()
+            nonlinearity = Gate(
+                irreps_scalars=irreps_scalars,
+                act_scalars=[activation_fn for _ in irreps_scalars],
+                irreps_gates=irreps_gates,
+                act_gates=[act_gates_fn] * len(irreps_gates),
+                irreps_gated=irreps_gated,
+            )
+            linear_down_irreps_out = nonlinearity.irreps_in.simplify()
+            linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
+    # elif nonlinear_type == 'norm': 
+    #     scalar_act = scalar_act or 'sigmoid'
+    #     tensor_act = tensor_act or 'sigmoid'
+    #     assert scalar_act == tensor_act
+    #     nonlinearity = O3Norm(
+    #         irreps=irreps_in,
+    #         activation=[ACTIVATION[scalar_act]()],
+    #     )
+    #     linear_down_irreps_out = nonlinearity.irreps_in.simplify()
+    #     linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
+    # elif nonlinear_type == 'bilineargate':
+    #     nonlinearity = O3BilinearGate(irreps_in)
+    #     linear_down_irreps_out = nonlinearity.irreps_in
+    #     linear_nonlinearity = e3nnLinear(nonlinearity.irreps_out, irreps_out, bias=bias)
+    else:
+        nonlinearity = torch.nn.Identity()
+        linear_nonlinearity = torch.nn.Identity()
+        linear_down_irreps_out = irreps_in
+
+    return nonlinearity, linear_nonlinearity, linear_down_irreps_out
+
+
 class O3Gate(torch.nn.Module):
     def __init__(self, irreps_gates, act_gates, irreps_gated) -> None:
         super().__init__()
@@ -64,226 +131,146 @@ class O3Gate(torch.nn.Module):
         return self._irreps_out
     
 
-class O3Norm(torch.nn.Module):
-    def __init__(
-        self,
-        irreps: o3.Irreps,
-        activation: torch.nn.Module,
-    ) -> None:
-        super().__init__()
+# class O3Norm(torch.nn.Module):
+#     def __init__(
+#         self,
+#         irreps: o3.Irreps,
+#         activation: torch.nn.Module,
+#     ) -> None:
+#         super().__init__()
 
-        self.irreps_in = o3.Irreps(irreps)
-        self.irreps_out = o3.Irreps(irreps)
-        self.norm_fn = o3.Norm(self.irreps_in, squared=True)
-        self.register_buffer(
-            "balance_degree_weight",
-            1.0 / torch.tensor([2*l+1 for l in self.irreps_in.ls]),
-            persistent=False,
-        )
-        self.activation = Activation(self.norm_fn.irreps_out.regroup(), [activation])
-        self.scalar_multiplier = ElementwiseTensorProduct(
-            irreps_in1=self.norm_fn.irreps_out,
-            irreps_in2=self.irreps_in,
-        )
+#         self.irreps_in = o3.Irreps(irreps)
+#         self.irreps_out = o3.Irreps(irreps)
+#         self.norm_fn = o3.Norm(self.irreps_in, squared=True)
+#         self.register_buffer(
+#             "balance_degree_weight",
+#             1.0 / torch.tensor([2*l+1 for l in self.irreps_in.ls]),
+#             persistent=False,
+#         )
+#         self.activation = Activation(self.norm_fn.irreps_out.regroup(), [activation])
+#         self.scalar_multiplier = ElementwiseTensorProduct(
+#             irreps_in1=self.norm_fn.irreps_out,
+#             irreps_in2=self.irreps_in,
+#         )
 
-    def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
-        norm = self.norm_fn(x) * self.balance_degree_weight
-        norm = self.activation(norm)
-        if y is not None:
-            return self.scalar_multiplier(norm, y)
-        return self.scalar_multiplier(norm, x)
+#     def forward(self, x: torch.Tensor, y: Union[torch.Tensor, None] = None) -> torch.Tensor:
+#         norm = self.norm_fn(x) * self.balance_degree_weight
+#         norm = self.activation(norm)
+#         if y is not None:
+#             return self.scalar_multiplier(norm, y)
+#         return self.scalar_multiplier(norm, x)
     
 
-class ChannelWiseO3NormGate(torch.nn.Module):
-    """Gate all O(3) components belonging to the same channel together."""
+# class ChannelWiseO3NormGate(torch.nn.Module):
+#     """Gate all O(3) components belonging to the same channel together."""
 
-    def __init__(
-        self,
-        irreps: o3.Irreps,
-        activation: torch.nn.Module,
-    ) -> None:
-        super().__init__()
+#     def __init__(
+#         self,
+#         irreps: o3.Irreps,
+#         activation: torch.nn.Module,
+#     ) -> None:
+#         super().__init__()
 
-        self.irreps_in = o3.Irreps(irreps)
-        self.irreps_out = self.irreps_in
-        multiplicities = {mul for mul, _ in self.irreps_in}
-        if len(multiplicities) != 1:
-            raise ValueError(
-                "ChannelWiseO3NormGate requires the same multiplicity for every "
-                f"irrep, got {self.irreps_in}"
-            )
+#         self.irreps_in = o3.Irreps(irreps)
+#         self.irreps_out = self.irreps_in
+#         multiplicities = {mul for mul, _ in self.irreps_in}
+#         if len(multiplicities) != 1:
+#             raise ValueError(
+#                 "ChannelWiseO3NormGate requires the same multiplicity for every "
+#                 f"irrep, got {self.irreps_in}"
+#             )
 
-        from ..layout import LayoutTransform2
-        self.reshape = LayoutTransform2(self.irreps_in)
-        self.activation = activation
-        self.register_buffer(
-            "balance_degree_weight",
-            torch.cat(
-                [
-                    torch.full((ir.dim,), 1.0 / ir.dim) / len(self.irreps_in)
-                    for _, ir in self.irreps_in
-                ]
-            ),
-            persistent=False,
-        )
+#         from ..layout import LayoutTransform2
+#         self.reshape = LayoutTransform2(self.irreps_in)
+#         self.activation = activation
+#         self.register_buffer(
+#             "balance_degree_weight",
+#             torch.cat(
+#                 [
+#                     torch.full((ir.dim,), 1.0 / ir.dim) / len(self.irreps_in)
+#                     for _, ir in self.irreps_in
+#                 ]
+#             ),
+#             persistent=False,
+#         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.reshape(x)
-        channel_norm = torch.sum(
-            x.square() * self.balance_degree_weight,
-            dim=-1,
-            keepdim=True,
-        )
-        gate = self.activation(channel_norm)
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         x = self.reshape(x)
+#         channel_norm = torch.sum(
+#             x.square() * self.balance_degree_weight,
+#             dim=-1,
+#             keepdim=True,
+#         )
+#         gate = self.activation(channel_norm)
 
-        return self.reshape.inverse(gate * x)
+#         return self.reshape.inverse(gate * x)
 
 
-class O3BilinearGate(torch.nn.Module):
-    """Based on https://github.com/SamsungDS/GGNN"""
+# class O3BilinearGate(torch.nn.Module):
+#     """Based on https://github.com/SamsungDS/GGNN"""
 
-    def __init__(self, irreps: o3.Irreps, l1l2: Union[str, None] = ">=") -> None:
-        super().__init__()
+#     def __init__(self, irreps: o3.Irreps, l1l2: Union[str, None] = ">=") -> None:
+#         super().__init__()
 
-        irreps = o3.Irreps(irreps)
-        assert irreps[0].ir == o3.Irrep("0e")
-        non_scalar_irreps = irreps[1:]
-        multiplicities = {mul for mul, _ in irreps}
-        assert len(multiplicities) == 1
+#         irreps = o3.Irreps(irreps)
+#         assert irreps[0].ir == o3.Irrep("0e")
+#         non_scalar_irreps = irreps[1:]
+#         multiplicities = {mul for mul, _ in irreps}
+#         assert len(multiplicities) == 1
 
-        from .fused import uuuTensorProduct
-        self.tp = uuuTensorProduct(
-            non_scalar_irreps,
-            irreps,
-            irreps,
-            l1l2=l1l2,
-            trainable=True,
-        )
-        self.irreps_target = irreps
-        self.irreps_gate = o3.Irreps(f"{self.tp.weight_numel}x0e")
-        self.irreps_act = irreps[:1]
-        self.irreps_non_scalar = non_scalar_irreps
-        self.irreps_in = (
-            self.irreps_gate
-            + self.irreps_act
-            + o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps])
-        ).simplify()
-        self.irreps_out = (self.irreps_act + self.tp.irreps_out).simplify()
+#         from .fused import uuuTensorProduct
+#         self.tp = uuuTensorProduct(
+#             non_scalar_irreps,
+#             irreps,
+#             irreps,
+#             l1l2=l1l2,
+#             trainable=True,
+#         )
+#         self.irreps_target = irreps
+#         self.irreps_gate = o3.Irreps(f"{self.tp.weight_numel}x0e")
+#         self.irreps_act = irreps[:1]
+#         self.irreps_non_scalar = non_scalar_irreps
+#         self.irreps_in = (
+#             self.irreps_gate
+#             + self.irreps_act
+#             + o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps])
+#         ).simplify()
+#         self.irreps_out = (self.irreps_act + self.tp.irreps_out).simplify()
 
-        self._gate_dim = self.irreps_gate.dim
-        self._act_dim = self.irreps_act.dim
-        self._non_scalar_slices = list(
-            o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps]).slices()
-        )
-        self._non_scalar_muls = [mul for mul, _ in non_scalar_irreps]
-        self._non_scalar_dims = [ir.dim for _, ir in non_scalar_irreps]
+#         self._gate_dim = self.irreps_gate.dim
+#         self._act_dim = self.irreps_act.dim
+#         self._non_scalar_slices = list(
+#             o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps]).slices()
+#         )
+#         self._non_scalar_muls = [mul for mul, _ in non_scalar_irreps]
+#         self._non_scalar_dims = [ir.dim for _, ir in non_scalar_irreps]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        weights = torch.nn.functional.silu(x[:, : self._gate_dim])
-        scalars = torch.nn.functional.silu(x[:, self._gate_dim : self._gate_dim + self._act_dim])
-        non_scalars = x[:, self._gate_dim + self._act_dim :]
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         weights = torch.nn.functional.silu(x[:, : self._gate_dim])
+#         scalars = torch.nn.functional.silu(x[:, self._gate_dim : self._gate_dim + self._act_dim])
+#         non_scalars = x[:, self._gate_dim + self._act_dim :]
 
-        x1_fields = []
-        x2_fields = []
-        for tensor_slice, mul, ir_dim in zip(
-            self._non_scalar_slices,
-            self._non_scalar_muls,
-            self._non_scalar_dims,
-        ):
-            field = non_scalars[:, tensor_slice].reshape(
-                x.shape[0], 2 * mul, ir_dim
-            )
-            x1_fields.append(field[:, :mul].reshape(x.shape[0], -1))
-            x2_fields.append(field[:, mul:].reshape(x.shape[0], -1))
+#         x1_fields = []
+#         x2_fields = []
+#         for tensor_slice, mul, ir_dim in zip(
+#             self._non_scalar_slices,
+#             self._non_scalar_muls,
+#             self._non_scalar_dims,
+#         ):
+#             field = non_scalars[:, tensor_slice].reshape(
+#                 x.shape[0], 2 * mul, ir_dim
+#             )
+#             x1_fields.append(field[:, :mul].reshape(x.shape[0], -1))
+#             x2_fields.append(field[:, mul:].reshape(x.shape[0], -1))
 
-        x1 = torch.cat(x1_fields, dim=-1)
-        x2 = torch.cat([torch.ones_like(scalars), *x2_fields], dim=-1)
-        coupled = self.tp(x1, x2, weights)
-        return torch.cat([scalars, coupled], dim=-1)
+#         x1 = torch.cat(x1_fields, dim=-1)
+#         x2 = torch.cat([torch.ones_like(scalars), *x2_fields], dim=-1)
+#         coupled = self.tp(x1, x2, weights)
+#         return torch.cat([scalars, coupled], dim=-1)
 
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"{self.irreps_in} -> {self.irreps_out})"
-        )
+#     def __repr__(self) -> str:
+#         return (
+#             f"{self.__class__.__name__}("
+#             f"{self.irreps_in} -> {self.irreps_out})"
+#         )
     
-
-
-class O3BilinearGate(torch.nn.Module):
-    """CGTP-based SwiGLU, based on EquFlashV2."""
-
-    def __init__(
-        self,
-        irreps: o3.Irreps,
-        l1l2: Union[str, None] = ">=",
-    ) -> None:
-        super().__init__()
-
-        irreps = o3.Irreps(irreps)
-        non_scalar_irreps = irreps[1:]
-        from .fused import uuuTensorProduct
-
-        self.irreps_target = irreps
-        self.irreps_act = irreps[:1]
-        self.irreps_non_scalar = non_scalar_irreps
-
-        tp = uuuTensorProduct(
-            non_scalar_irreps,
-            irreps,
-            irreps,
-            l1l2=l1l2,
-            trainable=True,
-        )
-        self.irreps_gate = o3.Irreps(f"{tp.weight_numel}x0e")
-        tp_irreps_out = tp.irreps_out
-        self.tp = tp if tp_irreps_out.dim > 0 else None
-
-        self.irreps_in = (
-            self.irreps_gate
-            + self.irreps_act
-            + o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps])
-        ).simplify()
-        self.irreps_out = (self.irreps_act + tp_irreps_out).simplify()
-
-        self._gate_dim = self.irreps_gate.dim
-        self._act_dim = self.irreps_act.dim
-        self._non_scalar_slices = list(
-            o3.Irreps([(2 * mul, ir) for mul, ir in non_scalar_irreps]).slices()
-        )
-        self._non_scalar_muls = [mul for mul, _ in non_scalar_irreps]
-        self._non_scalar_dims = [ir.dim for _, ir in non_scalar_irreps]
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-    
-        weights = torch.nn.functional.silu(x[:, : self._gate_dim])
-        scalars = torch.nn.functional.silu(
-            x[:, self._gate_dim : self._gate_dim + self._act_dim]
-        )
-        if self.tp is None:
-            return torch.cat([scalars, weights], dim=-1)
-
-        non_scalars = x[:, self._gate_dim + self._act_dim :]
-
-        x1_fields = []
-        x2_fields = []
-        for tensor_slice, mul, ir_dim in zip(
-            self._non_scalar_slices,
-            self._non_scalar_muls,
-            self._non_scalar_dims,
-        ):
-            field = non_scalars[:, tensor_slice].reshape(
-                x.shape[0], 2 * mul, ir_dim
-            )
-            x1_fields.append(field[:, :mul].reshape(x.shape[0], -1))
-            x2_fields.append(field[:, mul:].reshape(x.shape[0], -1))
-
-        x1 = torch.cat(x1_fields, dim=-1)
-        x2 = torch.cat([torch.ones_like(scalars), *x2_fields], dim=-1)
-        coupled = self.tp(x1, x2, weights)
-        return torch.cat([scalars, coupled], dim=-1)
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"{self.irreps_in} -> {self.irreps_out})" # + repr(self.tp)
-        )

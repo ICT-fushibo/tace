@@ -157,10 +157,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
-        so2_linear_type: str = 'w1_w2',
-        so2_l1l3: Union[str, None] = None,
-        resolution: Union[list[int], None] = None,
-        so2_agnostic: bool = True,
+        so2_linear_type: str = 'w1',
+        so2_l1l3: Union[str, None] = None, # TODO
         gate_m0: bool = True,
     ) -> None:
         super().__init__()
@@ -221,8 +219,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.edge_wise_hidden = edge_wise_hidden or num_channel
         self.so2_linear_type = so2_linear_type
         self.so2_l1l3 = so2_l1l3
-        self.resolution = resolution
-        self.so2_agnostic = so2_agnostic
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)
@@ -261,13 +257,10 @@ class Product(torch.nn.Module):
         correlation: list[int],
         l1l2: Union[str, None],
         bias: bool,
-        resolution: list[int],
         nonlinear: Union[str, None],
-
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
-        use_softmax: bool = False,
         use_shared_expert: bool = False,
     ) -> None:
         super().__init__()
@@ -292,14 +285,12 @@ class Product(torch.nn.Module):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
-        self.resolution = resolution
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
         self.parity = parity
         self.last_layer = layer == num_layers -1
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
-        self.use_softmax = use_softmax
         self.use_shared_expert = use_shared_expert
 
         self.irreps_tp_out_list = []

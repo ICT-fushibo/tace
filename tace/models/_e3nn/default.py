@@ -66,7 +66,6 @@ DEFAULT_MODEL_CONFIG = {
         "node_wise_hidden": None,
         "edge_ace_hidden": None,
         "edge_wise_hidden": None,
-        "resolution": None,
         "gate_m0": True,
         "scalar_act": None,
         "tensor_act": None,
@@ -84,21 +83,19 @@ DEFAULT_MODEL_CONFIG = {
     "product_basis": {
         "type": "cgtp",
         "l1l2": None,
-        "correlation": 3,
+        "correlation": 2,
+        "return_components": None,
+
         "num_expert": None,
         "num_channel_per_expert": None,
-        "resolution": None,
-        "return_components": None,
-        "nonlinear": None,
-        "use_softmax": False,
         "use_shared_expert": False,
+        "nonlinear": None,
     },
     "readout_emlp": {
         "bias": False,
         "hidden": [16],
         "use_alllayer": False,
         "use_uie": False,
-        "is_linear": False,
     },
     "scale_shift": {
         'enable': True,
@@ -111,8 +108,8 @@ DEFAULT_MODEL_CONFIG = {
     },
     "short_range": {
         "zbl": {
-        "enable": False,
-        "trainable": False,
+            "enable": False,
+            "trainable": False,
         }
     },
     "long_range": {

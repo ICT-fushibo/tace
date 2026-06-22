@@ -25,9 +25,9 @@ class CgtpACE(Product):
     all channels, forming a highly expressive product basis.
 
     Note:
-        It is recommended to use no more than 64 channels, as increasing the
-        number of channels beyond this does not necessarily lead to better
-        performance and may introduce unnecessary computational overhead.
+        It is recommended to use no more than 64 channels for each expert, as 
+        increasing the number of channels beyond this does not necessarily lead 
+        to better performance and may introduce unnecessary computational overhead.
     """
 
     def _setup(self):
@@ -136,13 +136,6 @@ class CgtpACE(Product):
                 bias=self.use_bias,
             ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
 
-        if self.nonlinear_type == 'cwnorm':
-            from .nonlinear import ChannelWiseO3NormGate
-            from ..mlp import ScaledSigmoid
-            self.nonlinearty = ChannelWiseO3NormGate(
-                for_coefs["irreps_out"],
-                ScaledSigmoid(),
-            )
 
         self.linear = e3nnLinear(
             o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]),
@@ -235,9 +228,6 @@ class CgtpACE(Product):
 
         if shared_outs is not None:
             outs = self._merge_shared_expert(outs, shared_outs)
-
-        if hasattr(self, "nonlinearty"):
-            outs = self.nonlinearty(outs)
 
         outs = self.linear(outs)
 

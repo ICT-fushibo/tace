@@ -177,8 +177,6 @@ class Representation(torch.nn.Module):
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
             "so2_l1l3": atomic_basis["so2_l1l3"],
-            "resolution": atomic_basis["resolution"],
-            "so2_agnostic": atomic_basis["so2_agnostic"],
             "use_temperature": atomic_basis["use_temperature"],
             "gate_m0": atomic_basis["gate_m0"],
             "scalar_act": atomic_basis["scalar_act"],
@@ -240,12 +238,10 @@ class Representation(torch.nn.Module):
                     target_irreps=target_irreps,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
-                    resolution=product_basis['resolution'],
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
                     irreps_in=prod_irreps_in,
-                    use_softmax=product_basis["use_softmax"],
                     use_shared_expert=product_basis["use_shared_expert"],
                 )
             )
