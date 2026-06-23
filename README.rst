@@ -15,6 +15,12 @@ Docs
 https://tace.readthedocs.io/en/latest/index.html
 
 
+Foundation Model
+----------------
+
+https://github.com/xvzemin/tace-foundations
+
+
 Tutorial
 --------
 The docs contain a complete tutorial. 
@@ -28,9 +34,10 @@ https://github.com/xvzemin/tace/tree/main/example
 
    # Minimal training example
    git clone https://github.com/xvzemin/tace.git
-   cd tace/example/train
+   cd tace
+   pip install .
+   cd example/train
    tace-train -cn tace.yaml
-
 
 Overview
 --------

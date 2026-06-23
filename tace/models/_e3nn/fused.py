@@ -234,9 +234,9 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         x = self.reshape_in(x)
 
         m_ij = x[edge_index[0]]
-        m_ij = wigner_bmm(wigner, m_ij)
+        m_ij = torch.bmm(wigner, m_ij)
         m_ij = self.linear_up(m_ij, w)
-        m_ij = wigner_bmm(wigner_inv, m_ij)
+        m_ij = torch.bmm(wigner_inv, m_ij)
 
         return self.reshape_out.inverse(
             scatter_sum(
@@ -319,6 +319,8 @@ class uvSO2TensorProduct(torch.nn.Module):
             tensor_act=tensor_act,
         )        
         if self.use_so2_edge_ace:
+
+            # BUG version
             self.linear_glu = uvSO2Linear(
                 mmax,
                 lmax,
@@ -326,7 +328,18 @@ class uvSO2TensorProduct(torch.nn.Module):
                 self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
                 num_components_out=num_components_out,
                 weight_type=self.so2_linear_type,
-            ) # BUG, TODO
+            )
+
+            # # NO BUG version
+            # self.linear_glu = uvSO2Linear(
+            #     mmax,
+            #     lmax,
+            #     self.num_channel * 2,
+            #     self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
+            #     num_components_out=[lmax+1] + [lmax+1 for m in range(1, mmax+1)],
+            #     weight_type=self.so2_linear_type,
+            # )
+
             self.ece = ComplexProductBasisV2(
                 mmax, 
                 lmax, 
@@ -449,12 +462,17 @@ class uvSO2TensorProduct(torch.nn.Module):
 
         if self.use_so2_edge_ace:
             coefs = self.nonlinearity.scalar_act(self.linear_coefs(m_ij).squeeze(-1))
+            # BUG version
             m_ij_2 = self.linear_glu(m_ij)
             m_ij_2 = m_ij_2.narrow(
                 1,
                 self.num_gates,
                 self.split_list[1],
-            ) # TODO, BUG
+            ) 
+
+            # ## NO BUG version
+            # m_ij_2 = self.linear_glu(m_ij)
+
             m_ij = self.linear_up(m_ij) 
             gate = m_ij.narrow(1, 0, self.split_list[0])
             m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
