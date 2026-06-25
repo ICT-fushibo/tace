@@ -9,14 +9,14 @@ from typing import Any
 import torch
 
 from tace.models.linear import (
-    torchLinear,
-    mlpLinear,
-    e3nnLinear,
     e3nnElementLinear,
+    e3nnLinear,
     e3nnMoEElementLinear,
     enable_lora,
     has_lora,
     merge_lora,
+    mlpLinear,
+    torchLinear,
 )
 
 
@@ -27,6 +27,15 @@ LORA_MODULES = (
     e3nnElementLinear,
     e3nnMoEElementLinear,
 )
+
+
+LORA_CLASS_CONFIG_KEYS = {
+    torchLinear: ("torchLinear", "torch_linear"),
+    mlpLinear: ("mlpLinear", "mlp_linear"),
+    e3nnLinear: ("e3nnLinear", "e3nn_linear"),
+    e3nnElementLinear: ("e3nnElementLinear", "e3nn_element_linear"),
+    e3nnMoEElementLinear: ("e3nnMoEElementLinear", "e3nn_moe_element_linear"),
+}
 
 
 def _as_dict(cfg: Any) -> dict:
@@ -41,23 +50,18 @@ def _as_dict(cfg: Any) -> dict:
 
 
 def _select_lora_config(
-    module_name: str,
+    module: torch.nn.Module,
     lora_configs: dict[str, dict[str, Any]],
 ) -> dict[str, Any] | None:
     if not lora_configs:
         return None
 
-    patterns = (
-        ("element_embedding", ("element_embedding", "node_embedding", "embedding")),
-        ("radial_mlp", ("radial_mlp", "radial_net", "radial")),
-        ("interaction", ("interaction", "interactions")),
-        ("product", ("product", "products", "coefs", "shared_coefs")),
-        ("readout", ("readout", "readouts")),
-    )
-
-    for key, names in patterns:
-        if key in lora_configs and any(pattern in module_name for pattern in names):
-            return _as_dict(lora_configs[key])
+    for cls, keys in LORA_CLASS_CONFIG_KEYS.items():
+        if type(module) is cls:
+            for key in keys:
+                if key in lora_configs:
+                    return _as_dict(lora_configs[key])
+            break
 
     if "default" in lora_configs:
         return _as_dict(lora_configs["default"])
@@ -70,13 +74,13 @@ def inject_lora_into_model(
     lora_configs: dict[str, dict[str, Any]],
 ) -> torch.nn.Module:
     injected = 0
-    for module_name, module in model.named_modules():
+    for _, module in model.named_modules():
         if not isinstance(module, LORA_MODULES):
             continue
         if getattr(module, "weight", None) is None:
             continue
 
-        cfg = _select_lora_config(module_name, lora_configs)
+        cfg = _select_lora_config(module, lora_configs)
         if cfg is None:
             continue
 

@@ -15,14 +15,20 @@ Docs
 https://tace.readthedocs.io/en/latest/index.html
 
 
-Foundation Model
-----------------
+Foundation Model and Fine-tuning
+--------------------------------
 
 https://github.com/xvzemin/tace-foundations
 
+- ✅ Full-parameter.
 
-Tutorial
---------
+- ✅ Freeze-parameter.
+
+- ✅ LoRA.
+
+
+Tutorial and Train from scratch
+-------------------------------
 The docs contain a complete tutorial. 
 
 We also provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 

@@ -1,3 +1,4 @@
+# support resolver like add, sub, mul, float, ceil, floor
 defaults:
   - _self_ 
   # # Specify the logger backlend
@@ -14,7 +15,7 @@ finetune_from_model: null
 finetune: null # this field equals ./finetune_config.yaml, auto read or write directly here
 
 misc:
-  project_name: BaTiO3
+  project_name: Example
   global_seed: 42 
   device: cuda # cpu or cuda
   allow_tf32: true
@@ -30,6 +31,7 @@ misc:
     multiplier: 1e6
     skip_nan: true
     skip_large: true
+
 
 # logger:
 #   _target_: pytorch_lightning.loggers.WandbLogger
@@ -179,19 +181,35 @@ dataset:
 
   test_dataloader: ${dataset.valid_dataloader}
 
-# optimizer:
-#   _target_: torch.optim.Adam
-#   lr: 1e-3
-#   weight_decay: 0.0
-#   amsgrad: true
 
 optimizer:
- _target_: torch.optim.AdamW
- lr: 1e-3
- weight_decay: 1e-8
- amsgrad: true
+  _target_: torch.optim.AdamW
+  lr: 1e-3
+  weight_decay: 1e-8
+  amsgrad: true
 
-scheduler: # validaton-based
+  # _target_: torch.optim.Adam
+  # lr: 1e-3
+  # weight_decay: 1e-8
+  # amsgrad: true
+
+  # _target_: pytorch_optimizer.SOAP
+  # lr: 5e-3
+  # betas: [0.95, 0.95]
+  # weight_decay: 1e-3
+  # precondition_frequency: 10
+  # max_precondition_dim: 256
+  # merge_dims: false
+  # precondition_1d: false
+  # normalize_gradient: false
+
+  # # You must `export TACE_USE_MATRIX_WEIGHT=1` before use this optimizer
+  # _target_: tace.utils.optimizer.HybridMuonOptimizer
+  # lr: 1e-3
+  # weight_decay: 1e-8
+  # adam_betas: [0.9, 0.98]
+
+scheduler:
   _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
   mode: min
   factor: 0.5
@@ -203,22 +221,31 @@ scheduler: # validaton-based
     interval: epoch
     frequency: 1
 
-# # support resolver like add, sub, mul, float, ceil, floor
-# scheduler: # fixed-step
-#   _target_: tace.utils.lr_scheduler.CosineAnnealingWarmupRestarts
-#   first_cycle_steps: 400000 # total step, one batch = one step
-#   cycle_mult: 1.0 # restart factor
-#   max_lr: 2e-4 
-#   min_lr: 2e-6
-#   warmup_steps: ${floor:${mul:${scheduler.first_cycle_steps}, 0.05}} # 5 % first step (total here)
-#   gamma: 1.0 # decay factor
-#   last_epoch: -1
-#   extra:
-#     interval: step
-#     frequency: 1
+  # _target_: tace.utils.lr_scheduler.CosineAnnealingWarmupRestarts
+  # first_cycle_steps: 400000 # total step, one batch = one step
+  # cycle_mult: 1.0 # restart factor
+  # max_lr: 2e-4 
+  # min_lr: 2e-6
+  # warmup_steps: ${floor:${mul:${scheduler.first_cycle_steps}, 0.05}} # 5 % first step (total here)
+  # gamma: 1.0 # decay factor
+  # last_epoch: -1
+  # extra:
+  #   interval: step
+  #   frequency: 1
+
+  # _target_: tace.utils.lr_scheduler.WarmupStableDecay
+  # num_warmup_steps: 19691
+  # num_stable_steps: 177219
+  # num_decay_steps: 393820
+  # min_lr_ratio: 0.001
+  # num_cycles: 0.5
+  # cooldown_type: 1-sqrt # [cosine, 1-sqrt, linear, 1-square]
+  # extra:
+  #   monitor: ${synth_metric.monitor_metric_name}
+  #   interval: step
+  #   frequency: 1
 
 
-# recommended for actual production and use
 synth_metric: 
   # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
   # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
@@ -327,7 +354,6 @@ model:
       so2_linear_type: w1 # [w1, w1_w1, w1_w2], always use w1
       so2_agnostic: true
       use_temperature: true
-      num_head: null
       gate_m0: false
       scalar_act: null
       tensor_act: null
@@ -337,12 +363,10 @@ model:
       # type: [cgtp, gtp, cgtp, gtp ...]
       l1l2: null  # [null, <=]
       correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
-      num_channel: null # (int)
       return_components: null # [null, list(int)], if not specify, last layer will only return target weight
       num_expert: null
       num_channel_per_expert: null
       resolution: null # list[int, int] only useful for GtpACE, 
-      return_components: null
       nonlinear: null
       use_shared_expert: false
 
