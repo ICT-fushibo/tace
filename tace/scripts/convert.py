@@ -9,10 +9,10 @@ import argparse
 import torch
 
 from tace.lightning import load_tace
-# from tace.lightning.lora import from_lora_to_merged_model
+from tace.lightning.lora import from_lora_to_merged_model
 from tace.utils._global import DTYPE
 
-ALLOWED_TYPE = ["merged_lora"]
+ALLOWED_TYPE = ["merge_lora", "merged_lora"]
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -39,7 +39,7 @@ def parse_args():
         help="Specify convert type"
     )
     parser.add_argument(
-        "-d", "--debug", 
+        "--debug", 
         type=int, 
         default=0,
         help="print some extra information for debug"
@@ -60,10 +60,9 @@ def main():
     if args_dtype != model_dtype:
         print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
     model.to(dtype=args_dtype)
-    if args.type == "merge_lora":
+    if args.type in {"merge_lora", "merged_lora"}:
         total_before = count_parameters(model)
-        assert False, "SphTACE not support LoRA now"
-        # model = from_lora_to_merged_model(model)
+        model = from_lora_to_merged_model(model)
         total_after = count_parameters(model)
         if bool(args.debug):
             print(model)

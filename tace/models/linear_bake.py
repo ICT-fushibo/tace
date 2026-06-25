@@ -14,199 +14,6 @@ from e3nn import o3
 from tace.utils.env import get_tace_use_matrix_weight
 
 
-def _lora_scaling(module: torch.nn.Module) -> float:
-    return float(module.lora_alpha) / float(module.lora_r)
-
-
-def _lora_dtype_device(module: torch.nn.Module) -> tuple[torch.device, torch.dtype]:
-    if isinstance(getattr(module, "weight", None), torch.nn.ParameterList):
-        param = module.weight[0]
-    else:
-        param = module.weight
-    return param.device, param.dtype
-
-
-def _freeze_lora_base(module: torch.nn.Module, train_bias: bool) -> None:
-    weight = getattr(module, "weight", None)
-    if isinstance(weight, torch.nn.ParameterList):
-        for param in weight:
-            param.requires_grad_(False)
-    elif weight is not None:
-        weight.requires_grad_(False)
-
-    bias = getattr(module, "bias", None)
-    if bias is not None:
-        bias.requires_grad_(bool(train_bias))
-
-
-def _init_lora_parameter(
-    shape: tuple[int, ...],
-    *,
-    zero: bool = False,
-    device: torch.device | None = None,
-    dtype: torch.dtype | None = None,
-) -> torch.nn.Parameter:
-    param = torch.nn.Parameter(torch.empty(shape, device=device, dtype=dtype))
-    if zero:
-        torch.nn.init.zeros_(param)
-    else:
-        fan_in = max(int(shape[-2]), 1)
-        bound = 1.0 / math.sqrt(fan_in)
-        torch.nn.init.uniform_(param, -bound, bound)
-    return param
-
-
-def _make_lora_path_parameters(
-    module: torch.nn.Module,
-    r: int,
-    element_aware: bool,
-    expert_aware: bool,
-) -> tuple[torch.nn.ParameterList, torch.nn.ParameterList]:
-    device, dtype = _lora_dtype_device(module)
-    prefix = []
-    if hasattr(module, "num_elements") and element_aware:
-        prefix.append(int(module.num_elements))
-    if hasattr(module, "num_experts") and expert_aware:
-        prefix.append(int(module.num_experts))
-
-    lora_A = torch.nn.ParameterList()
-    lora_B = torch.nn.ParameterList()
-    for path_shape in module._path_shapes:
-        left_dim = int(path_shape[0]) # in
-        right_dim = int(math.prod(path_shape[1:])) # out
-        lora_A.append(
-            _init_lora_parameter((*prefix, left_dim, r), device=device, dtype=dtype)
-        )
-        lora_B.append(
-            _init_lora_parameter(
-                (*prefix, r, right_dim),
-                zero=True,
-                device=device,
-                dtype=dtype,
-            )
-        )
-    return lora_A, lora_B
-
-
-def _lora_path_delta(module: torch.nn.Module, path_index: int) -> torch.Tensor:
-    delta = module.lora_A[path_index] @ module.lora_B[path_index]
-    return delta.reshape(*delta.shape[:-2], *module._path_shapes[path_index]) * _lora_scaling(module)
-
-
-def _flat_lora_delta(module: torch.nn.Module) -> torch.Tensor:
-    chunks = []
-    for path_index in range(len(module._path_shapes)):
-        delta = _lora_path_delta(module, path_index)
-        path_ndim = len(module._path_shapes[path_index])
-        chunks.append(delta.reshape(*delta.shape[:-path_ndim], -1))
-    return torch.cat(chunks, dim=-1)
-
-
-def enable_lora(
-    module: torch.nn.Module,
-    *,
-    r: int = 4,
-    alpha: float | None = None,
-    element_aware: bool = True,
-    expert_aware: bool = True,
-    freeze_base: bool = True,
-    train_bias: bool = False,
-) -> torch.nn.Module:
-    if r <= 0:
-        return module
-
-    module.lora_r = int(r)
-    module.lora_alpha = float(alpha if alpha is not None else r)
-    module.use_lora = True
-
-    if isinstance(module, torchLinear):
-        device, dtype = _lora_dtype_device(module)
-        module.lora_A = _init_lora_parameter(
-            (r, module.in_features),
-            device=device,
-            dtype=dtype,
-        )
-        module.lora_B = _init_lora_parameter(
-            (module.out_features, r),
-            zero=True,
-            device=device,
-            dtype=dtype,
-        )
-    elif isinstance(module, mlpLinear):
-        device, dtype = _lora_dtype_device(module)
-        module.lora_A = _init_lora_parameter(
-            (module.in_dim, r),
-            device=device,
-            dtype=dtype,
-        )
-        module.lora_B = _init_lora_parameter(
-            (r, module.out_dim),
-            zero=True,
-            device=device,
-            dtype=dtype,
-        )
-    elif isinstance(module, (e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear)):
-        module.lora_element_aware = bool(element_aware)
-        module.lora_expert_aware = bool(expert_aware)
-        module.lora_A, module.lora_B = _make_lora_path_parameters(
-            module,
-            r,
-            element_aware=element_aware,
-            expert_aware=expert_aware,
-        )
-    else:
-        raise TypeError(f"Unsupported LoRA module type: {type(module)}")
-
-    if freeze_base:
-        _freeze_lora_base(module, train_bias=train_bias)
-
-    return module
-
-
-def has_lora(module: torch.nn.Module) -> bool:
-    return bool(getattr(module, "use_lora", False)) and hasattr(module, "lora_A")
-
-
-def disable_lora(module: torch.nn.Module) -> torch.nn.Module:
-    if hasattr(module, "use_lora"):
-        module.use_lora = False
-    return module
-
-
-def merge_lora(module: torch.nn.Module, remove_lora: bool = True) -> torch.nn.Module:
-    if not has_lora(module):
-        return module
-
-    with torch.no_grad():
-        if isinstance(module, torchLinear):
-            module.weight.add_((module.lora_B @ module.lora_A) * _lora_scaling(module))
-        elif isinstance(module, mlpLinear):
-            module.weight.add_((module.lora_A @ module.lora_B) * _lora_scaling(module))
-        elif isinstance(module, (e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear)):
-            if isinstance(module.weight, torch.nn.ParameterList):
-                for path_index, weight in enumerate(module.weight):
-                    weight.add_(_lora_path_delta(module, path_index))
-            else:
-                module.weight.add_(_flat_lora_delta(module))
-        else:
-            raise TypeError(f"Unsupported LoRA module type: {type(module)}")
-
-    if remove_lora:
-        for name in (
-            "lora_A",
-            "lora_B",
-            "lora_r",
-            "lora_alpha",
-            "lora_element_aware",
-            "lora_expert_aware",
-        ):
-            if hasattr(module, name):
-                delattr(module, name)
-        module.use_lora = False
-
-    return module
-
-
 class torchLinear(torch.nn.Module):
 
     __constants__ = ["in_features", "out_features"]
@@ -236,10 +43,7 @@ class torchLinear(torch.nn.Module):
         self.alpha = 1.0 / math.sqrt(in_features)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        weight = self.weight
-        if has_lora(self):
-            weight = weight + (self.lora_B @ self.lora_A) * _lora_scaling(self)
-        return F.linear(input, weight * self.alpha, self.bias)
+        return F.linear(input, self.weight * self.alpha, self.bias)
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
@@ -267,8 +71,6 @@ class mlpLinear(torch.nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         weight = self.weight * self.alpha
-        if has_lora(self):
-            weight = (self.weight + (self.lora_A @ self.lora_B) * _lora_scaling(self)) * self.alpha
         if self.bias is None:
             return torch.mm(input, weight)
         else:
@@ -302,7 +104,6 @@ class e3nnLinear(torch.nn.Module):
         )
 
         self.weight_numel = self.linear.weight_numel
-        self._path_shapes = [tuple(ins.path_shape) for ins in self.linear.instructions]
 
         self._0e_muls = []
         self._0e_slices = []
@@ -342,22 +143,12 @@ class e3nnLinear(torch.nn.Module):
             self.register_parameter("bias", None)
 
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        weight = self.weight
+    def forward(self, x: torch.Tensor, weight = None) -> torch.Tensor:
+        if self.weight is not None:
+            weight = self.weight
 
         if self.use_matrix_weight:
-            if has_lora(self):
-                weight = torch.cat(
-                    [
-                        (w + _lora_path_delta(self, path_index)).view(-1)
-                        for path_index, w in enumerate(weight)
-                    ],
-                    dim=-1,
-                )
-            else:
-                weight = torch.cat([w.view(-1) for w in weight], dim=-1)
-        elif has_lora(self):
-            weight = weight + _flat_lora_delta(self)
+            weight = torch.cat([w.view(-1) for w in weight], dim=-1)
 
         out = self.linear(x, weight)
         
@@ -395,14 +186,13 @@ class e3nnElementLinear(torch.nn.Module):
             shared_weights=False,
         )
         weight_numel = self.linear.weight_numel
-        self._path_shapes = [tuple(ins.path_shape) for ins in self.linear.instructions]
 
         self._0e_muls = []
         self._0e_slices = []
         self._bias_slices = []
         acc = 0
         bias_acc = 0
-        for mul, ir in self.irreps_out:
+        for mul, ir in irreps_out:
             dim = mul * ir.dim
             if ir.l == 0 and ir.p == 1:
                 self._0e_muls.append(mul)
@@ -434,21 +224,10 @@ class e3nnElementLinear(torch.nn.Module):
     def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
         if self.use_matrix_weight:
-            if has_lora(self):
-                weight = torch.cat(
-                    [
-                        (w + _lora_path_delta(self, path_index)).view(self.num_elements, -1)
-                        for path_index, w in enumerate(self.weight)
-                    ],
-                    dim=-1,
-                )
-            else:
-                weight = torch.cat([w.view(self.num_elements, -1) for w in self.weight], dim=-1)
+            weight = torch.cat([w.view(self.num_elements, -1) for w in self.weight], dim=-1)
             bias = self.bias.view(self.num_elements, -1)
         else:
             weight = self.weight
-            if has_lora(self):
-                weight = weight + _flat_lora_delta(self)
             bias = self.bias
 
         node_type = y.argmax(dim=-1)
@@ -554,17 +333,9 @@ class e3nnMoEElementLinear(torch.nn.Module):
 
     def _path_weights(self, node_type: torch.Tensor) -> list[torch.Tensor]:
         if self.use_matrix_weight:
-            if has_lora(self):
-                return [
-                    (weight + _lora_path_delta(self, path_index))[node_type]
-                    for path_index, weight in enumerate(self.weight)
-                ]
             return [weight[node_type] for weight in self.weight]
 
-        weight = self.weight
-        if has_lora(self):
-            weight = weight + _flat_lora_delta(self)
-        selected = weight[node_type]
+        selected = self.weight[node_type]
         weights = []
         offset = 0
         for path_shape in self._path_shapes:
