@@ -2,6 +2,10 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
+'''
+Not all modules included here are ready for direct use; however, 
+we have retained them for reference by the community.
+'''
 
 import math
 from typing import Union
@@ -10,10 +14,422 @@ from typing import Union
 import torch
 
 
-from ..mlp import ScaledSigmoid
 from ..so2 import satisfy 
-from ..s2 import SO3VstpGrid
 
+
+def so2_dim(m: int) -> int:
+    return 1 if int(m) == 0 else 2
+
+
+def so2_clebsch_gordan(
+    m1: int,
+    m2: int,
+    out_m: int,
+    mode: str,
+    *,
+    dtype: Union[torch.dtype, None] = None,
+    device: Union[torch.device, None] = None,
+    irrep_normalization: str = "component",
+) -> torch.Tensor:
+    if irrep_normalization is None:
+        irrep_normalization = "component"
+    if irrep_normalization not in {"component", "norm", "none"}:
+        raise ValueError(
+            "irrep_normalization must be one of 'component', 'norm', or 'none'"
+        )
+
+    dtype = torch.get_default_dtype() if dtype is None else dtype
+    d1 = so2_dim(m1)
+    d2 = so2_dim(m2)
+    d3 = so2_dim(out_m)
+    C = torch.zeros(d1, d2, d3, dtype=dtype, device=device)
+
+    if d1 == 1 and d2 == 1:
+        C[0, 0, 0] = 1.0
+    elif d1 == 1:
+        C[0, :, :] = torch.eye(d2, d3, dtype=dtype, device=device)
+    elif d2 == 1:
+        C[:, 0, :] = torch.eye(d1, d3, dtype=dtype, device=device)
+    elif mode == "sum":
+        # (a + ib)(c + id) = (ac - bd) + i(ad + bc)
+        C[0, 0, 0] = 1.0
+        C[1, 1, 0] = -1.0
+        C[0, 1, 1] = 1.0
+        C[1, 0, 1] = 1.0
+    elif mode == "diff" and out_m == 0:
+        # Even m=0 scalar from z_m conj(z_m). The odd pseudoscalar is not kept.
+        C[0, 0, 0] = 1.0
+        C[1, 1, 0] = 1.0
+    elif mode == "diff" and m1 < m2:
+        # y * conj(x), using the positive-frequency convention.
+        C[0, 0, 0] = 1.0
+        C[1, 1, 0] = 1.0
+        C[0, 1, 1] = 1.0
+        C[1, 0, 1] = -1.0
+    elif mode == "diff":
+        # x * conj(y).
+        C[0, 0, 0] = 1.0
+        C[1, 1, 0] = 1.0
+        C[1, 0, 1] = 1.0
+        C[0, 1, 1] = -1.0
+    else:
+        raise ValueError(f"Unknown SO(2) coupling mode={mode!r}")
+
+    if irrep_normalization == "none":
+        return C
+    if irrep_normalization == "component":
+        norm = torch.sum(C * C, dim=(0, 1), keepdim=True).sqrt()
+        return torch.where(norm > 0, C / norm.clamp_min(torch.finfo(dtype).eps), C)
+
+    norm = torch.linalg.vector_norm(C)
+    scale = C.new_tensor(math.sqrt(float(d3))) / norm.clamp_min(torch.finfo(dtype).eps)
+    return C * scale
+
+
+class SO2SymmetricContraction(torch.nn.Module):
+    def __init__(
+        self,
+        mmax: int,
+        lmax: int,
+        num_channels: int,
+        correlation: int,
+        *,
+        m1m2: Union[str, None] = None,
+        irrep_normalization: str = "component",
+        path_normalization: str = "element",
+        internal_weights: bool = True,
+        symmetrize_paths: bool = True,
+    ) -> None:
+        super().__init__()
+
+        if irrep_normalization is None:
+            irrep_normalization = "component"
+        if path_normalization is None:
+            path_normalization = "element"
+        if irrep_normalization not in {"component", "norm", "none"}:
+            raise ValueError(
+                "irrep_normalization must be one of 'component', 'norm', or 'none'"
+            )
+        if path_normalization not in {"element", "path", "none"}:
+            raise ValueError(
+                "path_normalization must be one of 'element', 'path', or 'none'"
+            )
+
+        self.mmax = int(mmax)
+        self.lmax = int(lmax)
+        self.num_channels = int(num_channels)
+        self.correlation = int(correlation)
+        self.m1m2 = m1m2
+        self.irrep_normalization = irrep_normalization
+        self.path_normalization = path_normalization
+        self.internal_weights = bool(internal_weights)
+        self.symmetrize_paths = bool(symmetrize_paths)
+
+        if self.correlation < 1:
+            raise ValueError(f"correlation must be positive, got {correlation}")
+
+        offsets = []
+        offset = 0
+        for m in range(self.mmax + 1):
+            offsets.append(offset)
+            offset += so2_dim(m)
+        self.irrep_offsets = offsets
+        self.irrep_dim = offset
+
+        self.contractions: list[list[dict[str, object]]] = []
+        self.path_orders = self.contractions
+        self.order_weight_numels: list[int] = []
+        self.order_num_paths: list[int] = []
+        self._setup_paths()
+        self.num_paths = sum(self.order_num_paths)
+        self.weight_numel = sum(self.order_weight_numels)
+
+        n = self.lmax + 1
+        if self.internal_weights:
+            self.weights = torch.nn.ParameterList(
+                [
+                    torch.nn.Parameter(
+                        torch.randn(
+                            num_paths,
+                            n,
+                            self.num_channels,
+                        )
+                        / max(num_paths, 1)
+                    )
+                    for num_paths in self.order_num_paths
+                ]
+            )
+        else:
+            self.weights = torch.nn.ParameterList([])
+
+    def _setup_paths(self) -> None:
+        dtype = torch.get_default_dtype()
+        previous: list[dict[str, object]] = []
+
+        for m in range(self.mmax + 1):
+            dim = so2_dim(m)
+            U = torch.eye(dim, dtype=dtype)
+            previous.append(
+                {
+                    "leaves": (m,),
+                    "out_m": m,
+                    "steps": (),
+                    "U": U,
+                }
+            )
+
+        stored_previous = self._store_order_paths(previous, 1)
+        order_groups = self._register_order_groups(stored_previous, 1)
+        self.contractions.append(order_groups)
+        self.order_num_paths.append(len(stored_previous))
+        self.order_weight_numels.append(len(stored_previous) * (self.lmax + 1) * self.num_channels)
+
+        for order in range(2, self.correlation + 1):
+            current: list[dict[str, object]] = []
+            for path in previous:
+                prev_m = int(path["out_m"])
+                prev_U = path["U"]
+                for next_m in range(self.mmax + 1):
+                    for out_m, mode in self._valid_pair_outputs(prev_m, next_m):
+                        pair = so2_clebsch_gordan(
+                            prev_m,
+                            next_m,
+                            out_m,
+                            mode,
+                            dtype=dtype,
+                            irrep_normalization=self.irrep_normalization,
+                        )
+                        U = torch.tensordot(prev_U, pair, dims=([-1], [0])).contiguous()
+                        current.append(
+                            {
+                                "leaves": tuple(path["leaves"]) + (next_m,),
+                                "out_m": out_m,
+                                "steps": tuple(path["steps"]) + ((prev_m, next_m, out_m, mode),),
+                                "U": U,
+                            }
+                        )
+            previous = current
+            stored_current = self._store_order_paths(current, order)
+            order_groups = self._register_order_groups(stored_current, order)
+            self.contractions.append(order_groups)
+            self.order_num_paths.append(len(stored_current))
+            self.order_weight_numels.append(len(stored_current) * (self.lmax + 1) * self.num_channels)
+
+    def _store_order_paths(
+        self,
+        paths: list[dict[str, object]],
+        order: int,
+    ) -> list[dict[str, object]]:
+        if (not self.symmetrize_paths) or int(order) <= 1:
+            return paths
+
+        groups: dict[tuple[tuple[int, ...], int], list[dict[str, object]]] = {}
+        for path in paths:
+            leaves = tuple(int(m) for m in path["leaves"])
+            key = (tuple(sorted(leaves)), int(path["out_m"]))
+            groups.setdefault(key, []).append(path)
+
+        stored: list[dict[str, object]] = []
+        for group_idx, ((canonical_leaves, out_m), group) in enumerate(groups.items()):
+            U_sum: Union[torch.Tensor, None] = None
+            for path in group:
+                leaves = tuple(int(m) for m in path["leaves"])
+                order_perm = sorted(range(len(leaves)), key=lambda idx: (leaves[idx], idx))
+                U = path["U"]
+                U = U.permute(*order_perm, len(leaves)).contiguous()
+                U_sum = U if U_sum is None else U_sum + U
+            if U_sum is None:
+                raise RuntimeError("empty SO2 path group")
+            if self.path_normalization == "element":
+                U_sym = U_sum / math.sqrt(float(len(group)))
+            else:
+                U_sym = U_sum
+            stored.append(
+                {
+                    "leaves": canonical_leaves,
+                    "out_m": out_m,
+                    "steps": tuple(path["steps"] for path in group),
+                    "U": U_sym.contiguous(),
+                    "num_ordered_paths": len(group),
+                }
+            )
+        return stored
+
+    def _register_order_groups(
+        self,
+        paths: list[dict[str, object]],
+        order: int,
+    ) -> list[dict[str, object]]:
+        groups: dict[int, list[tuple[int, dict[str, object]]]] = {}
+        for path_idx, path in enumerate(paths):
+            groups.setdefault(int(path["out_m"]), []).append((path_idx, path))
+
+        order_groups: list[dict[str, object]] = []
+        path_offset = 0
+        for out_m in range(self.mmax + 1):
+            group = groups.get(out_m, [])
+            if not group:
+                continue
+
+            compact_paths = []
+            for local_idx, (_path_idx, path) in enumerate(group):
+                path_name = f"U_path_{order}_{out_m}_{local_idx}"
+                self.register_buffer(path_name, path["U"].contiguous(), persistent=False)
+                compact_path = dict(path)
+                compact_path["buffer"] = path_name
+                compact_path.pop("U", None)
+                compact_paths.append(compact_path)
+            order_groups.append(
+                {
+                    "order": order,
+                    "out_m": out_m,
+                    "num_paths": len(group),
+                    "path_slice": slice(path_offset, path_offset + len(group)),
+                    "paths": tuple(compact_paths),
+                }
+            )
+            path_offset += len(group)
+        return order_groups
+
+    def _valid_pair_outputs(self, m1: int, m2: int) -> list[tuple[int, str]]:
+        if not satisfy(m1, m2, self.m1m2):
+            return []
+
+        outputs: list[tuple[int, str]] = []
+        sum_m = int(m1) + int(m2)
+        if sum_m <= self.mmax:
+            outputs.append((sum_m, "sum"))
+
+        diff_m = abs(int(m1) - int(m2))
+        if diff_m <= self.mmax and diff_m != sum_m:
+            outputs.append((diff_m, "diff"))
+        return outputs
+
+    def _to_blocks(self, x: torch.Tensor) -> list[torch.Tensor]:
+        B = x.size(0)
+        n = self.lmax + 1
+        blocks: list[torch.Tensor] = []
+        offset = 0
+        blocks.append(x[:, offset : offset + n].unsqueeze(-1))
+        offset += n
+        for _m in range(1, self.mmax + 1):
+            xm = x[:, offset : offset + 2 * n]
+            xm = xm.view(B, 2, n, self.num_channels)
+            blocks.append(xm.permute(0, 2, 3, 1).contiguous())
+            offset += 2 * n
+        return blocks
+
+    def _merge_dense(self, dense: torch.Tensor) -> torch.Tensor:
+        parts = [dense[..., self.irrep_offsets[0]]]
+        for m in range(1, self.mmax + 1):
+            start = self.irrep_offsets[m]
+            xm = dense[..., start : start + 2]
+            parts.append(xm.permute(0, 3, 1, 2).reshape(dense.shape[0], -1, self.num_channels))
+        return torch.cat(parts, dim=1)
+
+    def _contract_path(
+        self,
+        blocks: list[torch.Tensor],
+        path: dict[str, object],
+        *,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        leaves = tuple(int(m) for m in path["leaves"])
+        U = getattr(self, str(path["buffer"])).to(device=blocks[0].device, dtype=dtype)
+        operands: list[torch.Tensor] = [blocks[m] for m in leaves]
+
+        letters = "pqrstuvwxyzadefghijklmABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        if len(leaves) > len(letters):
+            raise RuntimeError("SO2SymmetricContraction has too many leaves for einsum")
+        in_terms = [f"bnc{letters[i]}" for i in range(len(leaves))]
+        u_term = "".join(letters[: len(leaves)]) + "o"
+        expr = ",".join(in_terms + [u_term]) + "->bnco"
+        return torch.einsum(expr, *operands, U)
+
+    def _path_scale(self, group: dict[str, object]) -> float:
+        if self.path_normalization != "path":
+            return 1.0
+        return 1.0 / math.sqrt(max(int(group["num_paths"]), 1))
+
+    def _forward_path(
+        self,
+        x: torch.Tensor,
+        selected_weights: list[torch.Tensor],
+    ) -> torch.Tensor:
+        B = x.size(0)
+        n = self.lmax + 1
+        dtype = x.dtype
+        blocks = self._to_blocks(x)
+        output = x.new_zeros(B, n, self.num_channels, self.irrep_dim)
+
+        for order_idx, groups in enumerate(self.contractions):
+            w_order = selected_weights[order_idx]
+            for group in groups:
+                out_m = int(group["out_m"])
+                start = self.irrep_offsets[out_m]
+                stop = start + so2_dim(out_m)
+                group_weight = w_order[:, group["path_slice"]].to(dtype=dtype)
+                scale = self._path_scale(group)
+                for local_idx, path in enumerate(group["paths"]):
+                    z = self._contract_path(blocks, path, dtype=dtype) * scale
+                    w = group_weight[:, local_idx].view(B, n, self.num_channels, 1)
+                    output[..., start:stop] = output[..., start:stop] + z * w
+
+        return self._merge_dense(output)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        weights: Union[list[torch.Tensor], None] = None,
+    ) -> torch.Tensor:
+        B = x.size(0)
+
+        if self.internal_weights:
+            weight_list: list[torch.Tensor] = list(self.weights)
+        else:
+            if weights is None:
+                raise ValueError(
+                    "edge-dependent weights must be provided when "
+                    "internal_weights=False"
+                )
+            weight_list = weights
+
+        selected_weights: list[torch.Tensor] = []
+        for order_idx, w_order in enumerate(weight_list):
+            expected_shape = (
+                self.order_num_paths[order_idx],
+                self.lmax + 1,
+                self.num_channels,
+            )
+            if self.internal_weights:
+                if tuple(w_order.shape) != expected_shape:
+                    raise ValueError(
+                        f"internal weight for order {order_idx + 1} must have "
+                        f"shape {expected_shape}, got {tuple(w_order.shape)}"
+                    )
+                selected_weights.append(w_order.unsqueeze(0).expand(B, -1, -1, -1))
+                continue
+
+            expected_external_shape = (B, *expected_shape)
+            if tuple(w_order.shape) != expected_external_shape:
+                raise ValueError(
+                    f"external edge-dependent weight for order {order_idx + 1} "
+                    f"must have shape {expected_external_shape}, "
+                    f"got {tuple(w_order.shape)}"
+                )
+            selected_weights.append(w_order)
+
+        return self._forward_path(x, selected_weights)
+
+    def extra_repr(self) -> str:
+        return (
+            f"mmax={self.mmax}, lmax={self.lmax}, "
+            f"channels={self.num_channels}, correlation={self.correlation}, "
+            f"num_paths={self.order_num_paths}, "
+            f"irrep_normalization={self.irrep_normalization!r}, "
+            f"path_normalization={self.path_normalization!r}"
+        )
+    
 
 class uuSO2TensorProduct(torch.nn.Module):
     def __init__(
@@ -228,58 +644,7 @@ class uuSO2TensorProduct(torch.nn.Module):
         return "\n".join(lines)
     
 
-class ComplexProductBasisV1(torch.nn.Module):
-    def __init__(
-        self,
-        mmax: int,
-        lmax: int,
-        num_channel: int,
-        num_elements: int,
-        m1m2: Union[str, None] = '<=',
-        agnostic: bool = True,
-    ):
-        super().__init__()
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel = num_channel
-        self.num_elements = num_elements
-        self.m1m2 = m1m2
-        self.agnostic = agnostic
-        self.num_components = lmax+1
-        self.tp = uuSO2TensorProduct(
-            self.mmax, 
-            self.lmax,
-            self.num_channel, 
-            m1m2=self.m1m2, 
-            internal_weights=agnostic,
-        ) 
-
-    def forward(self, x: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-        if self.agnostic:
-            return x + self.tp(x, x)
-        
-        B = x.size(0)
-        C = self.num_channel
-        node_type = node_attrs.argmax(dim=-1)
-        src_type = node_type[edge_index[0]]
-        dst_type = node_type[edge_index[1]]
-        source_coefs = self.source_coefs[src_type]
-        target_coefs = self.target_coefs[dst_type]
-        
-        # nu = 1
-        w1 = source_coefs[:, :self.nu1_weight_numel] + target_coefs[:, :self.nu1_weight_numel]
-        w1 = w1.view(B, -1, C)
-        w1 = torch.index_select(w1, dim=1, index=self.expand_index)
-        corr_feats1 = x * w1
-
-        # nu = 2
-        w2 = source_coefs[:, self.nu1_weight_numel:] + target_coefs[:, self.nu1_weight_numel:]
-        corr_feats2 = self.tp(x, x, w2)
-
-        return corr_feats1 + corr_feats2
-
-
-class ComplexProductBasisV2(torch.nn.Module):
+class ComplexProductBasis(torch.nn.Module):
     def __init__(
         self,
         mmax: int,
@@ -303,57 +668,432 @@ class ComplexProductBasisV2(torch.nn.Module):
             
     def forward(self, x: torch.Tensor, y: torch.Tensor, ws: torch.Tensor) -> torch.Tensor:
         return self.tp(x, y, ws)
+
+
+# class VectorSwiGLU(torch.nn.Module):
+#     """
+#     in dev, not recommended for practical use
+#     """
+#     def __init__(
+#             self, 
+#             mmax: int, 
+#             lmax: int, 
+#             num_channel: int, 
+#             resolution: list[int],  
+#             use_m_primary: bool = True,
+#             use_vstp: bool = False,
+#         ):
+#         super().__init__()
+
+#         self.mmax = mmax
+#         self.lmax = lmax
+#         self.num_channel =  num_channel
+#         self.resolution = resolution
+#         self.use_m_primary = use_m_primary
+#         self.use_vstp = use_vstp
+#         from ..mlp import ScaledSigmoid
+#         from ..s2 import SO3VstpGrid
+#         self.grid = SO3VstpGrid(
+#             self.lmax,
+#             self.mmax,
+#             resolution_list=self.resolution,
+#             use_m_primary=self.use_m_primary,
+#         )
+#         self.sigmoid = ScaledSigmoid()
+
+#     def forward(self, t, s):
+#         B = s.size(0)
+#         s = s.view(B, 1, 3*self.num_channel)
+#         o_s = s.narrow(2, 0, 2*self.num_channel)
+#         o_s1, o_s2 = torch.chunk(o_s, chunks=2, dim=-1)
+#         o_s = torch.nn.functional.silu(o_s1) * o_s2
+#         g_s = s.narrow(2, self.num_channel*2, self.num_channel)    
+#         g_s = self.sigmoid(g_s)
+#         t1, t2 = torch.chunk(t, chunks=2, dim=-1)
+#         if self.use_vstp:
+#             o_t = self.grid.from_grid(
+#                 self.grid.full_grid_product(
+#                     self.grid.to_grid(t1),
+#                     self.grid.to_grid(t2),
+#                     symmetric_scale=1.0,
+#                     antisym_scale=1.0,
+#                 )
+#             )
+#         else:
+#             o_t = self.grid.symmetric_product(t1, t2)
+#         o_t = g_s * o_t
+#         o_t[:, 0:1, :] = o_t.narrow(1, 0, 1) + o_s
+#         return o_t
     
 
-class VectorSwiGLU(torch.nn.Module):
-    """
-    in dev, not recommended for practical use
-    """
-    def __init__(
-            self, 
-            mmax: int, 
-            lmax: int, 
-            num_channel: int, 
-            resolution: list[int],  
-            use_m_primary: bool = True,
-            use_vstp: bool = False,
-        ):
-        super().__init__()
+# class _SO2DimExpr:
+#     def __init__(self, m: int) -> None:
+#         self.m = int(m)
 
-        self.mmax = mmax
-        self.lmax = lmax
-        self.num_channel =  num_channel
-        self.resolution = resolution
-        self.use_m_primary = use_m_primary
-        self.use_vstp = use_vstp
-        self.grid = SO3VstpGrid(
-            self.lmax,
-            self.mmax,
-            resolution_list=self.resolution,
-            use_m_primary=self.use_m_primary,
-        )
-        self.sigmoid = ScaledSigmoid()
+#     def __add__(self, other: int) -> int:
+#         if int(other) == 1:
+#             return so2_dim(self.m)
+#         return 2 * (0 if self.m == 0 else 1) + int(other)
 
-    def forward(self, t, s):
-        B = s.size(0)
-        s = s.view(B, 1, 3*self.num_channel)
-        o_s = s.narrow(2, 0, 2*self.num_channel)
-        o_s1, o_s2 = torch.chunk(o_s, chunks=2, dim=-1)
-        o_s = torch.nn.functional.silu(o_s1) * o_s2
-        g_s = s.narrow(2, self.num_channel*2, self.num_channel)    
-        g_s = self.sigmoid(g_s)
-        t1, t2 = torch.chunk(t, chunks=2, dim=-1)
-        if self.use_vstp:
-            o_t = self.grid.from_grid(
-                self.grid.full_grid_product(
-                    self.grid.to_grid(t1),
-                    self.grid.to_grid(t2),
-                    symmetric_scale=1.0,
-                    antisym_scale=1.0,
-                )
-            )
-        else:
-            o_t = self.grid.symmetric_product(t1, t2)
-        o_t = g_s * o_t
-        o_t[:, 0:1, :] = o_t.narrow(1, 0, 1) + o_s
-        return o_t
+#     __radd__ = __add__
+
+
+# class _SO2Lmax:
+#     def __init__(self, m: int) -> None:
+#         self.m = int(m)
+#         self.value = 0 if self.m == 0 else 1
+
+#     def __lt__(self, other: object) -> bool:
+#         return self.value < int(other)
+
+#     def __gt__(self, other: object) -> bool:
+#         return self.value > int(other)
+
+#     def __add__(self, other: object) -> int:
+#         return self.value + int(other)
+
+#     def __radd__(self, other: object) -> int:
+#         return int(other) + self.value
+
+#     def __sub__(self, other: object) -> int:
+#         return self.value - int(other)
+
+#     def __rsub__(self, other: object) -> int:
+#         return int(other) - self.value
+
+#     def __rmul__(self, other: object) -> Union[int, _SO2DimExpr]:
+#         if int(other) == 2:
+#             return _SO2DimExpr(self.m)
+#         return int(other) * self.value
+
+#     def __int__(self) -> int:
+#         return self.value
+
+#     def __index__(self) -> int:
+#         return self.value
+
+
+# class _SO2Irrep:
+#     _mmax = 0
+#     _m1m2: Union[str, None] = None
+
+#     def __init__(self, ir: object) -> None:
+#         if isinstance(ir, _SO2Irrep):
+#             self.l = ir.l
+#         elif hasattr(ir, "l"):
+#             self.l = int(ir.l)
+#         elif isinstance(ir, str):
+#             token = ir.strip()
+#             if "x" in token:
+#                 token = token.split("x", 1)[1]
+#             token = token.rstrip("eo")
+#             self.l = int(token)
+#         elif isinstance(ir, tuple):
+#             self.l = int(ir[0])
+#         else:
+#             self.l = int(ir)
+#         self.p = 1
+#         self.dim = so2_dim(self.l)
+
+#     @classmethod
+#     def configure(cls, mmax: int, m1m2: Union[str, None]) -> None:
+#         cls._mmax = int(mmax)
+#         cls._m1m2 = m1m2
+
+#     def __mul__(self, other: object) -> list["_SO2Irrep"]:
+#         other = _SO2Irrep(other)
+#         if not satisfy(self.l, other.l, self._m1m2):
+#             return []
+
+#         outputs: list[int] = []
+#         sum_m = self.l + other.l
+#         if sum_m <= self._mmax:
+#             outputs.append(sum_m)
+
+#         diff_m = abs(self.l - other.l)
+#         if diff_m <= self._mmax and diff_m != sum_m:
+#             outputs.append(diff_m)
+
+#         return [_SO2Irrep(m) for m in outputs]
+
+#     def __eq__(self, other: object) -> bool:
+#         try:
+#             return self.l == _SO2Irrep(other).l
+#         except (TypeError, ValueError):
+#             return False
+
+#     def __lt__(self, other: object) -> bool:
+#         return self.l < _SO2Irrep(other).l
+
+#     def __hash__(self) -> int:
+#         return hash((self.l, self.p))
+
+#     def __repr__(self) -> str:
+#         return f"{self.l}e"
+
+#     __str__ = __repr__
+
+
+# class _SO2MulIr:
+#     def __init__(self, mul: int, ir: object) -> None:
+#         self.mul = int(mul)
+#         self.ir = _SO2Irrep(ir)
+
+#     def __iter__(self):
+#         yield self.mul
+#         yield self.ir
+
+#     def __repr__(self) -> str:
+#         return f"{self.mul}x{self.ir}"
+
+
+# class _SO2Irreps:
+#     def __init__(self, irreps: object) -> None:
+#         if isinstance(irreps, _SO2Irreps):
+#             self._irreps = list(irreps._irreps)
+#         elif isinstance(irreps, _SO2Irrep):
+#             self._irreps = [_SO2MulIr(1, irreps)]
+#         elif isinstance(irreps, str):
+#             self._irreps = self._parse_string(irreps)
+#         else:
+#             self._irreps = []
+#             for item in irreps:
+#                 if isinstance(item, _SO2MulIr):
+#                     self._irreps.append(_SO2MulIr(item.mul, item.ir))
+#                 elif isinstance(item, _SO2Irrep) or hasattr(item, "l"):
+#                     self._irreps.append(_SO2MulIr(1, item))
+#                 else:
+#                     mul, ir = item
+#                     self._irreps.append(_SO2MulIr(mul, ir))
+
+#     @staticmethod
+#     def _parse_string(irreps: str) -> list[_SO2MulIr]:
+#         out = []
+#         for token in irreps.replace(" ", "").split("+"):
+#             if not token:
+#                 continue
+#             if "x" in token:
+#                 mul_text, ir_text = token.split("x", 1)
+#                 out.append(_SO2MulIr(int(mul_text), ir_text))
+#             else:
+#                 out.append(_SO2MulIr(1, token))
+#         return out
+
+#     def __iter__(self):
+#         return iter(self._irreps)
+
+#     def __len__(self) -> int:
+#         return len(self._irreps)
+
+#     def __getitem__(self, index: int) -> _SO2MulIr:
+#         return self._irreps[index]
+
+#     def __contains__(self, ir: object) -> bool:
+#         target = _SO2Irrep(ir)
+#         return any(mul_ir.ir == target for mul_ir in self._irreps)
+
+#     @property
+#     def dim(self) -> int:
+#         return sum(mul_ir.mul * mul_ir.ir.dim for mul_ir in self._irreps)
+
+#     @property
+#     def lmax(self) -> _SO2Lmax:
+#         if not self._irreps:
+#             return _SO2Lmax(0)
+#         return _SO2Lmax(max(mul_ir.ir.l for mul_ir in self._irreps))
+
+#     def count(self, ir: object) -> int:
+#         target = _SO2Irrep(ir)
+#         return sum(mul_ir.mul for mul_ir in self._irreps if mul_ir.ir == target)
+
+#     def simplify(self) -> "_SO2Irreps":
+#         return self
+
+#     def __repr__(self) -> str:
+#         return "+".join(repr(mul_ir) for mul_ir in self._irreps)
+
+#     __str__ = __repr__
+
+
+# def _so2_wigner_3j(
+#     out_m: int,
+#     left_m: int,
+#     right_m: int,
+#     dtype: Union[torch.dtype, None] = None,
+#     device: Union[torch.device, None] = None,
+# ) -> torch.Tensor: 
+#     out_m = int(out_m)
+#     left_m = int(left_m)
+#     right_m = int(right_m)
+#     shape = (so2_dim(out_m), so2_dim(left_m), so2_dim(right_m))
+
+#     if left_m + right_m == out_m:
+#         mode = "sum"
+#     elif abs(left_m - right_m) == out_m:
+#         mode = "diff"
+#     else:
+#         dtype = torch.get_default_dtype() if dtype is None else dtype
+#         return torch.zeros(shape, dtype=dtype, device=device)
+
+#     cg = so2_clebsch_gordan(
+#         left_m,
+#         right_m,
+#         out_m,
+#         mode,
+#         dtype=dtype,
+#         device=device,
+#         irrep_normalization="none",
+#     ) # should be norm
+#     return cg.permute(2, 0, 1).contiguous()
+
+
+# class SO2SymmetricContraction(torch.nn.Module):
+#     def __init__(
+#         self,
+#         mmax: int,
+#         lmax: int,
+#         num_channels: int,
+#         correlation: int,
+#         num_elements: int = 1,
+#         *,
+#         m1m2: Union[str, None] = None,
+#     ) -> None:
+#         super().__init__()
+
+#         self.mmax = int(mmax)
+#         self.lmax = int(lmax)
+#         self.num_channels = int(num_channels)
+#         self.correlation = int(correlation)
+#         self.num_elements = int(num_elements)
+#         self.m1m2 = m1m2
+
+#         if self.correlation < 1:
+#             raise ValueError(f"correlation must be positive, got {correlation}")
+#         if self.num_elements < 1:
+#             raise ValueError(f"num_elements must be positive, got {num_elements}")
+
+#         offsets = []
+#         offset = 0
+#         for m in range(self.mmax + 1):
+#             offsets.append(offset)
+#             offset += so2_dim(m)
+#         self.irrep_offsets = offsets
+#         self.irrep_dim = offset
+#         self.num_features = (self.lmax + 1) * self.num_channels
+
+#         from . import symmetric_contraction as symmetric_contraction_module
+
+#         self.contractions = torch.nn.ModuleList()
+#         self.num_paths_by_m: list[list[int]] = []
+
+#         _SO2Irrep.configure(self.mmax, self.m1m2)
+#         original_irrep = symmetric_contraction_module.o3.Irrep
+#         original_irreps = symmetric_contraction_module.o3.Irreps
+#         original_wigner_3j = symmetric_contraction_module.o3.wigner_3j
+#         original_cuet_available = symmetric_contraction_module.CUET_AVAILABLE
+
+#         try:
+#             symmetric_contraction_module.o3.Irrep = _SO2Irrep
+#             symmetric_contraction_module.o3.Irreps = _SO2Irreps
+#             symmetric_contraction_module.o3.wigner_3j = _so2_wigner_3j
+#             symmetric_contraction_module.CUET_AVAILABLE = False
+
+#             irreps_in = _SO2Irreps(
+#                 [(self.num_features, _SO2Irrep(m)) for m in range(self.mmax + 1)]
+#             )
+#             for out_m in range(self.mmax + 1):
+#                 irrep_out = _SO2Irreps([(1, _SO2Irrep(out_m))])
+#                 contraction = symmetric_contraction_module.Contraction(
+#                     irreps_in=irreps_in,
+#                     irrep_out=irrep_out,
+#                     correlation=self.correlation,
+#                     internal_weights=True,
+#                     num_elements=self.num_elements,
+#                 )
+#                 self.contractions.append(contraction)
+#                 self.num_paths_by_m.append(
+#                     [
+#                         int(contraction.U_tensors(order).size(-1))
+#                         for order in range(1, self.correlation + 1)
+#                     ]
+#                 )
+#         finally:
+#             symmetric_contraction_module.o3.Irrep = original_irrep
+#             symmetric_contraction_module.o3.Irreps = original_irreps
+#             symmetric_contraction_module.o3.wigner_3j = original_wigner_3j
+#             symmetric_contraction_module.CUET_AVAILABLE = original_cuet_available
+
+#         self.weight_numel = sum(
+#             parameter.numel() for parameter in self.parameters()
+#         )
+
+#     def _to_dense_features(self, x: torch.Tensor) -> torch.Tensor:
+#         B = x.size(0)
+#         n = self.lmax + 1
+#         dense = x.new_zeros(B, n, self.num_channels, self.irrep_dim)
+#         offset = 0
+#         dense[..., self.irrep_offsets[0]] = x[:, offset : offset + n]
+#         offset += n
+#         for m in range(1, self.mmax + 1):
+#             xm = x[:, offset : offset + 2 * n]
+#             xm = xm.view(B, 2, n, self.num_channels)
+#             start = self.irrep_offsets[m]
+#             dense[..., start : start + 2] = xm.permute(0, 2, 3, 1)
+#             offset += 2 * n
+#         return dense.reshape(B, self.num_features, self.irrep_dim)
+
+#     def _merge_dense_features(self, dense: torch.Tensor) -> torch.Tensor:
+#         B = dense.size(0)
+#         n = self.lmax + 1
+#         dense = dense.reshape(B, n, self.num_channels, self.irrep_dim)
+#         parts = [dense[..., self.irrep_offsets[0]]]
+#         for m in range(1, self.mmax + 1):
+#             start = self.irrep_offsets[m]
+#             xm = dense[..., start : start + 2]
+#             parts.append(xm.permute(0, 3, 1, 2).reshape(B, -1, self.num_channels))
+#         return torch.cat(parts, dim=1)
+
+#     def _one_hot_elements( # TODO
+#         self,
+#         node_attrs: Union[torch.Tensor, None],
+#         batch: int,
+#         device: torch.device,
+#         dtype: torch.dtype,
+#     ) -> torch.Tensor:
+#         if self.num_elements == 1:
+#             return torch.ones(batch, 1, device=device, dtype=dtype)
+#         if node_attrs is None:
+#             raise ValueError("node_attrs is required when num_elements > 1")
+#         if node_attrs.dtype == torch.long and node_attrs.dim() == 1:
+#             node_type = node_attrs.clamp(min=0, max=self.num_elements - 1)
+#             return torch.nn.functional.one_hot(
+#                 node_type,
+#                 num_classes=self.num_elements,
+#             ).to(device=device, dtype=dtype)
+#         return node_attrs.to(device=device, dtype=dtype)
+
+#     def forward(
+#         self,
+#         x: torch.Tensor,
+#         node_attrs: Union[torch.Tensor, None] = None,
+#     ) -> torch.Tensor:
+#         B = x.size(0)
+#         dense = self._to_dense_features(x)
+#         y = self._one_hot_elements(node_attrs, B, x.device, x.dtype)
+#         output = x.new_zeros(B, self.num_features, self.irrep_dim)
+
+#         for out_m, contraction in enumerate(self.contractions):
+#             contracted = contraction(dense, y)
+#             dim = so2_dim(out_m)
+#             contracted = contracted.view(B, self.num_features, dim)
+#             start = self.irrep_offsets[out_m]
+#             output[..., start : start + dim] = contracted
+
+#         return self._merge_dense_features(output)
+
+#     def extra_repr(self) -> str:
+#         return (
+#             f"mmax={self.mmax}, lmax={self.lmax}, "
+#             f"channels={self.num_channels}, correlation={self.correlation}, "
+#             f"features={self.num_features}, num_paths_by_m={self.num_paths_by_m}"
+#         )
