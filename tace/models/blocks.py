@@ -7,10 +7,10 @@ from typing import List, Dict
 
 
 import torch
-from e3nn import o3
 
 
-from ..utils.torch_scatter import scatter_sum
+
+from tace.utils.torch_scatter import scatter_sum
 
 def format_list(obj, ndigits=4):
     if isinstance(obj, int):
@@ -223,102 +223,4 @@ def has_no_isolated_atoms(edge_index: torch.Tensor, num_atoms: int):
         return True
     else:
         return False
-       
-# class kSphericalHarmonics(torch.nn.Module):
-#     def __init__(
-#         self,
-#         num_sample: int,
-#         lmax: int
-#     ):
-#         super().__init__()
-
-#         sh = SphericalHarmonics(
-#             irreps_out=o3.Irreps.spherical_harmonics(lmax, p=-1),
-#             normalize=False,
-#         )
-#         k = FibonacciLattice.generate(num_sample) # [num_sammple, 3]
-#         ksh = sh(k)
-#         self.register_buffer("k")
-
-
-
-#     def forward(self, node_energy, node_attrs, ptr, edge_index, batch, node_fidelity):
-
-import torch
-import torch.nn as nn
-from collections import defaultdict
-from e3nn.o3 import Irreps
-
-
-class IrrepsLSortedSum(nn.Module):
-    """
-    x: irreps_in1
-    y: irreps_in2
-
-    输出：
-    - l 升序
-    - p = -1 -> +1
-    - 同 l 部分相加
-    """
-
-    def __init__(self, irreps_in1: Irreps, irreps_in2: Irreps):
-        super().__init__()
-
-        self.irreps_in1 = Irreps(irreps_in1)
-        self.irreps_in2 = Irreps(irreps_in2)
-
-        self.blocks1 = self._build_blocks(self.irreps_in1)
-        self.blocks2 = self._build_blocks(self.irreps_in2)
-
-        self.common_ls = sorted(set(self.blocks1.keys()) & set(self.blocks2.keys()))
-
-    def _build_blocks(self, irreps):
-        """
-        return:
-            dict[l] -> list of (p, start, end)
-        """
-        out = defaultdict(list)
-        idx = 0
-
-        for mul, ir in irreps:
-            l = ir.l
-            p = ir.p
-            dim = ir.dim
-
-            out[l].append((p, idx, idx + mul * dim))
-            idx += mul * dim
-
-        # -1 → +1
-        for l in out:
-            out[l].sort(key=lambda x: x[0])
-
-        return out
-
-    def _extract(self, x, blocks):
-        out = {}
-        for l, items in blocks.items():
-            parts = []
-            for p, s, e in items:
-                parts.append(x[..., s:e])
-            out[l] = torch.cat(parts, dim=-1)
-        return out
-
-    def forward(self, x, y):
-        x_l = self._extract(x, self.blocks1)
-        y_l = self._extract(y, self.blocks2)
-
-        outputs = []
-
-        for l in sorted(self.common_ls):
-
-            x_feat = x_l[l]
-            y_feat = y_l[l]
-
-            d = min(x_feat.shape[-1], y_feat.shape[-1])
-
-            outputs.append(x_feat[..., :d] + y_feat[..., :d])
-
-        if len(outputs) == 0:
-            raise ValueError("No common l between irreps_in1 and irreps_in2")
-
-        return torch.cat(outputs, dim=-1)
+      

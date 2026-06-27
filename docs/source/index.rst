@@ -19,12 +19,10 @@ Documentation Structure
 
    changelog/changelog
 
+
 Overview
 --------
 
-TACE is a Cartesian-based machine learning model designed to predict both scalar and tensorial properties.
-
-In principle, the framework supports any tensorial properties (either direct or conservative) determined by the underlying atomic structure. 
 Currently, the officially supported properties include:
 
 - Energy
@@ -40,11 +38,7 @@ Currently, the officially supported properties include:
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - absolute final collinear magmoms
-- Noncollinear magnetic forces (conservative)
-.. - Magnetization (conservative) *(not tested by us)*
-.. - Magnetic susceptibility (conservative) *(not tested by us)*
-.. - final (non)collinear magmoms (not time reversal)
-.. - total (non)collinear magmoms *(not tested by us)*
+- Noncollinear magnetic forces (O(3))
 
 For embedding property, we support:
 
@@ -53,9 +47,7 @@ For embedding property, we support:
 - total charge
 - electric field
 - initial (non)collinear magmoms
-- spin multiplicity *(not tested by us)*
-- electron_temperature *(not tested by us)*
-- magnetic field *(not tested by us)*
+- magnetic field (O(3))
 
 
 Plugins
@@ -77,7 +69,7 @@ Interfaces
 
 - ✅ Supports integration with **OpenMM-ML (OpenMM-ML -> ASE -> TACE)**.
 
-- ✅ Supports integration with **USPEX (USPEX -> LAMMPS-ML-IAP -> TACE)**.
+- ✅ Supports integration with **USPEX (USPEX -> LAMMPS-ML-IAP -> TACE)** (Python=3.9).
 
 
 Citing
@@ -101,14 +93,14 @@ If you use Cartesian-3j, please cite our papers:
 
 .. code-block:: bibtex
 
-   @misc{xu2025cartesiannjextendinge3nnirreducible,
+   @misc{xu2026cartesian3jframeworkmachinelearning,
          title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials}, 
          author={Zemin Xu and Chenyu Wu and Wenbo Xie and P. Hu},
          year={2026},
          eprint={2512.16882},
          archivePrefix={arXiv},
          primaryClass={physics.chem-ph},
-         url={https://arxiv.org/abs/2512.16882v2}, 
+         url={https://arxiv.org/abs/2512.16882}, 
    }
 
 Contact

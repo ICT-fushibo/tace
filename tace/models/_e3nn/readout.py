@@ -149,7 +149,7 @@ def build_scalar_readout(
     use_alllayer: bool,
     parity: bool,
     irreps_in: list[o3.Irreps],
-    irreps_out: Union[str, o3.Irreps]
+    irreps_out: Union[str, o3.Irreps],
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):
@@ -178,7 +178,7 @@ def build_tensor_readout(
     use_alllayer: bool,
     parity: bool,
     irreps_in: list[o3.Irreps],
-    irreps_out: Union[str, o3.Irreps]
+    irreps_out: Union[str, o3.Irreps],
 ):
     readouts = torch.nn.ModuleList()
     for layer in range(num_layers):

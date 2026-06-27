@@ -28,11 +28,11 @@ def main():
             'r': int(r),
             'alpha': float(alpha),
         }
-    set_lora_config('element_embedding', 4, 8)
-    set_lora_config('radial_mlp', 4, 8)
-    set_lora_config('interaction', 4, 8)
-    set_lora_config('product', 4, 8)
-    set_lora_config('readout', 4, 8)
+    set_lora_config('torchLinear', 4, 8)
+    set_lora_config('mlpLinear', 4, 8)
+    set_lora_config('e3nnLinear', 4, 8)
+    set_lora_config('e3nnElementLinear', 4, 8)
+    set_lora_config('e3nnMoEElementLinear', 4, 8)
 
     # === Freeze ===
     finetune_cfg['freeze'] = {}

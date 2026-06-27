@@ -6,11 +6,12 @@ This section introduces how to finetune **TACE** models.
 We provide a variety of pretrained TACE foundation models. You can finetune these
 foundation models directly, or finetune your own models.
 
-Currently, TACE supports two major finetuning strategies. In practice, these two
-strategies are often **used together**:
+Currently, TACE supports three major finetuning strategies:
 
-1. Low-Rank Adaptation (LoRA, tace <= v0.1.0)
-2. Freezing pretrained parameters (LoRA, tace >= v0.1.0)
+1. Full parameters 
+2. Freeze parameters
+3. Low-Rank Adaptation (LoRA)
+
 
 Motivation for Finetuning
 -------------------------
@@ -18,8 +19,8 @@ Motivation for Finetuning
 The main goal of finetuning is to **preserve as much knowledge as possible from the
 foundation model**, while achieving high accuracy on your target task.
 
-Therefore, in most cases, **full-parameter finetuning is discouraged**, especially when
-the finetuning dataset is relatively small. Full finetuning may lead to:
+Therefore,  when finetuning dataset is relatively small, full-parameter finetuning is discouraged. 
+Full parameters finetuning may lead to:
 
 - Overfitting due to limited training data
 - Catastrophic forgetting of knowledge learned during pretraining
@@ -101,7 +102,7 @@ Example commands are shown below:
 
 .. code-block:: bash
 
-   tace-finetune -m TACE-v1-OAM-L.pt
+   tace-finetune -m TACE-OAM-RRA.pt
 
    # Start finetuning (configuration file specified as needed)
    tace-train -cn *.yaml

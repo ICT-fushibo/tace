@@ -67,6 +67,7 @@ class Representation(torch.nn.Module):
         # === radial basis ===
         self.radial_basis = RadialBasis(
             cutoff=cutoff,
+            r_min=radial_basis['r_min'],
             num_basis=radial_basis['num_radial_basis'],
             cutoff_fn=radial_basis['cutoff_fn'],
             polynomial_cutoff=radial_basis['polynomial_cutoff'],
@@ -84,13 +85,14 @@ class Representation(torch.nn.Module):
         # === angular basis ===
         self.use_so2 = (
             any(t.endswith('so2') for t in atomic_basis['type'])
+            or any(t.endswith('attn') for t in atomic_basis['type'])
             or node_embedding["type"] == 'so2_tensor' 
-            or True in atomic_basis["use_graph_softmax"]
+            # or True in atomic_basis["use_graph_softmax"]
         )
         self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
         if self.use_so2:
-            # assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
-            self.so2_angular_basis = WignerD(Lmax, mmax)
+            assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
+            self.so2_angular_basis = WignerD(mmax, Lmax)
         else:
             self.so2_angular_basis = None
         if self.use_o3:
@@ -175,9 +177,11 @@ class Representation(torch.nn.Module):
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
             "so2_l1l3": atomic_basis["so2_l1l3"],
-            "resolution": atomic_basis["resolution"],
-            "so2_agnostic": atomic_basis["so2_agnostic"],
             "use_temperature": atomic_basis["use_temperature"],
+            "gate_m0": atomic_basis["gate_m0"],
+            "scalar_act": atomic_basis["scalar_act"],
+            "tensor_act": atomic_basis["tensor_act"],
+            "edge_ace_hidden": atomic_basis["edge_ace_hidden"],
         }
 
         self.interactions = torch.nn.ModuleList()
@@ -234,11 +238,11 @@ class Representation(torch.nn.Module):
                     target_irreps=target_irreps,
                     correlation=product_basis['correlation'],
                     l1l2=product_basis['l1l2'],     
-                    resolution=product_basis['resolution'],
                     bias=True,
                     stochastic_depth=dropout['stochastic_depth'],
                     parity=parity,
                     irreps_in=prod_irreps_in,
+                    use_shared_expert=product_basis["use_shared_expert"],
                 )
             )
             self.irreps_out = self.products[-1].irreps_out
@@ -317,7 +321,17 @@ class Representation(torch.nn.Module):
         wigner = None
         wigner_inv = None
         if self.use_so2:
-            wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
+            # compute_dtype = (
+            #     torch.float64
+            #     if graph.edge_vector.dtype == torch.float64
+            #     else torch.float32
+            # )
+            # with torch.autocast(
+            #     device_type=graph.edge_vector.device.type,
+            #     enabled=False,
+            # ):
+            #     wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector.to(dtype=compute_dtype))
+                wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
         if self.use_o3:
             edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
             
@@ -377,6 +391,7 @@ class Representation(torch.nn.Module):
                 graph,
                 wigner,
                 wigner_inv,
+                data["batch"],
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 

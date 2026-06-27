@@ -33,6 +33,7 @@ DEFAULT_MODEL_CONFIG = {
     },
     "radial_basis": {
         "bias": False,
+        "r_min": 0.0,
         "radial_basis": "j0",
         "num_radial_basis": 8,
         "distance_transform": None,
@@ -53,7 +54,7 @@ DEFAULT_MODEL_CONFIG = {
         "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
-        "edge_nonlinear": 'so2_sigmoid_gate',
+        "edge_nonlinear": "so2_sigmoid_gate",
         "l1l2": None,
         "so2_l1l3": None,
         "so2_linear_type": 'w1_w2',
@@ -63,8 +64,11 @@ DEFAULT_MODEL_CONFIG = {
         "use_graph_softmax": False,
         "use_temperature": False,
         "node_wise_hidden": None,
+        "edge_ace_hidden": None,
         "edge_wise_hidden": None,
-        "resolution": None,
+        "gate_m0": True,
+        "scalar_act": None,
+        "tensor_act": None,
     },
     "resnet": {
         "type": "BB",
@@ -79,11 +83,12 @@ DEFAULT_MODEL_CONFIG = {
     "product_basis": {
         "type": "cgtp",
         "l1l2": None,
-        "correlation": 3,
+        "correlation": 2,
+        "return_components": None,
+
         "num_expert": None,
         "num_channel_per_expert": None,
-        "resolution": None,
-        "return_components": None,
+        "use_shared_expert": False,
         "nonlinear": None,
     },
     "readout_emlp": {
@@ -99,11 +104,12 @@ DEFAULT_MODEL_CONFIG = {
         "scale_trainable": False,
         "shift_trainable": False,
         "all_atoms": False,
+        "scale_zbl": True,
     },
     "short_range": {
         "zbl": {
-        "enable": False,
-        "trainable": False,
+            "enable": False,
+            "trainable": False,
         }
     },
     "long_range": {

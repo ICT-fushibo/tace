@@ -135,6 +135,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         radial_mlp: list[int],
         radial_bias: bool,
         irreps_in: o3.Irreps,
+        scalar_act: str,
+        tensor_act: str,
+        edge_ace_hidden: Union[int, None],
         l1l2: Union[str, None] = None,
         scatter_norm: str = 'avg_num_neighbors',
         bias: bool = True,
@@ -154,10 +157,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
-        so2_linear_type: str = 'w1_w2',
-        so2_l1l3: Union[str, None] = None,
-        resolution: Union[list[int], None] = None,
-        so2_agnostic: bool = True,
+        so2_linear_type: str = 'w1',
+        so2_l1l3: Union[str, None] = None, # TODO
+        gate_m0: bool = True,
     ) -> None:
         super().__init__()
 
@@ -178,6 +180,9 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.radial_bias = radial_bias
         self.use_bias = bias
         self.scatter_norm = scatter_norm
+        self.scalar_act = scalar_act
+        self.tensor_act = tensor_act
+        self.edge_ace_hidden = edge_ace_hidden or num_channel
         if self.scatter_norm == 'no_cutoff_density':
             self.apply_density_cutoff = False
         else:
@@ -195,6 +200,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         else:
             self.radial_act = 'sigmoid'
         self.use_temperature = use_temperature
+        self.gate_m0 = gate_m0
 
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
@@ -203,6 +209,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.resnet_linear_type = resnet_linear_type
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
+        self.nonlinear = nonlinear
         self.edge_nonlinear = edge_nonlinear
         self.stochastic_depth_p = stochastic_depth
         self.parity = parity
@@ -212,8 +219,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.edge_wise_hidden = edge_wise_hidden or num_channel
         self.so2_linear_type = so2_linear_type
         self.so2_l1l3 = so2_l1l3
-        self.resolution = resolution
-        self.so2_agnostic = so2_agnostic
 
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)
@@ -252,12 +257,11 @@ class Product(torch.nn.Module):
         correlation: list[int],
         l1l2: Union[str, None],
         bias: bool,
-        resolution: list[int],
         nonlinear: Union[str, None],
-
         stochastic_depth: float = 0.0,
         use_first_dropout: bool = False,
         parity: bool = False,
+        use_shared_expert: bool = False,
     ) -> None:
         super().__init__()
 
@@ -281,13 +285,13 @@ class Product(torch.nn.Module):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
-        self.resolution = resolution
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
         self.parity = parity
         self.last_layer = layer == num_layers -1
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
+        self.use_shared_expert = use_shared_expert
 
         self.irreps_tp_out_list = []
         for nu in range(2, self.correlation+1):
@@ -316,6 +320,7 @@ class Product(torch.nn.Module):
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
+   
     
 class ReadOut(torch.nn.Module):
     def __init__(

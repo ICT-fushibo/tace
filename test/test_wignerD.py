@@ -1,65 +1,26 @@
+import torch
+from tace.models.so2.wigner import WignerD
 
-# import torch
+mmax = 2
+lmax = 4
 
+dtype = torch.float64
+atol = 1e-5
+rtol = 1e-5
 
-# _ROTATION_MASK_THRESHOLD = 0.999999
+def test_cartesian_get_wigner_matches_euler_with_truncated_m() -> None:
+    edge_vector = torch.randn(8, 3, dtype=dtype)
+    cartesian = WignerD(lmax, mmax, wigner_type="flash")
+    xuzemin = WignerD(lmax, mmax, wigner_type="ictd")
+    euler = WignerD(lmax, mmax, wigner_type="euler")
+    torch.manual_seed(7)
+    actual, actual_inv = cartesian.get_wigner(edge_vector)
+    torch.manual_seed(7)
+    expected, expected_inv = euler.get_wigner(edge_vector)
+    torch.manual_seed(7)
+    xzm, xzm_inv = xuzemin.get_wigner(edge_vector)
+    torch.testing.assert_close(xzm, expected, atol=atol, rtol=rtol)
 
-
-# def init_edge_rot_mat(edge_distance_vec):
-#     edge_vec_0 = edge_distance_vec
-#     edge_vec_0_distance = torch.sqrt(torch.sum(edge_vec_0**2, dim=1))
-
-#     # Make sure the atoms are far enough apart
-#     #assert torch.min(edge_vec_0_distance) < 0.0001
-#     if torch.min(edge_vec_0_distance) < 0.0001:
-#         print(
-#             "Error edge_vec_0_distance: {}".format(
-#                 torch.min(edge_vec_0_distance)
-#             )
-#         )
-
-#     norm_x = edge_vec_0 / (edge_vec_0_distance.view(-1, 1))
-#     yprod = norm_x @ norm_x.new_tensor([0.0, 1.0, 0.0]) # get y
-#     norm_x[yprod >  _ROTATION_MASK_THRESHOLD] = norm_x.new_tensor([0.0,  1.0, 0.0])
-#     norm_x[yprod < -_ROTATION_MASK_THRESHOLD] = norm_x.new_tensor([0.0, -1.0, 0.0])
-
-#     edge_vec_2 = torch.rand_like(edge_vec_0) - 0.5
-#     edge_vec_2 = edge_vec_2 / (
-#         torch.sqrt(torch.sum(edge_vec_2**2, dim=1)).view(-1, 1)
-#     )
-#     # Create two rotated copys of the random vectors in case the random vector is aligned with norm_x
-#     # With two 90 degree rotated vectors, at least one should not be aligned with norm_x
-#     edge_vec_2b = edge_vec_2.clone()
-#     edge_vec_2b[:, 0] = -edge_vec_2[:, 1]
-#     edge_vec_2b[:, 1] = edge_vec_2[:, 0]
-#     edge_vec_2c = edge_vec_2.clone()
-#     edge_vec_2c[:, 1] = -edge_vec_2[:, 2]
-#     edge_vec_2c[:, 2] = edge_vec_2[:, 1]
-#     vec_dot_b = torch.abs(torch.sum(edge_vec_2b * norm_x, dim=1)).view(-1, 1)
-#     vec_dot_c = torch.abs(torch.sum(edge_vec_2c * norm_x, dim=1)).view(-1, 1)
-#     vec_dot = torch.abs(torch.sum(edge_vec_2 * norm_x, dim=1)).view(-1, 1)
-
-#     edge_vec_2 = torch.where(torch.gt(vec_dot, vec_dot_b), edge_vec_2b, edge_vec_2)
-#     vec_dot = torch.abs(torch.sum(edge_vec_2 * norm_x, dim=1)).view(-1, 1)
-#     edge_vec_2 = torch.where(torch.gt(vec_dot, vec_dot_c), edge_vec_2c, edge_vec_2)
-#     vec_dot = torch.abs(torch.sum(edge_vec_2 * norm_x, dim=1))
-#     # Check the vectors aren't aligned
-#     assert torch.max(vec_dot) < 0.99
-
-#     norm_z = torch.cross(norm_x, edge_vec_2, dim=1)
-#     norm_z = norm_z / (torch.sqrt(torch.sum(norm_z**2, dim=1, keepdim=True)))
-#     norm_z = norm_z / (torch.sqrt(torch.sum(norm_z**2, dim=1)).view(-1, 1))
-#     norm_y = torch.cross(norm_x, norm_z, dim=1)
-#     norm_y = norm_y / (torch.sqrt(torch.sum(norm_y**2, dim=1, keepdim=True)))
-
-#     # Construct the 3D rotation matrix
-#     norm_x = norm_x.view(-1, 3, 1)
-#     norm_y = -norm_y.view(-1, 3, 1)
-#     norm_z = norm_z.view(-1, 3, 1)
-
-#     edge_rot_mat_inv = torch.cat([norm_z, norm_x, norm_y], dim=2)
-#     edge_rot_mat = torch.transpose(edge_rot_mat_inv, 1, 2)
-
-#     return edge_rot_mat
-
-# rot_mat = init_edge_rot_mat(torch.randn(7, 3))
+if __name__ == "__main__":
+    test_cartesian_get_wigner_matches_euler_with_truncated_m()
+    print("Pass")

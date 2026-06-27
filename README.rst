@@ -1,10 +1,13 @@
-Tensor Atomic Cluster Expansion
-===============================
-.. = - ~ ^ "
-
-.. image:: arch.png
+.. image:: fig/logo.svg
    :width: 100%
    :align: center
+
+Tensor Atomic Cluster Expansion (TACE)
+======================================
+.. = - ~ ^ "
+TACE is designed with physical priors and strong inductive biases to enhance extrapolation capability. 
+It performs Atomic Cluster Expansion and Edge Cluster Expansion based on spherical tensors 
+or irreducible Cartesian tensors, with an optional attention architecture.
 
 Docs
 ----
@@ -12,30 +15,39 @@ Docs
 https://tace.readthedocs.io/en/latest/index.html
 
 
-Tutorial
---------
-The docs contain a complete tutorial. However, because TACE supports a 
-wide range of physical quantities, beginners may find it a bit confusing.  
-In practice, to train additional physical quantities, you only need to modify the 
-corresponding loss and the key of the physical quantity.  
+Foundation Model and Fine-tuning
+--------------------------------
 
-We provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
+https://github.com/xvzemin/tace-foundations
+
+- ✅ Full-parameter.
+
+- ✅ Freeze-parameter.
+
+- ✅ LoRA.
+
+
+Tutorial and Train from scratch
+-------------------------------
+The docs contain a complete tutorial. 
+
+We also provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
 
 https://github.com/xvzemin/tace/tree/main/example
 
-.. code-block:: bash
-   # A simplest training example
-   git clone https://github.com/xvzemin/tace.git
-   cd tace/example/train
-   tace-train -cn tace.yaml
 
+.. code-block:: bash
+
+   # Minimal training example
+   git clone https://github.com/xvzemin/tace.git
+   cd tace
+   pip install .
+   cd example/train
+   tace-train -cn tace.yaml
 
 Overview
 --------
 
-TACE is a Cartesian-based machine learning model designed to predict both scalar and tensorial properties.
-
-In principle, the framework supports any tensorial properties (either direct or conservative) determined by the underlying atomic structure. 
 Currently, the officially supported properties include:
 
 - Energy
@@ -51,11 +63,7 @@ Currently, the officially supported properties include:
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - absolute final collinear magmoms
-- Noncollinear magnetic forces (conservative, SO(3) now, O(3) will be improved later)
-.. - Magnetization (conservative) *(not tested by us)*
-.. - Magnetic susceptibility (conservative) *(not tested by us)*
-.. - final (non)collinear magmoms (not time reversal)
-.. - total (non)collinear magmoms *(not tested by us)*
+- Noncollinear magnetic forces (O(3))
 
 For embedding property, we support:
 
@@ -64,9 +72,7 @@ For embedding property, we support:
 - total charge
 - electric field
 - initial (non)collinear magmoms
-- spin multiplicity *(not tested by us)*
-- electron_temperature *(not tested by us)*
-- magnetic field *(not tested by us, SO(3) now, O(3) will be improved later)*
+- magnetic field (O(3))
 
 
 Plugins
@@ -88,7 +94,7 @@ Interfaces
 
 - ✅ Supports integration with **OpenMM-ML (OpenMM-ML -> ASE -> TACE)**.
 
-- ✅ Supports integration with **USPEX (USPEX -> LAMMPS-ML-IAP -> TACE)**.
+- ✅ Supports integration with **USPEX (USPEX -> LAMMPS-ML-IAP -> TACE)** (Python=3.9).
 
 
 Citing
@@ -112,14 +118,14 @@ If you use Cartesian-3j, please cite our papers:
 
 .. code-block:: bibtex
 
-   @misc{xu2025cartesiannjextendinge3nnirreducible,
+   @misc{xu2026cartesian3jframeworkmachinelearning,
          title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials}, 
          author={Zemin Xu and Chenyu Wu and Wenbo Xie and P. Hu},
          year={2026},
          eprint={2512.16882},
          archivePrefix={arXiv},
          primaryClass={physics.chem-ph},
-         url={https://arxiv.org/abs/2512.16882v2}, 
+         url={https://arxiv.org/abs/2512.16882}, 
    }
 
 Contact

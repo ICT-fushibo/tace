@@ -19,6 +19,7 @@
 *.xyz
 *.extxyz
 *.pdf
+*svg
 
 # Ignore all dir
 .idea/
@@ -43,7 +44,9 @@ draw/
 .ipynb_checkpoints
 
 # White list
-!arch.png
+!cartesian_arch.png
+!favicon.svg
+!logo.svg
 !requirements.txt
 !BaTiO3.xyz
 !Jd.pt
