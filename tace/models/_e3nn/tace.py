@@ -51,6 +51,8 @@ class e3nnTACE(torch.nn.Module):
         parity: bool = False,
         mmax: int = 2,
         dropout: Dict = {},
+        embedding_property = [],
+        atomic_numbers = None,
         **kwargs,
     ):
         cfg = {

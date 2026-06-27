@@ -611,7 +611,6 @@ class uvSO2Interaction(Interaction):
         m_i = self.truncate_ghosts(
             self.rejector(
                 node_feats, 
-                node_attrs_slice,
                 self.edge_info(edge_feats), 
                 edge_index, 
                 cutoff,
