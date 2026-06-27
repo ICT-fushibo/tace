@@ -18,8 +18,7 @@ from ..utils._global import CACHE_DIR
 OAM_SERIES = {
     "TACE-OMat24-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-L.pt",
     "TACE-OMat24-XL": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-XL.pt",
-    "TACE-OAM-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-L.pt",
-    "TACE-OAM-XL": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-XL.pt",
+    "TACE-OAM-RRA-Preview": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-RRA-Preview.pt",
 }
 
 REICO_SERIES = {

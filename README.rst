@@ -1,3 +1,13 @@
+.. note::
+
+`TACE-OAM-RRA-Preview` is an intermediate model intended for preview
+purposes only. Backward compatibility with future releases is not
+guaranteed.
+
+`TACE-OAM-RRA` and `TECE-OAM-RRA` will
+be released alongside the forthcoming TACE paper, which has not yet been
+made public.
+
 .. image:: fig/logo.svg
    :width: 100%
    :align: center
