@@ -9,7 +9,7 @@ PERMUTE_M0 = True
 torch.set_default_dtype(DTYPE)
 from e3nn import o3
 
-from tace.models._e3nn.edge_prod import ComplexProductBasisV1
+from tace.models._e3nn.asymmetric_contraction import ComplexProductBasis
 from tace.models.radial import j0SphericalBesselBasis
 from tace.models.so2 import WignerD
 from tace.utils.torch_scatter import scatter_sum
@@ -181,7 +181,7 @@ class RecursiveComplexProductBasis(torch.nn.Module):
         self.lmax = int(lmax)
         self.products = torch.nn.ModuleList(
             [
-                ComplexProductBasisV1(
+                ComplexProductBasis(
                     mmax=lmax,
                     lmax=lmax,
                     num_channel=channels,

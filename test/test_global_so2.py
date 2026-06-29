@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
-from tace.models._e3nn.edge_prod import ComplexProductBasisV1
+from tace.models._e3nn.asymmetric_contraction import ComplexProductBasis
 from tace.models.so2 import uvSO2Linear
 from tace.models.so2.utils import rotate_uuu_so2_features
 from tace.utils.torch_scatter import scatter_sum
@@ -152,7 +152,7 @@ class OneLayerRotSymModel(torch.nn.Module):
             input_order=input_order,
             channels=channels,
         )
-        self.product = ComplexProductBasisV1(
+        self.product = ComplexProductBasis(
             mmax=self.mmax,
             lmax=self.lmax,
             num_channel=channels,

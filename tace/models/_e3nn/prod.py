@@ -12,9 +12,12 @@ from e3nn import o3
 
 
 from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
+
+
 from .base import Product
 from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
+
 
 
 class CgtpACE(Product):
@@ -238,7 +241,7 @@ class CgtpACE(Product):
             outs = outs + sc
 
         return outs
-    
+  
 
 # class GtpACE(Product):
 #     """
@@ -419,4 +422,6 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     # "so2": So2ACE,
 
     # "vstp": VstpACE,
+
+    # "asym": ASymmetricContractionACE,
 }

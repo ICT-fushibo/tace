@@ -18,7 +18,7 @@ from ..so2 import (
     so2_expand_index, so3_expand_index,
 )
 from .paths import generate_paths
-from .edge_prod import ComplexProductBasis, SO2ASymmetricContraction
+from .asymmetric_contraction import ComplexProductBasis, SO2ASymmetricContraction
 from ..softmax import GraphSoftmax
 from ..linear import  torchLinear
 

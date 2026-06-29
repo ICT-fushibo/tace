@@ -1,5 +1,5 @@
 import torch
-from tace.models._e3nn.edge_prod import SO2ASymmetricContraction  
+from tace.models._e3nn.asymmetric_contraction import SO2ASymmetricContraction  
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float32
