@@ -265,6 +265,7 @@ class uvSO2TensorProduct(torch.nn.Module):
         reshape_out: LayoutTransform,
         scalar_act: torch.nn.Module,
         tensor_act: torch.nn.Module,
+        use_radial_phase: bool,
     ) -> None:
         super().__init__()
 
@@ -282,6 +283,7 @@ class uvSO2TensorProduct(torch.nn.Module):
         self.use_so2_edge_ace = use_so2_edge_ace
         self.reshape_in = reshape_in
         self.reshape_out = reshape_out
+        self.use_radial_phase = use_radial_phase
 
         self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
         self.weight_numel = (self.num_components * self.num_channel * 2)
@@ -375,7 +377,10 @@ class uvSO2TensorProduct(torch.nn.Module):
                 self.edge_wise_hidden,   
                 weight_type=self.so2_linear_type,
             )
-            self.radial_proj = torchLinear(num_radial_basis, 2 * self.num_head)
+            if self.use_radial_phase:
+                self.radial_proj = torchLinear(num_radial_basis, 2 * self.num_head)
+            else:
+                self.radial_proj = torchLinear(num_radial_basis, self.num_head)
             torch.nn.init.zeros_(self.radial_proj.weight)
             torch.nn.init.zeros_(self.radial_proj.bias)
             self.attention_scale = 1.0 / math.sqrt(self.num_channel_per_head * self.split_list[1])
@@ -399,9 +404,12 @@ class uvSO2TensorProduct(torch.nn.Module):
         C = self.num_channel_per_head
 
         # radial bias and pahse
-        radial_proj = self.radial_proj(edge_feats)
-        radial_bias = radial_proj[:, :H]
-        radial_phase = math.pi * torch.tanh(radial_proj[:, H:])
+        if self.use_radial_phase:
+            radial_proj = self.radial_proj(edge_feats)
+            radial_bias = radial_proj[:, :H]
+            radial_phase = math.pi * torch.tanh(radial_proj[:, H:])
+        else:
+            radial_bias = self.radial_proj(edge_feats)
 
         # m = 0
         n = self.lmax + 1
@@ -410,18 +418,30 @@ class uvSO2TensorProduct(torch.nn.Module):
         score = (query_m0 * key_m0).sum(dim=(1, 3))
 
         # m > 0
-        offset = n
-        for m in range(1, self.mmax + 1):
-            n = self.lmax + 1 - m
-            query_m = query[:, offset : offset + 2 * n].view(B, 2, n, H, C)
-            key_m = key[:, offset : offset + 2 * n].view(B, 2, n, H, C)
-            offset += 2 * n
-            phase = (m * radial_phase).view(B, 1, H, 1)
-            cos_phase = torch.cos(phase)
-            sin_phase = torch.sin(phase)
-            key_real = cos_phase * key_m[:, 0] - sin_phase * key_m[:, 1]
-            key_imag = sin_phase * key_m[:, 0] + cos_phase * key_m[:, 1]
-            score = score + (query_m[:, 0] * key_real + query_m[:, 1] * key_imag).sum(dim=(1, 3))
+        if self.use_radial_phase:
+            offset = n
+            for m in range(1, self.mmax + 1):
+                n = self.lmax + 1 - m
+                query_m = query[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+                key_m = key[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+                offset += 2 * n
+                phase = (m * radial_phase).view(B, 1, H, 1)
+                cos_phase = torch.cos(phase)
+                sin_phase = torch.sin(phase)
+                key_real = cos_phase * key_m[:, 0] - sin_phase * key_m[:, 1]
+                key_imag = sin_phase * key_m[:, 0] + cos_phase * key_m[:, 1]
+                score = score + (query_m[:, 0] * key_real + query_m[:, 1] * key_imag).sum(dim=(1, 3))
+        else: 
+            offset = n
+            for m in range(1, self.mmax + 1):
+                n = self.lmax + 1 - m
+                query_m = query[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+                key_m = key[:, offset : offset + 2 * n].view(B, 2, n, H, C)
+                offset += 2 * n
+                score = score + (
+                    query_m[:, 0] * key_m[:, 0]
+                    + query_m[:, 1] * key_m[:, 1]
+                ).sum(dim=(1, 3))
 
         if self.use_temperature:
             temperature = self.temperature_min + (

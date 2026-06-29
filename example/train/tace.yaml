@@ -275,7 +275,7 @@ loss:
 model:
   # export TACE_USE_OEQ=1 to use openequivariance, 0 to disable
   # export TACE_USE_CUE=1 to use cuequivariance, 0 to disable
-  # export TACE_USE_EQT=1 to use equitorch, 0 to disable
+  # export TACE_USE_EQT=1 to use equitorch, 0 to disable for correlation > 2
   config:
 
     _target_: tace.models.e3nnTACE # [e3nnTACE] 
@@ -357,6 +357,7 @@ model:
       gate_m0: false
       scalar_act: null
       tensor_act: null
+      use_radial_phase: false # false is recommend
 
     product_basis:
       type: cgtp  # [cgtp, gtp]

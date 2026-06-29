@@ -491,6 +491,7 @@ class uvSO2Interaction(Interaction):
             reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
             scalar_act=ScaledSigmoid() if scalar_act == 'sigmoid' else ScaledSiLU(),
             tensor_act=ScaledSigmoid() if tensor_act == 'sigmoid' else ScaledSiLU(),
+            use_radial_phase=self.use_radial_phase,
         )
 
         (

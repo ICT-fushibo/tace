@@ -69,6 +69,7 @@ DEFAULT_MODEL_CONFIG = {
         "gate_m0": True,
         "scalar_act": None,
         "tensor_act": None,
+        "use_radial_phase": True,
     },
     "resnet": {
         "type": "BB",

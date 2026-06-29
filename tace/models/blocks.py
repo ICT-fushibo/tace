@@ -9,8 +9,8 @@ from typing import List, Dict
 import torch
 
 
-
 from tace.utils.torch_scatter import scatter_sum
+
 
 def format_list(obj, ndigits=4):
     if isinstance(obj, int):
