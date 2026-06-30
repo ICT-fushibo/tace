@@ -474,7 +474,7 @@ class uvSO2TensorProduct(torch.nn.Module):
             query = self.query_proj(m_ij[:, :, self.num_channel:])
             real_alpha = self._complex_qk_attention(query, key, radial_basis)
 
-        w = w.view(num_edges, self.num_components, -1)
+        w = w.view(num_edges, self.num_components, self.num_channel * 2)
         w = torch.index_select(w, dim=1, index=self.expand_index)
         m_ij = w * m_ij
 
@@ -508,9 +508,9 @@ class uvSO2TensorProduct(torch.nn.Module):
             if cutoff is not None:
                 real_alpha = real_alpha * cutoff
             real_alpha = real_alpha.view(num_edges, 1, self.num_head, 1)
-            m_ij = m_ij.view(num_edges, -1, self.num_head, self.num_channel_per_head)
+            m_ij = m_ij.view(num_edges, m_ij.size(1), self.num_head, self.num_channel_per_head)
             m_ij = real_alpha * m_ij 
-            m_ij = m_ij.view(num_edges, -1, self.edge_wise_hidden)
+            m_ij = m_ij.view(num_edges, m_ij.size(1), self.edge_wise_hidden)
         else:
             if cutoff is not None:
                 m_ij = m_ij * cutoff.unsqueeze(-1)

@@ -275,6 +275,7 @@ class Product(torch.nn.Module):
         self.correlation = correlation[layer]
         self.num_channel = num_channel
         self.agnostic = agnostic
+        self.use_shared_expert = use_shared_expert
         self.num_expert = num_expert or 1
         self.num_channel_per_expert = num_channel_per_expert or self.num_channel
         if self.agnostic:
@@ -295,7 +296,7 @@ class Product(torch.nn.Module):
         self.last_layer = layer == num_layers -1
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
-        self.use_shared_expert = use_shared_expert
+
 
 
         self.irreps_tp_out_list = []

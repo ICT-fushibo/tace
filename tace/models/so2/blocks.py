@@ -497,9 +497,12 @@ class uvSO2Linear(torch.nn.Module):
 
         # m = 0
         xm0 = x.narrow(1, 0, self.num_components_in[0])
-        xm0 = xm0.reshape(B, -1)
+        # xm0 = xm0.reshape(B, -1)
+        # xm0 = self.m0_rlinear(xm0)
+        # xm0 = xm0.view(B, -1, Cout)
+        xm0 = xm0.reshape(B, self.num_components_in[0] * self.num_channel_in)
         xm0 = self.m0_rlinear(xm0)
-        xm0 = xm0.view(B, -1, Cout)
+        xm0 = xm0.view(B, self.num_components_out[0], Cout)
         outputs.append(xm0)
 
         # m > 0
@@ -507,11 +510,16 @@ class uvSO2Linear(torch.nn.Module):
         for m in range(1, self.mmax + 1):
             xm = x.narrow(1, offset, 2 * (self.num_components_in[m]))
             offset = offset + 2 * self.num_components_in[m]
-            xm = xm.reshape(B, 2, -1)
+            # xm = xm.reshape(B, 2, -1)
+            # xm = self.ms_clinear[m - 1](xm, concat_outputs=False)
+            # xr, xi = xm[0], xm[1]
+            # xr = xr.view(B, -1, Cout)
+            # xi = xi.view(B, -1, Cout)
+            xm = xm.reshape(B, 2, self.num_components_in[m] * self.num_channel_in)
             xm = self.ms_clinear[m - 1](xm, concat_outputs=False)
             xr, xi = xm[0], xm[1]
-            xr = xr.view(B, -1, Cout)
-            xi = xi.view(B, -1, Cout)
+            xr = xr.view(B, self.num_components_out[m], Cout)
+            xi = xi.view(B, self.num_components_out[m], Cout)
             outputs.append(xr)
             outputs.append(xi)
         outputs = torch.cat(outputs, dim=1)
