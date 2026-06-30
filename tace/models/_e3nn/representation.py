@@ -243,6 +243,7 @@ class Representation(torch.nn.Module):
                     parity=parity,
                     irreps_in=prod_irreps_in,
                     use_shared_expert=product_basis["use_shared_expert"],
+                    agnostic=product_basis["agnostic"],
                 )
             )
             self.irreps_out = self.products[-1].irreps_out

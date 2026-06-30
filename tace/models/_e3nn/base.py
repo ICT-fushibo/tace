@@ -264,6 +264,7 @@ class Product(torch.nn.Module):
         use_first_dropout: bool = False,
         parity: bool = False,
         use_shared_expert: bool = False,
+        agnostic: bool = False,
     ) -> None:
         super().__init__()
 
@@ -273,11 +274,12 @@ class Product(torch.nn.Module):
         self.lmax = lmax
         self.correlation = correlation[layer]
         self.num_channel = num_channel
+        self.agnostic = agnostic
         self.num_expert = num_expert or 1
-        if self.num_expert > 1:
-            self.num_channel_per_expert = num_channel_per_expert or self.num_channel
-        else:
-            self.num_channel_per_expert = self.num_channel
+        self.num_channel_per_expert = num_channel_per_expert or self.num_channel
+        if self.agnostic:
+            assert self.use_shared_expert == False
+            assert self.num_expert == 1
         self.num_hidden_channel = self.num_expert * self.num_channel_per_expert
         self.target_irreps = target_irreps
         self.num_elements = num_elements
@@ -294,6 +296,7 @@ class Product(torch.nn.Module):
         self.irreps_in = irreps_in
         self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
         self.use_shared_expert = use_shared_expert
+
 
         self.irreps_tp_out_list = []
         for nu in range(2, self.correlation+1):

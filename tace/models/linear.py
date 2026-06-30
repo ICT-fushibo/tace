@@ -431,7 +431,7 @@ class e3nnElementLinear(torch.nn.Module):
             else:
                 self.register_parameter("bias", None)
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, attrs: torch.Tensor) -> torch.Tensor:
 
         if self.use_matrix_weight:
             if has_lora(self):
@@ -451,12 +451,12 @@ class e3nnElementLinear(torch.nn.Module):
                 weight = weight + _flat_lora_delta(self)
             bias = self.bias
 
-        node_type = y.argmax(dim=-1)
+        node_type = attrs.argmax(dim=-1)
         weight = weight[node_type]
         # weight = torch.einsum("bz,zi->bi", y, self.weight)
         out = self.linear(x, weight)
         if bias is not None:
-            bias = torch.einsum("bz,zi->bi", y, bias)
+            bias = torch.einsum("bz,zi->bi", attrs, bias)
             for sl, bias_sl in zip(self._0e_slices, self._bias_slices):
                 out[:, sl] = out[:, sl] + bias[:, bias_sl]
         return out
@@ -577,8 +577,8 @@ class e3nnMoEElementLinear(torch.nn.Module):
             offset += size
         return weights
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        node_type = y.argmax(dim=-1)
+    def forward(self, x: torch.Tensor, attrs: torch.Tensor) -> torch.Tensor:
+        node_type = attrs.argmax(dim=-1)
         inputs = [
             x[:, tensor_slice].reshape(
                 x.shape[0], self.num_experts, expert_mul, ir_dim

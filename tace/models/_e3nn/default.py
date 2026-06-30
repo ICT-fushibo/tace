@@ -91,6 +91,7 @@ DEFAULT_MODEL_CONFIG = {
         "num_channel_per_expert": None,
         "use_shared_expert": False,
         "nonlinear": None,
+        "agnostic": False,
     },
     "readout_emlp": {
         "bias": False,

@@ -35,17 +35,22 @@ class CgtpACE(Product):
 
     def _setup(self):
 
+        self.scale = 1.0 / math.sqrt(2.0)
+
         for_coefs = {
             "irreps_out": self.irreps_coefs_out,
             "bias": self.use_bias,
-            "num_elements": self.num_elements,
         }
-        coefs_cls = e3nnElementLinear
-        if self.num_expert > 1:
-            coefs_cls = e3nnMoEElementLinear
-            for_coefs["num_experts"] = self.num_expert
+        if self.agnostic:
+            coefs_cls = e3nnLinear
+        else:
+            for_coefs["num_elements"] = self.num_elements
+            coefs_cls = e3nnElementLinear
+            if self.num_expert > 1:
+                coefs_cls = e3nnMoEElementLinear
+                for_coefs["num_experts"] = self.num_expert
 
-        self.scale = 1.0 / math.sqrt(2.0)
+        
         self.use_bilinear_ace = self.nonlinear_type == "bilineargate"
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -203,13 +208,18 @@ class CgtpACE(Product):
             batch: torch.Tensor,
         ) -> torch.Tensor:
 
+        if self.agnostic:
+            for_coefs = {}
+        else:
+            for_coefs = {"attrs": node_attrs}
+
         node_feats, base_feats, ace_weights = self._linear_up_features(node_feats)
 
         corr_feats = {
             1: node_feats,
         }
 
-        outs = self.coefs[0](corr_feats[1], node_attrs)
+        outs = self.coefs[0](corr_feats[1], **for_coefs)
         shared_outs = (
             self.shared_coefs[0](corr_feats[1])
             if hasattr(self, "shared_coefs")
@@ -225,7 +235,7 @@ class CgtpACE(Product):
                 )
             else:
                 corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            outs = outs + self.coefs[nu-1](corr_feats[nu], node_attrs)
+            outs = outs + self.coefs[nu-1](corr_feats[nu], **for_coefs)
             if shared_outs is not None:
                 shared_outs = shared_outs + self.shared_coefs[nu-1](corr_feats[nu])
 
