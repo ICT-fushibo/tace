@@ -236,7 +236,7 @@ class e3nnTACE(torch.nn.Module):
         #         cfg['normalizer'][p].get('mean', 0.0),
         #         cfg['normalizer'][p].get('rmsd', 1.0),
         #     )
-    
+        
     def readout_fn(
         self,
         data: Dict[str, torch.Tensor],

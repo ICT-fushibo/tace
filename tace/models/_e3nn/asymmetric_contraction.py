@@ -519,9 +519,10 @@ class uuSO2TensorProduct(torch.nn.Module):
 
         B = real.size(0)
         C = real.size(-1)
+        n = self.lmax + 1
 
-        real = real.reshape(B, -1, C)
-        imag = imag.reshape(B, -1, C)
+        real = real.reshape(B, n, C)
+        imag = imag.reshape(B, n, C)
 
         out = torch.stack([real, imag], dim=1)
 

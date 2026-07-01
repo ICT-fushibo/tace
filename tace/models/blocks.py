@@ -107,36 +107,44 @@ class ScaleShift(torch.nn.Module):
         num_graphs = ptr.numel() - 1
         num_nodes = ptr[1:] - ptr[:-1]
 
-        if self.all_atoms:
-            if self.has_scale:
-                node_scale = (node_attrs * self.scale[node_fidelity]).sum(dim=-1)
-                node_energy = node_energy * node_scale
+        # if self.all_atoms:
+        #     if self.has_scale:
+        #         node_scale = (node_attrs * self.scale[node_fidelity]).sum(dim=-1)
+        #         node_energy = node_energy * node_scale
 
-            if self.has_shift:
-                node_shift = (node_attrs * self.shift[node_fidelity]).sum(dim=-1)
-                node_energy = node_energy + node_shift
-        else:
-            if edge_index.numel() == 0:
-                num_edges = torch.zeros(num_graphs, dtype=torch.int64, device=node_energy.device)
-            else:
-                edge_batch = batch[edge_index[1]]
-                num_edges = torch.bincount(edge_batch, minlength=num_graphs)
+        #     if self.has_shift:
+        #         node_shift = (node_attrs * self.shift[node_fidelity]).sum(dim=-1)
+        #         node_energy = node_energy + node_shift
+        # else:
+        #     if edge_index.numel() == 0:
+        #         num_edges = torch.zeros(num_graphs, dtype=torch.int64, device=node_energy.device)
+        #     else:
+        #         edge_batch = batch[edge_index[1]]
+        #         num_edges = torch.bincount(edge_batch, minlength=num_graphs)
 
-            isolated_mask = (num_nodes == 1) & (num_edges == 0)
+        #     isolated_mask = (num_nodes == 1) & (num_edges == 0)
 
-            if self.has_scale:
-                node_scale = (node_attrs * self.scale[node_fidelity]).sum(dim=-1)
-                if isolated_mask.any():
-                    isolated_nodes = torch.isin(batch, torch.where(isolated_mask)[0])
-                    node_scale[isolated_nodes] = 0.0
-                node_energy = node_energy * node_scale
+        #     if self.has_scale:
+        #         node_scale = (node_attrs * self.scale[node_fidelity]).sum(dim=-1)
+        #         if isolated_mask.any():
+        #             isolated_nodes = torch.isin(batch, torch.where(isolated_mask)[0])
+        #             node_scale[isolated_nodes] = 0.0
+        #         node_energy = node_energy * node_scale
 
-            if self.has_shift:
-                node_shift = (node_attrs * self.shift[node_fidelity]).sum(dim=-1)
-                if isolated_mask.any():
-                    isolated_nodes = torch.isin(batch, torch.where(isolated_mask)[0])
-                    node_shift[isolated_nodes] = 0.0
-                node_energy = node_energy + node_shift
+        #     if self.has_shift:
+        #         node_shift = (node_attrs * self.shift[node_fidelity]).sum(dim=-1)
+        #         if isolated_mask.any():
+        #             isolated_nodes = torch.isin(batch, torch.where(isolated_mask)[0])
+        #             node_shift[isolated_nodes] = 0.0
+        #         node_energy = node_energy + node_shift
+
+        if self.has_scale:
+            node_scale = (node_attrs * self.scale[node_fidelity]).sum(dim=-1)
+            node_energy = node_energy * node_scale
+
+        if self.has_shift:
+            node_shift = (node_attrs * self.shift[node_fidelity]).sum(dim=-1)
+            node_energy = node_energy + node_shift
 
         return node_energy
 
