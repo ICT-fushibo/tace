@@ -210,17 +210,17 @@ class e3nnTACE(torch.nn.Module):
                     "Supported methods are ['lagrangian', 'uniform_distribution']."
                 )
 
-        # === Direct Diagonal Hessian ===
-        if "direct_diagonal_hessian" in self.target_property:
-            self.direct_diagonal_hessian_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-            self.direct_diagonal_hessian_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
-            self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
+        # # === Direct Diagonal Hessian ===
+        # if "direct_diagonal_hessian" in self.target_property:
+        #     self.direct_diagonal_hessian_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+        #     self.direct_diagonal_hessian_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
+        #     self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
 
-        # # === Direct Hessian ===
-        # if "direct_hessian" in self.target_property:
-        #     self.direct_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
-        #     self.direct_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
-        #     self.direct_hessian_basis_change = PropertyBasisChange["direct_hessian"]() 
+        # # # === Direct Hessian ===
+        # # if "direct_hessian" in self.target_property:
+        # #     self.direct_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
+        # #     self.direct_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
+        # #     self.direct_hessian_basis_change = PropertyBasisChange["direct_hessian"]() 
 
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:

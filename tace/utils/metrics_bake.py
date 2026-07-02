@@ -5,7 +5,6 @@
 
 # TODO, refacotor all metric to allow missing property
 
-import logging
 from typing import Dict, List
 
 
@@ -15,28 +14,19 @@ from torchmetrics import Metric
 
 
 from ..dataset.quantity import (
-    PROPERTY,
     MAE_PROPERTY,
     RMSE_PROPERTY,
     MAE_PER_ATOM_PROPERTY,
     RMSE_PER_ATOM_PROPERTY,
-    SPECIAL_METRIC_PROPERTY,
-)
-from .mask_metrics import (
-    MaskMAE,
-    MaskRMSE,
-    MaskPerAtomMAE,
-    MaskPerAtomRMSE,
-    supports_weight_filter,
 )
 
 SCALE = 1000.0  # for example, metric units from eV to meV
+
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
     while T.ndim < n_dim:
         T = T.unsqueeze(dim)
     return T
-
 
 class MAE(Metric):
     def __init__(self, scale: float = SCALE):
@@ -199,6 +189,56 @@ class AbsFinalCollinearMagmomsMetric(Metric):
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
 
 
+class DirectDiagonalHessianMetric(Metric):
+    def __init__(self, metric_type: str = "mae", scale: float = SCALE):
+        """
+        Args:
+            metric_type: "mae" or "rmse"
+            scale: scaling factor
+        """
+        super().__init__()
+        assert metric_type in ["mae", "rmse"], "metric_type must be 'mae' or 'rmse'"
+        self.metric_type = metric_type
+        self.scale = scale
+
+        if self.metric_type == "mae":
+            self.add_state(
+                "sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+            )
+        else:  # rmse
+            self.add_state(
+                "sum_squared_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+            )
+
+        self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
+
+    def update(self, pred: Tensor, label: Tensor):
+        batch = label['batch']
+        key = 'direct_diagonal_hessian'
+        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        mask = total_weight != 0
+        error = pred[key] - label[key]
+        error = error * total_weight.unsqueeze(-1).unsqueeze(-1)
+        error = error[mask]
+
+        if self.metric_type == "mae":
+            abs_error = torch.abs(error)
+            self.sum_abs_error += abs_error.sum()
+        else:  # rmse
+            squared_error = error**2
+            self.sum_squared_error += squared_error.sum()
+        self.count += error.numel()
+
+    def compute(self):
+        if self.count == 0:
+            return torch.tensor(0.0, device=self.count.device)
+
+        if self.metric_type == "mae":
+            return self.sum_abs_error / self.count * self.scale
+        else:  # rmse
+            return torch.sqrt(self.sum_squared_error / self.count) * self.scale
+        
+
 class DirectForcesMetric(Metric):
     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
         """
@@ -304,92 +344,105 @@ class ForcesMetric(Metric):
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
 
 
-def use_weight_filter(property_name: str) -> bool:
-    return (
-        property_name in PROPERTY
-        and supports_weight_filter(property_name)
+# class PartialHessiansMetric(Metric):
+#     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
+#         """
+#         Args:
+#             metric_type: "mae" or "rmse"
+#             scale: scaling factor
+#         """
+#         super().__init__()
+#         assert metric_type in ["mae", "rmse"], "metric_type must be 'mae' or 'rmse'"
+#         self.metric_type = metric_type
+#         self.scale = scale
 
-        and property_name not in SPECIAL_METRIC_PROPERTY # TODO
-    )
+#         if self.metric_type == "mae":
+#             self.add_state(
+#                 "sum_abs_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+#             )
+#         else:  # rmse
+#             self.add_state(
+#                 "sum_squared_error", default=torch.tensor(0.0), dist_reduce_fx="sum"
+#             )
 
-
-def log_metric_choice(metric_name: str, property_name: str, weighted: bool):
-    if weighted:
-        logging.info(
-            "Build metric %s for %s with weight filtering: entries with "
-            "%s_weight == 0 are ignored.",
-            metric_name,
-            property_name,
-            property_name,
-        )
-    else:
-        logging.info(
-            "Build metric %s for %s without weight filtering.",
-            metric_name,
-            property_name,
-        )
+#         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
 
+#     def update(self, preds: Tensor, targets: Tensor):
+#         error = abs(preds) - abs(targets)
+#         if self.metric_type == "mae":
+#             abs_error = torch.abs(error)
+#             self.sum_abs_error += abs_error.sum()
+#         else:  # rmse
+#             squared_error = error**2
+#             self.sum_squared_error += squared_error.sum()
+#         self.count += targets.numel()
+
+#     def update(self, pred: Dict[str, torch.Tensor | List[torch.Tensor]], label: Dict[str, torch.Tensor]):
+
+#         true_hessian_flat = label["hessian"]
+#         num_atoms_per_graph = label["ptr"][1:] - label["ptr"][:-1]
+#         jacs_per_graph = pred["jacs_per_graph"]
+#         samples_per_graph = pred["samples_per_graph"]
+
+#         offset = 0
+#         error_list = []
+#         for jac_pred, samples, n_g in zip(jacs_per_graph, samples_per_graph, num_atoms_per_graph):
+#             hess_size = n_g * 3 * n_g * 3
+#             hess_flat_g = true_hessian_flat[offset : offset + hess_size]
+#             hess_true = hess_flat_g.reshape(n_g, 3, n_g, 3)
+#             offset += hess_size
+
+#             atom_idx = samples[:, 0]
+#             xyz_idx = samples[:, 1]
+#             jac_true = hess_true[atom_idx, xyz_idx]
+#             error = torch.square((jac_pred - jac_true)).view(-1)
+#             error_list.append(error)
+#         errors = torch.cat(error_list, dim=-1)
+
+#         if self.metric_type == "mae":
+#             abs_error = torch.abs(errors)
+#             self.sum_abs_error += abs_error.sum()
+#         else:  # rmse
+#             squared_error = errors**2
+#             self.sum_squared_error += squared_error.sum()
+#         self.count += errors.numel() 
+   
+#     def compute(self):
+#         if self.metric_type == "mae":
+#             return self.sum_abs_error / self.count * self.scale
+#         else:  # rmse
+#             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
+        
 def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
     metrics = {}
 
     def add_metrics(property_name):
-        use_mask = use_weight_filter(property_name)
-
-        # === General === 
         if property_name in MAE_PROPERTY:
-            metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] = MaskMAE(property_name, SCALE) if use_mask else MAE()
-            log_metric_choice(metric_name, property_name, use_mask)
+            metrics[f"{prefix}/{property_name}_mae"] = MAE()
         if property_name in RMSE_PROPERTY:
-            metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = MaskRMSE(property_name, SCALE) if use_mask else RMSE()
-            log_metric_choice(metric_name, property_name, use_mask)
+            metrics[f"{prefix}/{property_name}_rmse"] = RMSE()
         if property_name in MAE_PER_ATOM_PROPERTY:
-            metric_name = f"{prefix}/{property_name}_per_atom_mae"
-            metrics[metric_name] = MaskPerAtomMAE(property_name, SCALE) if use_mask else PerAtomMAE()
-            log_metric_choice(metric_name, property_name, use_mask)
+            metrics[f"{prefix}/{property_name}_per_atom_mae"] = PerAtomMAE()
         if property_name in RMSE_PER_ATOM_PROPERTY:
-            metric_name = f"{prefix}/{property_name}_per_atom_rmse"
-            metrics[metric_name] = MaskPerAtomRMSE(property_name, SCALE) if use_mask else PerAtomRMSE()
-            log_metric_choice(metric_name, property_name, use_mask)
-
-        # === Special === 
+            metrics[f"{prefix}/{property_name}_per_atom_rmse"] = PerAtomRMSE()
         if property_name == "polarization":
-            metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] = PolarizationMetric("mae", False)
-            log_metric_choice(metric_name, property_name, False)
-            metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = PolarizationMetric("rmse", False)
-            log_metric_choice(metric_name, property_name, False)
-            metric_name = f"{prefix}/{property_name}_per_atom_mae"
-            metrics[metric_name] = PolarizationMetric("mae", True)
-            log_metric_choice(metric_name, property_name, False)
-            metric_name = f"{prefix}/{property_name}_per_atom_rmse"
-            metrics[metric_name] = PolarizationMetric("rmse", True)
-            log_metric_choice(metric_name, property_name, False)
+            metrics[f"{prefix}/{property_name}_mae"] = PolarizationMetric("mae", False)
+            metrics[f"{prefix}/{property_name}_rmse"] = PolarizationMetric("rmse", False)
+            metrics[f"{prefix}/{property_name}_per_atom_mae"] = PolarizationMetric("mae", True)
+            metrics[f"{prefix}/{property_name}_per_atom_rmse"] = PolarizationMetric("rmse", True)
         if property_name == "abs_final_collinear_magmoms":
-            metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] =  AbsFinalCollinearMagmomsMetric("mae")
-            log_metric_choice(metric_name, property_name, use_mask)
-            metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = AbsFinalCollinearMagmomsMetric("rmse")
-            log_metric_choice(metric_name, property_name, use_mask)
+            metrics[f"{prefix}/{property_name}_mae"] = AbsFinalCollinearMagmomsMetric("mae")
+            metrics[f"{prefix}/{property_name}_rmse"] = AbsFinalCollinearMagmomsMetric("rmse")
+        if property_name == "direct_diagonal_hessian":
+            metrics[f"{prefix}/{property_name}_mae"] = DirectDiagonalHessianMetric("mae")
+            metrics[f"{prefix}/{property_name}_rmse"] = DirectDiagonalHessianMetric("rmse")
         if property_name == "direct_forces":
-            metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] = DirectForcesMetric("mae")
-            log_metric_choice(metric_name, property_name, use_mask)
-            metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = DirectForcesMetric("rmse")
-            log_metric_choice(metric_name, property_name, use_mask)
+            metrics[f"{prefix}/{property_name}_mae"] = DirectForcesMetric("mae")
+            metrics[f"{prefix}/{property_name}_rmse"] = DirectForcesMetric("rmse")
         if property_name == "forces":
-            metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] = ForcesMetric("mae")
-            log_metric_choice(metric_name, property_name, use_mask)
-            metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = ForcesMetric("rmse")
-            log_metric_choice(metric_name, property_name, use_mask)
-    
+            metrics[f"{prefix}/{property_name}_mae"] = ForcesMetric("mae")
+            metrics[f"{prefix}/{property_name}_rmse"] = ForcesMetric("rmse")
     for p in loss_property:
         add_metrics(p)
 
@@ -405,33 +458,23 @@ def update_metrics(metrics, prefix, pred, label, loss_property):
         ptr = label["ptr"]
         output_value = pred[p]
         batch_value = label[p]
-        weighted = use_weight_filter(p)
         if p in MAE_PROPERTY:
-            if weighted:
-                metrics[f"{prefix}/{p}_mae"](output_value, batch_value, label)
-            else:
-                metrics[f"{prefix}/{p}_mae"](output_value, batch_value)
+            metrics[f"{prefix}/{p}_mae"](output_value, batch_value)
         if p in RMSE_PROPERTY:
-            if weighted:
-                metrics[f"{prefix}/{p}_rmse"](output_value, batch_value, label)
-            else:
-                metrics[f"{prefix}/{p}_rmse"](output_value, batch_value)
+            metrics[f"{prefix}/{p}_rmse"](output_value, batch_value)
         if p in MAE_PER_ATOM_PROPERTY:
-            if weighted:
-                metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, ptr, label)
-            else:
-                metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, ptr)
+            metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, ptr)
         if p in RMSE_PER_ATOM_PROPERTY:
-            if weighted:
-                metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, ptr, label)
-            else:
-                metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, ptr)
+            metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, ptr)
         if p == "polarization":
             metrics[f"{prefix}/{p}_mae"](output_value, batch_value, label)
             metrics[f"{prefix}/{p}_rmse"](output_value, batch_value, label)
             metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, label)
             metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, label)
         if p == "abs_final_collinear_magmoms":
+            metrics[f"{prefix}/{p}_mae"](pred, label)
+            metrics[f"{prefix}/{p}_rmse"](pred, label)
+        if p == "direct_diagonal_hessian":
             metrics[f"{prefix}/{p}_mae"](pred, label)
             metrics[f"{prefix}/{p}_rmse"](pred, label)
         if p == "direct_forces":

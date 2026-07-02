@@ -156,7 +156,7 @@ PROPERTY = {
         },
         "default_value_fn": default_value_for_rank2_atom,
         "must_be_with": [],
-        "enable_prediction": True,
+        "enable_prediction": False,
         "enable_embedding": False,
         "first_derivative": False,
         "second_derivative": False,
@@ -877,48 +877,40 @@ def get_need_property(
 
 
 # For Metrics
+
+SPECIAL_METRIC_PROPERTY = [      
+    "polarization",                # for definition
+    "abs_final_collinear_magmoms", # for absolute value
+    "direct_forces",               # for DeNS
+    "forces",                      # for DeNS
+]
+
+# INTENSIVE
+EXTENSIVE_PROPERTY = [
+    "stress",
+    "direct_stress"
+]
 MAE_PROPERTY = [
         p for p in SUPPORT_PREDICT_PROPERTY 
-        if p != "polarization" 
-        and p != "hessian"
-        and p != "abs_final_collinear_magmoms"
-        and p != "direct_diagonal_hessian"
-        and p != "direct_forces"
-        and p != "forces"
+        if p not in  SPECIAL_METRIC_PROPERTY
     ]
 RMSE_PROPERTY = [   
         p for p in SUPPORT_PREDICT_PROPERTY 
-        if p != "polarization" 
-        and p != "hessian"
-        and p != "abs_final_collinear_magmoms"
-        and p != "direct_diagonal_hessian"
-        and p != "direct_forces"
-        and p != "forces"
+        if p not in  SPECIAL_METRIC_PROPERTY
     ]
 MAE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
-    if v["scope"] == "per-system" 
-    and p != "polarization"
-    and p != "stress"   
-    and p != "direct_stress"  
-    and p != "hessian"
-    and p != "abs_final_collinear_magmoms"
-    and p != "direct_diagonal_hessian"
-    and p != "direct_forces"
-    and p != "forces"
+    if p not in SPECIAL_METRIC_PROPERTY
+    and v["scope"] == "per-system"
+    and p not in EXTENSIVE_PROPERTY
 ]
 RMSE_PER_ATOM_PROPERTY = [
     p for p, v in PROPERTY.items() 
-    if v["scope"] == "per-system" 
-    and p != "polarization" 
-    and p != "stress"    
-    and p != "direct_stress"   
-    and p != "hessian" 
-    and p != "abs_final_collinear_magmoms"
-    and p != "direct_diagonal_hessian"
-    and p != "direct_forces"
-    and p != "forces"
+    if p not in SPECIAL_METRIC_PROPERTY
+    and v["scope"] == "per-system"
+    and p not in EXTENSIVE_PROPERTY
 ]
+
 
 
 fields = {f"compute_{k}": False for k, v in PROPERTY.items()}
