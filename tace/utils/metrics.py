@@ -313,18 +313,22 @@ def use_weight_filter(property_name: str) -> bool:
     )
 
 
-def log_metric_choice(metric_name: str, property_name: str, weighted: bool):
-    if weighted:
-        logging.info(
-            "Build metric %s for %s with weight filtering: entries with "
-            "%s_weight == 0 are ignored.",
+def log_metric_choice(metric_name: str, property_name: str, use_mask: bool):
+    if property_name in SPECIAL_METRIC_PROPERTY:
+        logging.debug(
+            "Build metric %s: special metric, see code.",
             metric_name,
-            property_name,
+        ) 
+        return
+    if use_mask:
+        logging.debug(
+            "Build metric %s: entries with %s_weight == 0 are ignored.",
+            metric_name,
             property_name,
         )
     else:
-        logging.info(
-            "Build metric %s for %s without weight filtering.",
+        logging.debug(
+            "Build metric %s: entries with %s_weight == 0 are keep.",
             metric_name,
             property_name,
         )
