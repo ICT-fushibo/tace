@@ -361,6 +361,8 @@ class ReadOut(torch.nn.Module):
             o3.Irreps([(c * self.num_fidelities, self.irreps_out[0].ir)])
             for c in hidden_channel
         ]
+        self.l = self.irreps_out.lmax
+        assert len(set(self.irreps_out.ls)) == 1
 
         self._setup()
     
