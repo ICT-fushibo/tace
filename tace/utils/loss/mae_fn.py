@@ -9,7 +9,7 @@ from typing import Dict
 import torch
 
 
-from .common import num_atoms_per_graph, polarization_error_per_atom
+from .common import num_atoms_per_graph, polarization_error_per_atom, voigt6_stress
 from .mse_fn import register_loss
 
 
@@ -53,6 +53,16 @@ def mae_stress(
         torch.abs(pred[key] - label[key])
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
+
+
+@register_loss
+def mae_voigt_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "stress"
+    total_weight = label["entropy"] * label["stress_weight"]
+    error = voigt6_stress(pred[key] - label[key])
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
 
 @register_loss
 def mae_virials(
@@ -98,6 +108,16 @@ def mae_direct_stress(
         torch.abs(pred[key] - label[key])
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
+
+
+@register_loss
+def mae_voigt_direct_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "direct_stress"
+    total_weight = label["entropy"] * label["direct_stress_weight"]
+    error = voigt6_stress(pred[key] - label[key])
+    return torch.mean(torch.abs(error) * total_weight.unsqueeze(-1))
 
 @register_loss
 def mae_direct_virials_per_atom(

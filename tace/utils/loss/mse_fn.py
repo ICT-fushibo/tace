@@ -8,7 +8,7 @@ from typing import Dict, Callable
 
 import torch
 
-from .common import num_atoms_per_graph, polarization_error_per_atom
+from .common import num_atoms_per_graph, polarization_error_per_atom, voigt6_stress
 
 
 LOSS_FN: Dict[str, Callable] = {}
@@ -66,6 +66,16 @@ def mse_stress(
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
 
+
+@register_loss
+def mse_voigt_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "stress"
+    total_weight = label["entropy"] * label["stress_weight"]
+    error = voigt6_stress(pred[key] - label[key])
+    return torch.mean(torch.square(error) * total_weight.unsqueeze(-1))
+
 @register_loss
 def mse_virials(
     pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
@@ -110,6 +120,16 @@ def mse_direct_stress(
         torch.square(pred[key] - label[key])
         * total_weight.unsqueeze(-1).unsqueeze(-1)
     )
+
+
+@register_loss
+def mse_voigt_direct_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "direct_stress"
+    total_weight = label["entropy"] * label["direct_stress_weight"]
+    error = voigt6_stress(pred[key] - label[key])
+    return torch.mean(torch.square(error) * total_weight.unsqueeze(-1))
 
 @register_loss
 def mse_direct_virials_per_atom(
@@ -347,4 +367,3 @@ def mse_total_noncollinear_magmom_per_atom(
     return torch.mean(
         torch.square((label[key] - pred[key]) / num_atoms) * total_weight
     )
-

@@ -9,7 +9,7 @@ from typing import Dict
 import torch
 
 
-from .common import polarization_error_per_atom
+from .common import polarization_error_per_atom, voigt6_stress
 from .mse_fn import register_loss
 
 
@@ -68,6 +68,20 @@ def huber_stress(
         delta=huber_delta,
     )
 
+
+@register_loss
+def huber_voigt_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "stress"
+    total_weight = (label["entropy"] * label["stress_weight"]).unsqueeze(-1)
+    return torch.nn.functional.huber_loss(
+        total_weight * voigt6_stress(label[key]),
+        total_weight * voigt6_stress(pred[key]),
+        reduction="mean",
+        delta=huber_delta,
+    )
+
 @register_loss
 def huber_virials(
     pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
@@ -120,6 +134,20 @@ def huber_direct_stress(
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
         total_weight * pred[key],
+        reduction="mean",
+        delta=huber_delta,
+    )
+
+
+@register_loss
+def huber_voigt_direct_stress(
+    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+) -> torch.Tensor:
+    key = "direct_stress"
+    total_weight = (label["entropy"] * label["direct_stress_weight"]).unsqueeze(-1)
+    return torch.nn.functional.huber_loss(
+        total_weight * voigt6_stress(label[key]),
+        total_weight * voigt6_stress(pred[key]),
         reduction="mean",
         delta=huber_delta,
     )

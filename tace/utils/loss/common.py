@@ -26,3 +26,7 @@ def polarization_error_per_atom(
     error = torch.where(error < -0.5, error + 1.0, error)
     error = torch.einsum("bi, bij -> bj", error, lattice)
     return error / num_atoms
+
+
+def voigt6_stress(stress: torch.Tensor) -> torch.Tensor:
+    return stress.reshape(-1, 9)[:, [0, 4, 8, 5, 2, 1]]

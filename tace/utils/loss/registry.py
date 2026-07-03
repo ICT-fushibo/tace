@@ -16,6 +16,7 @@ LOSS_MODULES = (
     "mae_fn",
     "huber_fn",
     "l2mae_fn",
+    "dens",
     "special_fn",
 )
 LOSS_NAME_PREFIXES = (
@@ -52,14 +53,11 @@ def _is_special_loss(loss_fn) -> bool:
 def available_losses_by_property(
     *,
     include_special: bool = False,
-    include_hessian: bool = False,
 ) -> dict[str, list[str]]:
     ensure_loss_functions_registered()
     losses_by_property: dict[str, list[str]] = defaultdict(list)
     for loss_name, loss_fn in LOSS_FN.items():
         if not include_special and _is_special_loss(loss_fn):
-            continue
-        if not include_hessian and "hessian" in loss_name:
             continue
         losses_by_property[_loss_property_name(loss_name)].append(loss_name)
 
@@ -95,7 +93,7 @@ def validate_loss_function_names(loss_function_names: Iterable[str]) -> None:
     unknown = [
         loss_name
         for loss_name in loss_function_names
-        if loss_name not in LOSS_FN or "hessian" in loss_name
+        if loss_name not in LOSS_FN
     ]
     if unknown:
         raise ValueError(format_unknown_loss_error(unknown))
