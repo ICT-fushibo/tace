@@ -124,44 +124,44 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "hessian": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-edge",
-        "rank": 2,
-        "irreps": '1x2e',
-        "abbreviation": "HESSIAN",
-        "shape": {
-            "in_data": (-1,),
-            "shape_fn": shape_fn_for_hessian,
-        },
-        "default_value_fn": default_value_for_hessian,
-        "must_be_with": ['energy', 'forces'],
-        "enable_prediction": True,
-        "enable_embedding": False,
-        "first_derivative": False,
-        "second_derivative": True,
-        "requires_grad_with": ['positions'],
-    },
-    "direct_diagonal_hessian": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-atom",
-        "rank": 2,
-        "irreps": '1x2e',
-        "abbreviation": "D_DIAG_H",
-        "shape": {
-            "in_data": (-1, 3, 3),
-            "shape_fn": shape_fn_for_direct_diagonal_hessian,
-        },
-        "default_value_fn": default_value_for_rank2_atom,
-        "must_be_with": [],
-        "enable_prediction": False,
-        "enable_embedding": False,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
+    # "hessian": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-edge",
+    #     "rank": 2,
+    #     "irreps": '1x2e',
+    #     "abbreviation": "HESSIAN",
+    #     "shape": {
+    #         "in_data": (-1,),
+    #         "shape_fn": shape_fn_for_hessian,
+    #     },
+    #     "default_value_fn": default_value_for_hessian,
+    #     "must_be_with": ['energy', 'forces'],
+    #     "enable_prediction": True,
+    #     "enable_embedding": False,
+    #     "first_derivative": False,
+    #     "second_derivative": True,
+    #     "requires_grad_with": ['positions'],
+    # },
+    # "direct_diagonal_hessian": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-atom",
+    #     "rank": 2,
+    #     "irreps": '1x2e',
+    #     "abbreviation": "D_DIAG_H",
+    #     "shape": {
+    #         "in_data": (-1, 3, 3),
+    #         "shape_fn": shape_fn_for_direct_diagonal_hessian,
+    #     },
+    #     "default_value_fn": default_value_for_rank2_atom,
+    #     "must_be_with": [],
+    #     "enable_prediction": True,
+    #     "enable_embedding": False,
+    #     "first_derivative": False,
+    #     "second_derivative": False,
+    #     "requires_grad_with": [],
+    # },
     "stress": {
         "ase_name": "stress",
         'type': 'float',
@@ -392,44 +392,44 @@ PROPERTY = {
         "second_derivative": True,
         "requires_grad_with": ['electric_field', 'positions'],
     },
-    "magnetization": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-system",
-        "rank": 1,
-        "irreps": '1x1e',
-        "abbreviation": "M",
-        "shape": {
-            "in_data": (1, 3),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank1_graph,
-        "must_be_with": [],
-        "enable_prediction": True,   
-        "enable_embedding": False,
-        "first_derivative": True,
-        "second_derivative": False,
-        "requires_grad_with": ['magnetic_field'],
-    },
-    "magnetic_susceptibility": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-system",
-        "rank": 2,
-        "irreps": '1x2e', # TODO, check
-        "abbreviation": "CHI_M",
-        "shape": {
-            "in_data": (1, 3, 3),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank2_graph,
-        "must_be_with": ['magnetization'],
-        "enable_prediction": True,   
-        "enable_embedding": False,
-        "first_derivative": False,
-        "second_derivative": True,
-        "requires_grad_with": ['magnetic_field'],
-    },
+    # "magnetization": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-system",
+    #     "rank": 1,
+    #     "irreps": '1x1e',
+    #     "abbreviation": "M",
+    #     "shape": {
+    #         "in_data": (1, 3),
+    #         "shape_fn": None,
+    #     },
+    #     "default_value_fn": default_value_for_rank1_graph,
+    #     "must_be_with": [],
+    #     "enable_prediction": True,   
+    #     "enable_embedding": False,
+    #     "first_derivative": True,
+    #     "second_derivative": False,
+    #     "requires_grad_with": ['magnetic_field'],
+    # },
+    # "magnetic_susceptibility": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-system",
+    #     "rank": 2,
+    #     "irreps": '1x2e', # TODO, check
+    #     "abbreviation": "CHI_M",
+    #     "shape": {
+    #         "in_data": (1, 3, 3),
+    #         "shape_fn": None,
+    #     },
+    #     "default_value_fn": default_value_for_rank2_graph,
+    #     "must_be_with": ['magnetization'],
+    #     "enable_prediction": True,   
+    #     "enable_embedding": False,
+    #     "first_derivative": False,
+    #     "second_derivative": True,
+    #     "requires_grad_with": ['magnetic_field'],
+    # },
     "charges": {
         "ase_name": "charges",
         'type': 'float',
@@ -468,25 +468,25 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "spin_multiplicity": {
-        "ase_name": None,
-        'type': 'int',
-        "scope": "per-system",
-        "rank": 0,
-        "irreps": '1x0e',
-        "abbreviation": "SM",
-        "shape": {
-            "in_data": (1,),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": [],
-        "enable_prediction": False,   
-        "enable_embedding": True,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
+    # "spin_multiplicity": {
+    #     "ase_name": None,
+    #     'type': 'int',
+    #     "scope": "per-system",
+    #     "rank": 0,
+    #     "irreps": '1x0e',
+    #     "abbreviation": "SM",
+    #     "shape": {
+    #         "in_data": (1,),
+    #         "shape_fn": None,
+    #     },
+    #     "default_value_fn": default_value_for_rank0_graph,
+    #     "must_be_with": [],
+    #     "enable_prediction": False,   
+    #     "enable_embedding": True,
+    #     "first_derivative": False,
+    #     "second_derivative": False,
+    #     "requires_grad_with": [],
+    # },
     "initial_collinear_magmoms": {
         "ase_name": "initial_magmoms",
         'type': 'float',
@@ -696,44 +696,44 @@ PROPERTY = {
         "second_derivative": False,
         "requires_grad_with": [],
     },
-    "temperature": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-system",
-        "rank": 0,
-        "irreps": '1x0e',
-        "abbreviation": "TEMP",
-        "shape": {
-            "in_data": (1,),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": [],
-        "enable_prediction": False,   
-        "enable_embedding": True,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
-    "electron_temperature": {
-        "ase_name": None,
-        'type': 'float',
-        "scope": "per-system",
-        "rank": 0,
-        "irreps": '1x0e',
-        "abbreviation": "E_TEMP",
-        "shape": {
-            "in_data": (1,),
-            "shape_fn": None,
-        },
-        "default_value_fn": default_value_for_rank0_graph,
-        "must_be_with": [],
-        "enable_prediction": False,   
-        "enable_embedding": True,
-        "first_derivative": False,
-        "second_derivative": False,
-        "requires_grad_with": [],
-    },
+    # "temperature": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-system",
+    #     "rank": 0,
+    #     "irreps": '1x0e',
+    #     "abbreviation": "TEMP",
+    #     "shape": {
+    #         "in_data": (1,),
+    #         "shape_fn": None,
+    #     },
+    #     "default_value_fn": default_value_for_rank0_graph,
+    #     "must_be_with": [],
+    #     "enable_prediction": False,   
+    #     "enable_embedding": True,
+    #     "first_derivative": False,
+    #     "second_derivative": False,
+    #     "requires_grad_with": [],
+    # },
+    # "electron_temperature": {
+    #     "ase_name": None,
+    #     'type': 'float',
+    #     "scope": "per-system",
+    #     "rank": 0,
+    #     "irreps": '1x0e',
+    #     "abbreviation": "E_TEMP",
+    #     "shape": {
+    #         "in_data": (1,),
+    #         "shape_fn": None,
+    #     },
+    #     "default_value_fn": default_value_for_rank0_graph,
+    #     "must_be_with": [],
+    #     "enable_prediction": False,   
+    #     "enable_embedding": True,
+    #     "first_derivative": False,
+    #     "second_derivative": False,
+    #     "requires_grad_with": [],
+    # },
 }
 
 SUPPORT_PREDICT_PROPERTY = [k for k, v in PROPERTY.items() if v['enable_prediction']]
@@ -759,7 +759,7 @@ class DefaultKeys(Enum):
     DIRECT_VIRIALS = "direct_virials"
     DIRECT_DIPOLE = "direct_dipole"
     DIRECT_POLARIZABILITY = "direct_polarizability"
-    DIRECT_DIAGONAL_HESSIAN = "direct_hessian"
+    # DIRECT_DIAGONAL_HESSIAN = "direct_hessian"
 
     # charges
     CHARGES = "charges"
@@ -772,8 +772,8 @@ class DefaultKeys(Enum):
     CONSERVATIVE_DIPOLE = "conservative_dipole"
     CONSERVATIVE_POLARIZABILITY = "conservative_polarizability"
     BORN_EFFECTIVE_CHARGES = "born_effective_charges" # do not consider LES
-    MAGNETIZATION = "magnetization"
-    MAGNETIC_SUSCEPTIBILITY = "magnetic_susceptibility"
+    # MAGNETIZATION = "magnetization"
+    # MAGNETIC_SUSCEPTIBILITY = "magnetic_susceptibility"
     POLARIZATION = "polarization"
 
     # MAG
@@ -789,9 +789,9 @@ class DefaultKeys(Enum):
 
     # only for embedding
     FIDELITY_IDX = "fidelity_idx"
-    TEMPERATURE = "temperature"
-    ELECTRON_TEMPERATURE = "electron_temperature"
-    SPIN_MULTIPLICITY = "spin_multiplicity"
+    # TEMPERATURE = "temperature"
+    # ELECTRON_TEMPERATURE = "electron_temperature"
+    # SPIN_MULTIPLICITY = "spin_multiplicity"
 
     @staticmethod
     def keydict() -> dict[str, str]:
@@ -828,7 +828,6 @@ class KeySpecification:
 def update_keyspec_from_kwargs(
     keyspec: KeySpecification, keydict: Dict[str, str]
 ) -> KeySpecification:
-    '''Modify from MACE to simplify reading property'''
     infos = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] != 'per-atom')]
     arrays = [f"{k}_key" for k, v in PROPERTY.items() if (v['scope'] == 'per-atom')]
     info_keys = {}

@@ -133,21 +133,16 @@ dataset:
   lmdb_wait_timeout: 86400 # in seconds; when training with multi-GPU, the maximum waiting time.
   force_dtype: null # 32 or 64, if your data grapg saved in lmdb, but original float64, you can force to float32 for convenience
   keys: # all default key name is the property name
-    level_key: level
+    fidelity_idx_key: fidelity_idx
     energy_key: energy
     forces_key: forces
     stress_key: stress
     virials_key: virials
-    hessian_key: hessian
     charges_key: charges
     total_charge_key: total_charge
-    spin_multiplicity_key: spin_multiplicity
-    temperature_key: temperature
-    electron_temperature_key: electron_temperature
     direct_forces_key: forces
     direct_stress_key: stress
     direct_virials_key: virials
-    direct_diagonal_hessian: hessian
     polarization_key: polarization
     direct_dipole_key: dipole
     conservative_dipole_key: dipole
