@@ -13,6 +13,7 @@ from omegaconf import ListConfig
 
 
 from .mse_fn import LOSS_FN
+from .registry import validate_loss_function_names
 
 
 class UncertaintyLoss(nn.Module):
@@ -31,9 +32,6 @@ class UncertaintyLoss(nn.Module):
         **kwargs,
     ):
         super().__init__()
-        init_log_sigmas = [
-            -math.log(2.0 * w) for w in loss_property_weights
-        ]
         assert isinstance(
             loss_property, (list, ListConfig)
         ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
@@ -41,19 +39,19 @@ class UncertaintyLoss(nn.Module):
             loss_function_name, (list, ListConfig)
         ), f"cfg.loss.loss_function_name should be a list, got {type(loss_function_name)}"
         assert isinstance(
-            init_log_sigmas, (list, ListConfig)
-        ), f"cfg.loss.loss_property_weights should be a list, got {type(init_log_sigmas)}"
+            loss_property_weights, (list, ListConfig)
+        ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property_weights)}"
+        init_log_sigmas = [
+            -math.log(2.0 * w) for w in loss_property_weights
+        ]
         if isinstance(loss_huber_delta, float) or loss_huber_delta is None:
-            loss_huber_delta = [loss_huber_delta] * len(loss_property)
+            loss_huber_delta = [loss_huber_delta] * len(loss_function_name)
         assert isinstance(
             loss_huber_delta, (list, ListConfig)
         ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
         assert len(loss_function_name) == len(init_log_sigmas) == len(loss_huber_delta)
         assert len(loss_property) <= len(loss_function_name)
-        for fn in loss_function_name:
-            assert (
-                fn in LOSS_FN
-            ), f"{fn} not in LOSS_FN, add by yourself, all available function name are {list(LOSS_FN)}"
+        validate_loss_function_names(loss_function_name)
 
         self.loss_property = loss_property
         self.loss_function_name = loss_function_name

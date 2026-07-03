@@ -11,6 +11,7 @@ from omegaconf import ListConfig
 
 
 from .mse_fn import LOSS_FN
+from .registry import validate_loss_function_names
 
 
 class NormalLoss(torch.nn.Module):
@@ -40,10 +41,7 @@ class NormalLoss(torch.nn.Module):
         ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
         assert len(loss_function_name) == len(loss_property_weights) == len(loss_huber_delta)
         assert len(loss_property) <= len(loss_function_name)
-        for fn in loss_function_name:
-            assert (
-                fn in LOSS_FN
-            ), f"{fn} not in LOSS_FN, add by yourself, all available function name are {list(LOSS_FN)}"
+        validate_loss_function_names(loss_function_name)
         self.loss_property = loss_property
         self.loss_function_name = loss_function_name
         self.loss_huber_delta = loss_huber_delta
