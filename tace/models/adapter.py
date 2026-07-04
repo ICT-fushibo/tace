@@ -78,8 +78,8 @@ class TensorModel(torch.nn.Module):
             inputs.append(graph.displacement)
         if self.flags.compute_polarization or self.flags.compute_conservative_dipole:
             inputs.append(data["electric_field"])
-        if self.flags.compute_magnetization:
-            inputs.append(data["magnetic_field"])
+        # if self.flags.compute_magnetization:
+        #     inputs.append(data["magnetic_field"])
         if self.flags.compute_collinear_magnetic_forces:
             inputs.append(data["initial_collinear_magmoms"])
         if self.flags.compute_noncollinear_magnetic_forces:
@@ -116,9 +116,9 @@ class TensorModel(torch.nn.Module):
         if self.flags.compute_polarization or self.flags.compute_conservative_dipole:
             P = -grads[idx]
             idx += 1
-        if self.flags.compute_magnetization:
-            M = -grads[idx]
-            idx += 1
+        # if self.flags.compute_magnetization:
+        #     M = -grads[idx]
+        #     idx += 1
         if self.flags.compute_collinear_magnetic_forces:
             C_MAG_F = -grads[idx]
             idx += 1
@@ -182,7 +182,7 @@ class TensorModel(torch.nn.Module):
 
         BECList = []
         ALPHAList = []
-        CHI_MList = []
+        # CHI_MList = []
         if self.flags.compute_conservative_polarizability or self.flags.compute_born_effective_charges:
             for i in range(3):  # μ = 0,1,2
 
@@ -223,25 +223,25 @@ class TensorModel(torch.nn.Module):
             BEC = BEC.transpose(1, 0)  #        # [atoms, 3 (pol), 3 (pos)]
             ALPHA = torch.stack(ALPHAList, dim=1)  # [B,3,3]
 
-        if self.flags.compute_magnetization:
-            MF = data["magnetic_field"]
-            for i in range(3):
-                mag_i = magnetization.sum(dim=0)[i]
-                CHI_M = torch.autograd.grad(
-                    outputs=mag_i,
-                    inputs=[MF],
-                    retain_graph=(
-                        i != 2 
-                        or self.training 
-                        or self.flags.compute_hessians 
-                    ),
-                    create_graph=self.training,
-                    allow_unused=True,
-                )[0]
-                if CHI_M is None:
-                    CHI_M = torch.zeros_like(MF)
-                CHI_MList.append(CHI_M)  # [B,3]
-            CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
+        # if self.flags.compute_magnetization:
+        #     MF = data["magnetic_field"]
+        #     for i in range(3):
+        #         mag_i = magnetization.sum(dim=0)[i]
+        #         CHI_M = torch.autograd.grad(
+        #             outputs=mag_i,
+        #             inputs=[MF],
+        #             retain_graph=(
+        #                 i != 2 
+        #                 or self.training 
+        #                 or self.flags.compute_hessians 
+        #             ),
+        #             create_graph=self.training,
+        #             allow_unused=True,
+        #         )[0]
+        #         if CHI_M is None:
+        #             CHI_M = torch.zeros_like(MF)
+        #         CHI_MList.append(CHI_M)  # [B,3]
+        #     CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
 
 
         if self.flags.compute_hessian:

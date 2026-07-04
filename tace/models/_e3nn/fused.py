@@ -23,25 +23,6 @@ from ..softmax import GraphSoftmax
 from ..linear import  torchLinear
 
 
-def wigner_bmm(
-    wigner: torch.Tensor,
-    features: torch.Tensor,
-) -> torch.Tensor:
-    compute_dtype = (
-        torch.float64
-        if features.dtype == torch.float64
-        else torch.float32
-    )
-    with torch.autocast(
-        device_type=features.device.type,
-        enabled=False,
-    ):
-        return torch.bmm(
-            wigner.to(dtype=compute_dtype),
-            features.to(dtype=compute_dtype),
-        )  
-    
-
 class uuuTensorProduct(torch.nn.Module):
     def __init__(
         self,
@@ -320,25 +301,22 @@ class uvSO2TensorProduct(torch.nn.Module):
         )        
         if self.use_so2_edge_ace:
 
-            # BUG version
-            self.linear_glu = uvSO2Linear(
-                mmax,
-                lmax,
-                self.num_channel * 2,
-                self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
-                num_components_out=num_components_out,
-                weight_type=self.so2_linear_type,
-            )
-
-            # # NO BUG version
             # self.linear_glu = uvSO2Linear(
             #     mmax,
             #     lmax,
             #     self.num_channel * 2,
             #     self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
-            #     num_components_out=[lmax+1] + [lmax+1 for m in range(1, mmax+1)],
+            #     num_components_out=num_components_out,
             #     weight_type=self.so2_linear_type,
             # )
+            self.linear_glu = uvSO2Linear(
+                mmax,
+                lmax,
+                self.num_channel * 2,
+                self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
+                num_components_out=[lmax+1] + [lmax+1 for m in range(1, mmax+1)],
+                weight_type=self.so2_linear_type,
+            )
 
             self.ece = ComplexProductBasis(
                 mmax, 
@@ -466,7 +444,6 @@ class uvSO2TensorProduct(torch.nn.Module):
         num_edges = w.size(0)
         x = self.reshape_in(x)
         m_ij = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
-        # m_ij = wigner_bmm(wigner, m_ij)
         m_ij = torch.bmm(wigner, m_ij)
 
         if self.use_graph_softmax:
@@ -480,16 +457,13 @@ class uvSO2TensorProduct(torch.nn.Module):
 
         if self.use_so2_edge_ace:
             coefs = self.nonlinearity.scalar_act(self.linear_coefs(m_ij).squeeze(-1))
-            # BUG version
-            m_ij_2 = self.linear_glu(m_ij)
-            m_ij_2 = m_ij_2.narrow(
-                1,
-                self.num_gates,
-                self.split_list[1],
-            ) 
-
-            # ## NO BUG version
             # m_ij_2 = self.linear_glu(m_ij)
+            # m_ij_2 = m_ij_2.narrow(
+            #     1,
+            #     self.num_gates,
+            #     self.split_list[1],
+            # ) 
+            m_ij_2 = self.linear_glu(m_ij)
 
             m_ij = self.linear_up(m_ij) 
             gate = m_ij.narrow(1, 0, self.split_list[0])
