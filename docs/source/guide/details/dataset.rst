@@ -7,6 +7,7 @@ loaded from specified files, and which keyscare used to read training labels fro
 
 
 .. note::
+  
    - The priority order is:  ``no_valid_set`` > ``valid_file`` > ``valid_from_index`` > ``valid_ratio``.
 
 

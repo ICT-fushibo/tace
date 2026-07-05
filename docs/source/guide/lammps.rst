@@ -7,10 +7,6 @@ An example can be found at:
 
 https://github.com/xvzemin/tace/tree/main/example/lammps
 
-
-We provide an interface for LAMMPS-MLIAP that supports multi-node and multi-GPU parallelization. 
-To use any MLIP (such as TACE, NequIP, MACE, Allegro, etc.) in LAMMPS, there are two steps:
-
 Step 1: Install LAMMPS
 ----------------------
 
@@ -70,10 +66,10 @@ To convert this checkpoint into a format readable by LAMMPS, execute the followi
 .. code-block:: bash
 
    # Use your own model, or tace foundational model
-   cp ~/.cache/tace/TACE-v1-OMat24-M.pt .
+   cp ~/.cache/tace/TACE-OAM-L.pt .
 
    # tace-export -h 
-   tace-export -m TACE-v1-OMat24-M.pt --backend lammps 
+   tace-export -m TACE-OAM-L.pt --backend lammps 
 
 After running `tace-export`, you will get a file with extension `*-lammps_mliap.pt`.  
 This is the exported model file that you will use in LAMMPS.  

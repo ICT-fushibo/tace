@@ -1,7 +1,7 @@
 misc
 ====
 
-The `misc` section contains miscellaneous configuration options for training and execution, such as tf32 training.
+The misc section contains miscellaneous configuration options for training and execution, such as tf32 training.
 
 Example
 -------

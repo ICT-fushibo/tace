@@ -1,10 +1,21 @@
 Acceleration Tutorial
 =====================
 
-Backend Types
--------------
+TACE provides two main approaches for acceleration:
 
-The following table summarizes the available backends for TACE:
+- The most computationally expensive part of equivariant models is typically 
+  edge-level computation. Therefore, the core idea behind external acceleration 
+  libraries is to avoid computing and storing all edge-level tensors simultaneously.
+
+- You can also use PyTorch compilation techniques to accelerate the entire model. 
+  This can provide a 2-3x speedup. However, because TACE currently supports a wide range 
+  of physical quantities and parts of the model code are relatively complex, 
+  this feature is planned for version 0.3.0.
+
+External kernel
+---------------
+
+The following table summarizes the available external kernel for TACE:
 
 +--------------------+-------------+
 | Backend            | Support ?   |
@@ -20,20 +31,7 @@ The following table summarizes the available backends for TACE:
 | cuequivariance     | ✔           |
 +--------------------+-------------+
 
-
-Acceleration Methods for Specific Models
-----------------------------------------
-
-We control acceleration for training and inference through environment variables.
-
-Openequivariance is used to accelerate tensor product computations at the edge level.
-
-Cuequivariance is used to accelerate tensor product computations at the edge level.
-
-Equitroch is used to accelerate tensor product computations at the node level.
-
 Set the corresponding environment variable to 1 to enable it, and 0 to disable it.
-
 
    .. code-block:: bash
 
@@ -42,16 +40,22 @@ Set the corresponding environment variable to 1 to enable it, and 0 to disable i
       export TACE_USE_EQT=1   # equitroch      
 
 
-1. ``tace.models.e3nnTACE``
+.. note::
+
+   ``eqt`` is primarily intended to accelerate models with ``correlation > 2`` 
+   and is generally not recommended for typical use cases. 
+   The main acceleration backends are ``oeq`` and ``cueq``.
+
+.. 1. ``tace.models.e3nnTACE``
    
-   Support ``oeq``, ``cue`` and ``eqt``.
+..    Support ``oeq``, ``cue`` and ``eqt``.
    
-3. ``tace.models.cartTACE``
+.. 2. ``tace.models.cartTACE``
 
-   This model does not support acceleration.
+..    This model does not support acceleration.
 
-   The Cartesian version of TACE is currently being refactored for better future compatibility.
+..    The Cartesian version of TACE is currently being refactored for better future compatibility.
 
-   If you need to use the Cartesian version at this time, please refer to version v0.1.0:
+..    If you need to use the Cartesian version at this time, please refer to version v0.1.0:
 
-   https://github.com/xvzemin/tace/tree/v0.1.0
+..    https://github.com/xvzemin/tace/tree/v0.1.0

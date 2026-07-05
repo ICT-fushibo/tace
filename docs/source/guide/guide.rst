@@ -25,7 +25,6 @@ and `Hydra <https://hydra.cc/>`_.
    acceleration.rst
    foundation.rst
    finetune.rst
-   property.rst
    ase.rst
    lammps.rst
    openmm.rst

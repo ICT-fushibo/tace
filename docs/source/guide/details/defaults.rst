@@ -14,7 +14,7 @@ read multiple YAML files from different paths and merge them.
 Explanation:
 
 - ``_self_``: Start from the current YAML file itself.  
-- ``config/model@model: e3nn``: Load model configuration from ``./config/model/tace.yaml`` and add all parameters under the ``model`` field.  
+- ``config/model@model: e3nn``: Load model configuration from ``./config/model/e3nn.yaml`` and add all parameters under the ``model`` field.  
 - ``config/logger@_here_: wandb``: Load logger configuration from ``./config/logger/wandb.yaml`` and merge all parameters directly into the current file.
 
 

@@ -11,8 +11,6 @@ Training Tutorial
   - Bool values are recommended to be written as ``true`` or ``false`` in YAML format.
   - Not all fields in the ``YAML`` file are allowed to be omitted. We recommend using the official input file as much as possible and making only minimal modifications.
   
-.. code-block:: yaml
-
 
 Once you have prepared the input files, you can start training using the command:
 
