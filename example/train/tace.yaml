@@ -207,7 +207,7 @@ optimizer:
   # adam_betas: [0.9, 0.98]
 
 scheduler:
-  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau # validaton-based
   mode: min
   factor: 0.5
   # min_lr: 1e-6
@@ -242,7 +242,6 @@ scheduler:
   #   interval: step
   #   frequency: 1
 
-
 synth_metric: 
   # All metrics can be accessed by combining the stage (train | val) with the property name and the metric type (mae or rmse), for example:
   # val/energy_mae, val/energy_per_atom_rmse, val/forces_mae, val/stress_rmse, val/loss, train/loss ...
@@ -268,7 +267,6 @@ loss:
     - mse_stress
   loss_property_weights: [1.0, 5.0, 0.5]
   loss_huber_delta: [0.01, 0.01, 0.01]
-
 
 model:
   # export TACE_USE_OEQ=1 to use openequivariance, 0 to disable
@@ -443,4 +441,3 @@ model:
     dropout:  
       use_first_dropout: false
       stochastic_depth: 0.0
-    

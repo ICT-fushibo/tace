@@ -13,7 +13,7 @@ Example
   # - In most cases, if training is stable (no strong oscillation),
   #   it is recommended to use MSE for all loss terms.
   # - If noticeable oscillations or outliers appear during training,
-  #   consider switching the corresponding terms to Huber loss.
+  #   consider switching the corresponding terms to huber or l2mae loss.
   # - When energy weight is fixed to 1.0:
   #     * forces weight: typically in the range [1, 10]
   #     * stress weight: typically in the range [0.5, 10]
@@ -22,12 +22,12 @@ Example
     _target_: tace.utils.loss.NormalLoss
     loss_property: [energy, forces, stress] 
     # loss_property: [energy, forces, stress, polarization, conservative_polarizability, bonn_effective_charges] 
-    loss_function_name:  # prefix can be one of ["mse", "huber", "mae"]
+    loss_function_name:  # prefix can be one of ["mse", "mae", "l2mae", "huber"]
       - mse_energy_per_atom
       - mse_forces
       - mse_stress
     loss_property_weights: [1, 8, 8] 
-    loss_huber_delta: 0.01 # float or List[float]
+    loss_huber_delta: [0.01, 0.01, 0.01] # float or List[float]
     # loss_property_weights: [1, 1, 1, 1, 1000, 1] 
 
   # # Loss Type 2
@@ -53,10 +53,6 @@ Example
 Notes
 -----
 
-- **Choice of loss function name**:  
+- For properties that are already *per-atom* quantities,  
+  the ``per_atom`` suffix is not required and is not supported.
 
-  - For properties that are already *per-atom* quantities,  
-    the ``per_atom`` suffix is not required and is not supported.
-  - In general, mean squared error (MSE) performs better than mean absolute
-    error (MAE) during training. For training on large datasets (uMLIPs),
-    we recommend using the huber loss.

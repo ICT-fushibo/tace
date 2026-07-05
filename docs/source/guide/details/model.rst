@@ -1,166 +1,173 @@
 model
 =====
 
-This section describes the model architecture. In general, we use the traditional
-two-layer ACE architecture with ``correlation=3``, which achieves state-of-the-art
-accuracy in various benchmarks reported in the TACE paper.  
-
-If you want to increase the number of layers, we recommend setting ``correlation=2``.  
-We also provide extensive model parameters to control the architecture. 
-
-Typically, ``Lmax`` and ``lmax`` in Cartesian coordinates should not exceed 3. The number of channels
-is recommended to be between 48 and 64, which is sufficient and should not be larger.
-
-For the nonlinear gates in the interaction module, we recommend enabling them 
-when working with large datasets to enhance the model's learning capacity.
-
+This section describes the model architecture. 
 
 .. note::
 
-   Below is an example of usage. If a parameter comes from the internal
-   implementation of TACE, it may not be the most up-to-date. For the latest
-   parameters, please refer to the corresponding configuration files on GitHub.
-   A complete list of parameters along with detailed explanations is provided.
+We recommend an overall architecture with either more than two layers and correlation = 2, or two layers and correlation = 3.
+
+- 2 layer + correlation = 3
+- > 2 layer + correlation = 2
+
+The number of model parameters is mainly determined by the number of channels and 
+by whether the ResNet and product basis modules are element-dependent.
+When these modules are element-dependent, the number of model parameters can increase substantially. 
+This is the default and recommended setting, as it does not affect computational speed. 
+You can combine it with appropriate nonlinearities to reduce the use of element-dependent modules.
+
 
 Example
 -------
 
 .. code-block:: yaml
 
-  config:
-    _target_: tace.models.TACEV1 # only TACEV1 are avaliable now
-    wrapper:
-        _target_: tace.models.WrapModelV1 # only WrapModelV1 are avaliable now
+    model:
+    # export TACE_USE_OEQ=1 to use openequivariance, 0 to disable
+    # export TACE_USE_CUE=1 to use cuequivariance, 0 to disable
+    # export TACE_USE_EQT=1 to use equitorch, 0 to disable for correlation > 2
+    config:
 
-    cutoff: 5.0 # (float), recommend 6.0
-    max_neighbors: null # (null, int) if you want to use tace in lammps, do not use max_neighbors
-    atomic_numbers: null # (null, list), null = read from dataset.
-    atomic_energies: # (list[dict[int, float]], null) null = auto caculate, for each computational fidelity_idx
-        - {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047}
-    num_fidelities: 1
-    use_multi_head: false # (bool)
-    use_multi_fidelity: false # (bool)
-    Lmax: 2 # (int, list), Truncation for node, 2 is recommended. If >2, recommend set `l1l2 = <=`
-    lmax: 3 # (int, list), Truncation for edge, 3 is recommended, 2 for higher speed. If >3, recommend set `l1l2 = <=`
-    num_layers: 2 # (int), 2 for correlation >=2, can be higher when correlation=2
-    bias: true # (bool), false is more safe, but true sometimes give better results
-    num_channel: 64 # (int), recommended 48-64, 64's accuracy is enough to achieve SOTA
-    num_channel_hidden: ${model.config.num_channel} # (int), equal num_channel is the best
+        _target_: tace.models.e3nnTACE # [e3nnTACE] 
+        wrapper:
+        _target_: tace.models.TensorModel # [TensorModel]
 
-    radial_basis:
-        radial_basis: j0   # [j0, jn, n_j0]
-        num_radial_basis: 8 # (int) 8-10 is recommended 
-        distance_transform: null # (null, str) choices: [null, Agnesi, Soft], this plug-in from mace, if you do not know what it means, never use
-        polynomial_cutoff: 5 # (int, float)
-        order: 0 # (int), specify order for jn, for j0, it is negligible, for jn, you should use float64
+        cutoff: 6.0 # (float), recommend 6.0
+        max_neighbors: null # (null, int) # in test, not for users
+        atomic_numbers: null # (null, list), null = read from dataset.
+        
+        fidelity:
+        - {
+            name: PBE, # (str) custom name
+            atomic_energy: null # (null, Dict[int, float]), {1: -13.587222780835477, 6: -1029.4889999855063, 7: -1484.9814568572233, 8: -2041.9816003861047} 
+        }
+
+        node_embedding: 
+        type: linear    # [linear, nonlinear, tensor, so2_tensor], linear is safer
+
+        edge_embedding: 
+        type: nonlinear # identity  # [identity, linear, nonlinear, element2], identity is safer
+
+        edge_update:
+        type: element2  # [identity, element2], identity is safer
+
+        mmax: 3 # Truncation for SO2 irreps, 3 is recommended.
+        Lmax: 2 # Truncation for node, 2 is recommended.
+        lmax: 3 # Truncation for edge, 3 is recommended.
+        num_layers: 3 # 2 for correlation >=3, can be higher when correlation=2
+        num_channel: 48 # (int), 48~64, 64's accuracy is enough to achieve SOTA, never use channel > 64
+        parity: false # (bool) in test, not for users, always false
+
+        radial_basis:
+        radial_basis: j0   # [j0, jn, gaussian]
+        num_radial_basis: 8 # (int) 8-10 for j0 and jn, 8-64 for gaussian 
+        distance_transform: null # [null, Agnesi, Soft], this plug-in from mace, if you do not know what it means, never use
+        cutoff_fn: c2poly # [c2poly, c3poly, mollifier, cosine]
+        polynomial_cutoff: 5 # (int)
+        gaussian_width: 2.0
+        order: 0 # (int), specify order for jn, for j0, it is negligible, for jn, <7 stable
         trainable: false # (bool)
         apply_cutoff: false # # (bool) true: cutoff was use in before radial_mlp, false: after radial_mlp
+        hidden: [64, 64] # list(int)
+        bias: true  # (bool)
+        use_dydynamic_cutoff: false # in test, not for users
+        dydynamic_cutoff_mu: 40     # in test, not for users
+        r_min: 0.0                  # in test, not for users
 
-    angular_basis:
-        traceless: true # (bool), always set this to true
-        norm: true      # (bool), always set this to true
+        resnet: 
+        type: BB # [BB, AB, BAB] A = atomic_basis, B = product_basis, control how resnet connect
+        linear_type: aware # [aware, agnostic, identity]
+        use_first_resnet: false
 
-    radial_mlp:
-        hidden: [64, 64, 64, 1024] # (list(int), list(list(int)))
-        act: 'silu'   # (str, null)
-        bias: false   # (bool)
+        layer_norm: # If training is unstable, prioritize specifying pre_norm_type. If it is still unstable, specify pre_norm_type.
+        pre_norm_type: null     # [merge_rms_norm, merge_layer_norm]
+        final_norm_type: null   # [merge_rms_norm, merge_layer_norm]
+        use_first_pre_norm: false 
+            
+        atomic_basis:
+        type: cgtp # [cgtp, so2] 
+        # type: [cgtp, so2, cgtp, so2 ...]
+        l1l2: null # [null, <=], restriction for each layer
+        scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
+        nonlinear: sigmoid_gate # [null, sigmoid_gate]
+        edge_nonlinear: so2_sigmoid_gate # [null, so2_sigmoid_gate]
+        edge_info_type: mlp # [mlp, glu]
+            
+        # in test, not use
+        node_wise_hidden: null
+        edge_wise_hidden: null
+        edge_ace_hidden: null
+        num_head: null
+        use_graph_softmax: false
+        use_so2_edge_ace: false
+        so2_l1l3: None,
+        so2_linear_type: w1 # [w1, w1_w1, w1_w2], always use w1
+        so2_agnostic: true
+        use_temperature: true
+        gate_m0: false
+        scalar_act: null
+        tensor_act: null
+        use_radial_phase: false # false is recommend
 
-    inter:
-        l1l2: null # (null | str | list), choices: [null, <=], restriction for each layer
-        conv_weights: [edge_ij] # list, subset of [edge_ij, node_j, node_i]
-        normalizer: avg_num_neighbors  # str, choices: [avg_num_neighbors, density_v1]
-        nonlinearity:
-        type: null # (null | str), choices: [null, norm, gated]
-        gate: 'silu' # (null | str)
-        kernel: scatter # (str), choices: [scatter, torch_fusion] 
-        sc: # self connection
-          use_first_sc: false    # (bool), false is recommended
-          from: current_message  # (str), choices: [current_message, last_product]
-        use_resnet: false        # (bool), recommend true when use nonlinearity gate, else false
+        product_basis:
+        type: cgtp  # [cgtp, gtp]
+        # type: [cgtp, gtp, cgtp, gtp ...]
+        l1l2: null  # [null, <=]
+        correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
+        return_components: null # [null, list(int)], if not specify, last layer will only return target weight
+        num_expert: null
+        num_channel_per_expert: null
+        resolution: null # list[int, int] only useful for GtpACE, 
+        nonlinear: null
+        use_shared_expert: false
 
-    prod:
-        l1l2: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=]
-        l3l1: null  # (null | str | list), restriction when produce combination for each layer, choices: [null, <=, ==]
-        correlation: 3 # (int | list) body-order, 3 is recommended
-        element_aware: true # (bool) always set this to true
-        coupled_channel: true # (bool) always set this to true
-    
-    readout_emlp:
-        hidden: [16] # (list(int)) always set this to [16]
-        act: silu # (null | str) for l=0, always set this to silu
-        gate: silu # (null | str) for l>0
-        bias: false # (bool) only useful for l=0, recommended false
-        use_all_layer: true # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
-        enable_uie_readout: false # (bool), whether use universal invariant embedding readout
+        readout_emlp:
+        bias: false
+        hidden: [16]
+        use_alllayer: false # (bool) recommended true, if true, evergy layer has readout, else, only last layer has
+        use_uie: false # (bool) whether use uie readout
         
-    scale_shift:
-        scale_type: rms_forces # (null | str) add by_element can scale for each element
-        shift_type: mean_delta_energy_per_atom # (null | str)  add by_element can shift for each element,  for energy only, set ``null`` or ``std_energy``
+        scale_shift:
+        enable: true
+        scale_type: rms_forces # [null, rms_forces, rms_forcesrms_forces_by_element]
+        shift_type: null # [null, mean_delta_energy_per_atom, forces, mean_delta_energy_per_atom_by_element]
         scale_trainable: false # (bool) 
         shift_trainable: false # (bool) 
-        # # Manually modify the scale and shift parameters per element using the automatically generated statistics yaml file and ignore this parameter
-        scale_dict: auto 
-        shift_dict: auto
+        all_atoms: false
+        scale_zbl: false
 
-    short_range:
-        zbl: # metal units, for molecular dynamics, true is recommended
-        enable: false
-        trainable: false # recommended always false
+        short_range:
+        zbl: # metal units
+            enable: true    # recommended true
+            trainable: false # recommended always false
 
-    long_range:
+        long_range:
         les: # for introduction to the arguments, see the official repo: https://github.com/ChengUCB/les
-        enable: false
-        les_arguments:
+            enable: false
+            les_arguments:
             n_layers: 3
-            n_hidden': [32, 16]
+            n_hidden: [32, 16]
             add_linear_nn: true
             output_scaling_factor: 0.1
             sigma: 1.0
             dl: 2.0
+            remove_self_interaction: true
             remove_mean: true
             epsilon_factor: 1.0
             use_atomwise: false
             compute_bec: false
             bec_output_index: null
 
-    conservation: # only one of enable_* can be true for each property
-        charges:
-        method: lagrangian # (str) choices: [lagrangian, uniform_distribution] 
-
-    universal_embedding:
-        invariant:
-        fidelity_idx:
-            enable: false
-            num_embeddings: 5 # (int) the number of different DFT computational levels
-        
-        spin_multiplicity:
-            enable: false
-            num_embeddings: 2 # (int) 
-        
+        universal_embedding: 
         charges:
             enable: false
-            act: 'silu'   # (str, null)
 
         total_charge:
             enable: false
-            act: 'silu'   # (str, null)
 
-        collinear_magmoms:
+        spin_multiplicity:
             enable: false
-            act: 'silu'   # (str, null)
-        
-        temperature:
-            enable: false
-            act: 'silu'   # (str, null)
-
-        electron_temperature:
-            enable: false
-            act: 'silu'   # (str, null)
-
-        equivariant:
-        noncollinear_magmoms:
-            enable: false
-            normalizer: 1.0 # (float)
+            num_embeddings: 3 # (int) 
 
         electric_field:
             enable: false
@@ -170,3 +177,21 @@ Example
             enable: false
             normalizer: 1.0 # (float)
 
+        initial_noncollinear_magmoms: # only in SO(3) group, not O(3) now
+            enable: false
+            normalizer: 1.0 # (float)
+
+        special: # this field can be thoroughly ignored if you only interested in E/F/S training
+        
+        charges:
+            method: lagrangian # [lagrangian, uniform_distribution]
+
+        hessian:
+            num_samples: 2 # traing E/F/Hessian, for each graph, <= num_samples atoms's hessian will be used to train
+
+
+        # Unless you are traing foundation model, never use dropout
+        # This is designed for direct pre-training
+        dropout:  
+        use_first_dropout: false
+        stochastic_depth: 0.0
