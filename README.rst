@@ -113,6 +113,7 @@ If you use TACE, please cite our papers:
 
 .. code-block:: bibtex
 
+   # Cartesian TACE
    @misc{xu2026spectralspatialtensoratomiccluster,
          title={Spectral/Spatial Tensor Atomic Cluster Expansion with Universal Embeddings in Cartesian Space}, 
          author={Zemin Xu and Wenbo Xie and P. Hu},
@@ -123,7 +124,9 @@ If you use TACE, please cite our papers:
          url={https://arxiv.org/abs/2509.14961}, 
    }
 
-If you use Cartesian-3j, please cite our papers:
+   # Spherical/SO(2) TACE paper, will be updated soon
+
+If you use cartnn, Cartesian-3j, cMACE, cNequIP, cAllegro, please cite our papers:
 
 .. code-block:: bibtex
 
