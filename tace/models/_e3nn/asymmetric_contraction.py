@@ -439,7 +439,7 @@ class SO2ASymmetricContraction(torch.nn.Module):
         )
     
 
-class uuSO2TensorProduct(torch.nn.Module):
+class uuuSO2TensorProduct(torch.nn.Module):
     def __init__(
         self,
         mmax: int,
@@ -666,7 +666,7 @@ class ComplexProductBasis(torch.nn.Module):
         self.lmax = lmax
         self.num_channel = num_channel
         self.m1m2 = m1m2
-        self.tp = uuSO2TensorProduct(
+        self.tp = uuuSO2TensorProduct(
             self.mmax, 
             self.lmax,
             self.num_channel, 
