@@ -4,6 +4,7 @@
 ################################################################################
 
 import math
+import logging
 from typing import Union
 
 import torch
@@ -148,7 +149,11 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l3l1=l3l1,
             )
         else:
-            pass
+            logging.warning(
+                "You are not using OpenEquivariance or Cuequivariance. "
+                "For acceleration options, see "
+                "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
+            )
 
     def forward(
             self, 
