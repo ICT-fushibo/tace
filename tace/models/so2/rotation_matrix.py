@@ -3,13 +3,12 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 '''
-The rotation matrix constructed here aligns the edge with the y-axis [0,1,0] for broader use within the community.
+The rotation matrix constructed here aligns the edge with the y-axis [0,1,0].
 
 For details on obtaining a rotation matrix from quaternions, see:
 https://en.wikipedia.org/wiki/Hopf_fibration#Explicit_formulae
-
-The linear interpolation method is from:
-https://github.com/deepmodeling/deepmd-kit/blob/master/deepmd/pt/model/descriptor/sezm_nn/wignerd.py
+and
+https://github.com/facebookresearch/fairchem/blob/main/src/fairchem/core/models/uma/common/quaternion/quaternion_utils.py
 '''
 
 import torch
