@@ -305,15 +305,6 @@ class uvSO2TensorProduct(torch.nn.Module):
             tensor_act=tensor_act,
         )        
         if self.use_so2_edge_ace:
-
-            # self.linear_glu = uvSO2Linear(
-            #     mmax,
-            #     lmax,
-            #     self.num_channel * 2,
-            #     self.edge_ace_hidden if self.use_so2_edge_ace else self.edge_wise_hidden,   
-            #     num_components_out=num_components_out,
-            #     weight_type=self.so2_linear_type,
-            # )
             self.linear_glu = uvSO2Linear(
                 mmax,
                 lmax,
@@ -322,7 +313,6 @@ class uvSO2TensorProduct(torch.nn.Module):
                 num_components_out=[lmax+1] + [lmax+1 for m in range(1, mmax+1)],
                 weight_type=self.so2_linear_type,
             )
-
             self.ece = ComplexProductBasis(
                 mmax, 
                 lmax, 
@@ -462,18 +452,11 @@ class uvSO2TensorProduct(torch.nn.Module):
 
         if self.use_so2_edge_ace:
             coefs = self.nonlinearity.scalar_act(self.linear_coefs(m_ij).squeeze(-1))
-            # m_ij_2 = self.linear_glu(m_ij)
-            # m_ij_2 = m_ij_2.narrow(
-            #     1,
-            #     self.num_gates,
-            #     self.split_list[1],
-            # ) 
             m_ij_2 = self.linear_glu(m_ij)
-
             m_ij = self.linear_up(m_ij) 
             gate = m_ij.narrow(1, 0, self.split_list[0])
             m_ij = m_ij.narrow(1, self.split_list[0], self.split_list[1])
-            m_ij = m_ij + self.nonlinearity(m_ij, gate) + self.ece(m_ij, m_ij_2, coefs) # x + x**2 + x**3
+            m_ij = m_ij + self.nonlinearity(m_ij, gate) + self.ece(m_ij, m_ij_2, coefs) # x + x**2 + x**3 TODO, forget scale
         else:
             m_ij = self.linear_up(m_ij) 
             gate = m_ij.narrow(1, 0, self.split_list[0])
