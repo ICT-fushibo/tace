@@ -10,11 +10,13 @@ from typing import Any, Dict, List
 import torch
 
 
+from tace.utils.env import get_tace_use_compile
 from ..utils.utils import deep_convert
 
 
-def select_wrapper(model_config: Dict) -> Any:
-    wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
+def select_wrapper(model_config: Dict, wrapper_path: str = None) -> Any:
+    if wrapper_path is None:
+        wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
     module_name, class_name = wrapper_path.rsplit(".", 1)
     module = importlib.import_module(module_name)
     wrap_cls = getattr(module, class_name)
@@ -34,14 +36,23 @@ def select_model(
     else:
         model_config = cfg
 
-    # === wrapper cls ===
-    WRAPPER_CLS = select_wrapper(model_config)
-
     # === model cls ===
     if 'kwargs' in model_config:
         model_path = model_config['kwargs'].get('_target_', 'tace.models.e3nnTACE')
     else:
         model_path = model_config.get('_target_', 'tace.models.e3nnTACE')
+
+    wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
+    if get_tace_use_compile() == "1" and model_path in {
+        "tace.models.e3nnTACE",
+        "tace.models._e3nn.e3nnTACE",
+    }:
+        model_path = "tace.models._e3nn_compile.e3nnTACE"
+        if wrapper_path == "tace.models.TensorModel":
+            wrapper_path = "tace.models.CompileTensorModel"
+
+    # === wrapper cls ===
+    WRAPPER_CLS = select_wrapper(model_config, wrapper_path)
         
     module_name, class_name = model_path.rsplit(".", 1)
     module = importlib.import_module(module_name)

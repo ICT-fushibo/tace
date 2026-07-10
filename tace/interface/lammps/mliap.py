@@ -2,12 +2,6 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-'''
-This interface is general. As long as you have successfully compiled LAMMPS 
-with any one of the models TACE, TACE, NequIP, or Allegro ...
-then all MLIPs that have an interface with LAMMPS-ML-IAP can be used.
-'''
-
 
 import logging
 from typing import Dict, Tuple
@@ -22,10 +16,9 @@ except ImportError:
     LAMMPS_ML_IAP_AVAILABLE = False
 
 from tace.lightning import load_tace
-from tace.models.adapter import TensorModel
 
 class EdgeForcesWrapper(torch.nn.Module):
-    def __init__(self, model: TensorModel, **kwargs):
+    def __init__(self, model: torch.nn.Module, **kwargs):
         super().__init__()
         model.lmp = True
         model.flags.compute_forces = False

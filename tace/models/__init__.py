@@ -1,12 +1,11 @@
+# from ._cart import cartTACE
 from ._e3nn import e3nnTACE
 from .adapter import TensorModel
-# from ._cart import cartTACE
-# from ._transformer import TACEformer
+from ._e3nn_compile import CompileTensorModel
 
 __all__ = [
     # "cartTACE",
-    # "TACEformer",
     "e3nnTACE",
     "TensorModel",
+    "CompileTensorModel",
 ]
-

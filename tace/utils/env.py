@@ -24,6 +24,10 @@ def get_tace_use_eqt():
     return os.environ.get("TACE_USE_EQT", "0")
 
 
+def get_tace_use_compile():
+    return os.environ.get("TACE_USE_COMPILE", "0")
+
+
 def get_tace_apply_u_shift():
     return os.environ.get("TACE_APPLY_U_SHIFT", "0")
 
@@ -47,4 +51,3 @@ def get_tace_dens_loss_ratio():
 
 def get_tace_use_matrix_weight():
     return os.environ.get("TACE_USE_MATRIX_WEIGHT", '0')
-
