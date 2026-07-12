@@ -11,8 +11,8 @@
    :width: 100%
    :align: center
 
-Tensor Atomic Cluster Expansion (TACE)
-======================================
+Tensor Atomic/Edge Cluster Expansion (TACE/TECE)
+================================================
 .. = - ~ ^ "
 TACE is designed with physical priors and strong inductive biases to enhance extrapolation capability. 
 It performs Atomic Cluster Expansion and Edge Cluster Expansion based on spherical tensors 
@@ -27,17 +27,18 @@ https://tace.readthedocs.io/en/latest/index.html
 SOTA Foundation Model
 ---------------------
 
+https://github.com/xvzemin/tace-foundations
+
+
 Default Ranking on Matbench as of July 8, 2026
 
 .. figure:: fig/matbench_tece_rra.png
    :width: 100%
    :align: center
 
-https://github.com/xvzemin/tace-foundations
-
 
 Fine-tuning
---------------------------------
+-----------
 
 - ✅ Full-parameter.
 
