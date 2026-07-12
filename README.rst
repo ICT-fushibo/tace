@@ -1,11 +1,11 @@
-Note
-====
+.. Note
+.. ====
 
-The OMat24 series of RRA and ECE models will be released soon, and smaller models will also be added.
-TECE-OAM-RRA-1.0 is not the final version of OAM. As the author will be attending ICML 2026 in the coming days, 
-TACE v0.2.0 will not be officially updated for the next few days. 
-However, the current models are already available for use.
-Please do not use the fine-tuning feature until the official release of v0.2.0.
+.. The OMat24 series of RRA and ECE models will be released soon, and smaller models will also be added.
+.. TECE-OAM-RRA-1.0 is not the final version of OAM. As the author will be attending ICML 2026 in the coming days, 
+.. TACE v0.2.0 will not be officially updated for the next few days. 
+.. However, the current models are already available for use.
+.. Please do not use the fine-tuning feature until the official release of v0.2.0.
 
 .. image:: fig/logo.svg
    :width: 100%
@@ -26,6 +26,10 @@ https://tace.readthedocs.io/en/latest/index.html
 
 Foundation Model and Fine-tuning
 --------------------------------
+
+.. image:: fig/matbench_tece_rra.png
+   :width: 100%
+   :align: center
 
 https://github.com/xvzemin/tace-foundations
 
