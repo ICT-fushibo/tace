@@ -8,7 +8,7 @@ performance improvement. All acceleration methods are controlled through
 
 - The most computationally expensive part of equivariant models is typically 
   edge-level computation. Therefore, the core idea behind external acceleration
-  libraries ``oeq``` and ``cueq`` is to avoid computing and storing all 
+  libraries ``oeq`` and ``cueq`` is to avoid computing and storing all 
   edge-level tensors simultaneously.  
   
 - You can also use PyTorch compilation techniques to accelerate the entire model. 
@@ -51,13 +51,13 @@ Set the corresponding environment variable to 1 to enable it, and 0 to disable i
 .. note::
 
   - If your model is a parameter dictionary, the relevant environment variables 
-  can be used to replace or modify the model at runtime. However, once the model 
-  has been serialized, it can no longer be modified through environment variables. 
-  Therefore, you should set the required environment variables before exporting 
-  the model, for example, before exporting a model for use with LAMMPS.
+    can be used to replace or modify the model at runtime. However, once the model 
+    has been serialized, it can no longer be modified through environment variables. 
+    Therefore, you should set the required environment variables before exporting 
+    the model, for example, before exporting a model for use with LAMMPS.
 
   - ``eqt`` is primarily intended to accelerate models with ``correlation > 2`` 
-   and is generally not recommended for typical use cases. 
+    and is generally not recommended for typical use cases. 
 
 
 .. 1. ``tace.models.e3nnTACE``

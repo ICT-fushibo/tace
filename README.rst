@@ -24,14 +24,20 @@ Docs
 https://tace.readthedocs.io/en/latest/index.html
 
 
-Foundation Model and Fine-tuning
---------------------------------
+SOTA Foundation Model
+---------------------
 
-.. image:: fig/matbench_tece_rra.png
+Default Ranking on Matbench as of July 8, 2026
+
+.. figure:: fig/matbench_tece_rra.png
    :width: 100%
    :align: center
 
 https://github.com/xvzemin/tace-foundations
+
+
+Fine-tuning
+--------------------------------
 
 - ✅ Full-parameter.
 
