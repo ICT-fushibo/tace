@@ -1,8 +1,3 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
-
 from contextlib import contextmanager
 import operator
 from typing import Callable, Dict, Iterable, Sequence
@@ -46,19 +41,7 @@ def trace_and_compile(
 
     trace_inputs = [value.clone() for value in inputs]
     trace_inputs.extend(_state_values(model, parameter_names, buffer_names))
-    with _disable_duck_shape():
-        traced = make_fx(
-            compute,
-            decomposition_table=get_decompositions(
-                [torch.ops.aten.silu_backward.default]
-            ),
-            tracing_mode="symbolic",
-            _allow_non_fake_inputs=True,
-            _error_on_data_dependent_ops=True,
-        )(*trace_inputs)
-    _strip_saved_tensor_detach(traced)
-    traced = _rebuild_graph_module(traced)
-    _replace_sym_numel(traced)
+    traced = trace_to_fx(compute, trace_inputs)
 
     compiled = torch.compile(
         traced,
@@ -68,6 +51,26 @@ def trace_and_compile(
         options=_inductor_options() if backend == "inductor" else None,
     )
     return compiled, parameter_names, buffer_names
+
+
+def trace_to_fx(
+    fn: Callable,
+    inputs: Sequence[torch.Tensor],
+) -> torch.fx.GraphModule:
+    with _disable_duck_shape():
+        traced = make_fx(
+            fn,
+            decomposition_table=get_decompositions(
+                [torch.ops.aten.silu_backward.default]
+            ),
+            tracing_mode="symbolic",
+            _allow_non_fake_inputs=True,
+            _error_on_data_dependent_ops=True,
+        )(*[value.clone() for value in inputs])
+    _strip_saved_tensor_detach(traced)
+    traced = _rebuild_graph_module(traced)
+    _replace_sym_numel(traced)
+    return traced
 
 
 def compiled_call(

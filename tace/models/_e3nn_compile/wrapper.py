@@ -1,8 +1,3 @@
-################################################################################
-# Authors: Zemin Xu
-# License: MIT, see LICENSE.md
-################################################################################
-
 from typing import Dict, Sequence, Union
 
 import torch
@@ -60,11 +55,10 @@ class CompileTensorModel(TensorModel):
     def _should_compile(self, data: Dict[str, torch.Tensor]) -> bool:
         if self.lmp:
             return False
-        return (
-            data["positions"].shape[0] > 1
-            and data["edge_index"].shape[1] > 1
-            and data["ptr"].shape[0] > 2
-        )
+        valid_graph = data["positions"].shape[0] > 1 and data["edge_index"].shape[1] > 1
+        if not valid_graph:
+            return False
+        return not self.training or data["ptr"].shape[0] > 2
 
     def _compiled_forward(
         self, data: Dict[str, torch.Tensor]
