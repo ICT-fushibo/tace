@@ -86,53 +86,122 @@ def symmetric_traceless_outer_product(v: torch.Tensor, n: int, norm: bool = True
     return subtract_traces(T, n)
 
 
+# legacy, TODO
+# class CartesianHarmonics(torch.nn.Module):
+#     def __init__(self, lmax: int, norm: bool = True, traceless: bool = True) -> None:
+#         super().__init__()
+#         self.lmax = lmax
+#         self.norm = norm
+#         self.traceless = traceless
+#         for l in range(self.lmax+1):
+#             PS, DS, CS, SS = ICTD(l)
+#             self.register_buffer(f"D{l}", DS[0].to(torch.get_default_dtype()), persistent=False)
+#             del PS, DS, CS, SS
+
+#     def forward(self, v: torch.Tensor) -> Dict[int, torch.Tensor]:
+#         T = torch.ones_like(v[..., 0])
+#         edge_attrs: Dict[int, torch.Tensor] = {}
+#         edge_attrs[0] = T.unsqueeze(1)
+
+#         for l in range(1, self.lmax+1):
+#             T = T[..., None] * expand_dims_to(v, T.ndim + 1, dim=v.ndim - 1)
+#             edge_attrs[l] = T
+                
+#         if self.traceless:
+#             for l in range(1, self.lmax+1):
+#                 T = edge_attrs[l]
+#                 B = T.size(0)
+#                 if B != 0:
+#                     REST = T.size()[1:]
+#                     T = T.reshape(B, -1)
+#                     T = T @ self.D(l)
+#                     T = T.reshape((B,) + REST)
+#                 edge_attrs[l] = T
+
+#         if self.norm:
+#             for l in range(1, self.lmax+1):
+#                 edge_attrs[l] = edge_attrs[l] * _norm(l)
+                
+#         for l in range(1, self.lmax+1):
+#             edge_attrs[l] = edge_attrs[l].unsqueeze(-1)
+
+#         return edge_attrs
+
+#     def D(self, l: int):
+#         return dict(self.named_buffers())[f"D{l}"]
+    
+#     def __repr__(self):
+#         return f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, traceless={self.traceless})"
+    
+
 class CartesianHarmonics(torch.nn.Module):
-    def __init__(self, lmax: int, norm: bool = True, traceless: bool = True) -> None:
+    def __init__(
+        self,
+        lmax: int,
+        norm: bool = True,
+        traceless: bool = True,
+        *,
+        normalize: bool = False,
+        return_dict: bool = True,
+        eps: float = 1e-12, # TODO
+    ) -> None:
         super().__init__()
         self.lmax = lmax
         self.norm = norm
         self.traceless = traceless
-        for l in range(self.lmax+1):
-            PS, DS, CS, SS = ICTD(l)
-            self.register_buffer(f"D{l}", DS[0].to(torch.get_default_dtype()), persistent=False)
-            del PS, DS, CS, SS
+        self.normalize = normalize
+        self.return_dict = return_dict
+        self.eps = eps
+        for l in range(self.lmax + 1):
+            _, _, cart2sph, sph2cart = ICTD(l, l, decomposition=False)
+            self.register_buffer(
+                f"C{l}",
+                cart2sph[0].to(torch.get_default_dtype()),
+                persistent=False,
+            )
+            self.register_buffer(
+                f"CT{l}",
+                sph2cart[0].to(torch.get_default_dtype()),
+                persistent=False,
+            )
 
-    def forward(self, v: torch.Tensor) -> Dict[int, torch.Tensor]:
+    def forward(self, v: torch.Tensor) -> Union[Dict[int, torch.Tensor], torch.Tensor]:
+        if self.normalize:
+            v = torch.nn.functional.normalize(v, dim=-1, eps=self.eps)
+
         T = torch.ones_like(v[..., 0])
-        edge_attrs: Dict[int, torch.Tensor] = {}
-        edge_attrs[0] = T.unsqueeze(1)
+        batch = T.shape[0]
+        edge_attrs: Dict[int, torch.Tensor] = {0: T.unsqueeze(1)}
+        flat_attrs: List[torch.Tensor] = [T.reshape(batch, -1)]
 
-        for l in range(1, self.lmax+1):
+        for l in range(1, self.lmax + 1):
             T = T[..., None] * expand_dims_to(v, T.ndim + 1, dim=v.ndim - 1)
-            edge_attrs[l] = T
-                
-        if self.traceless:
-            for l in range(1, self.lmax+1):
-                T = edge_attrs[l]
-                B = T.size(0)
-                if B != 0:
-                    REST = T.size()[1:]
-                    T = T.reshape(B, -1)
-                    T = T @ self.D(l)
-                    T = T.reshape((B,) + REST)
-                edge_attrs[l] = T
+            field = T.reshape(batch, -1)
+            if self.norm:
+                field = field * _norm(l)
+            if self.traceless and batch != 0:
+                field = torch.matmul(torch.matmul(field, self.C(l)), self.CT(l))
+            flat_attrs.append(field)
+            if self.return_dict:
+                edge_attrs[l] = field.reshape((batch,) + T.shape[1:]).unsqueeze(-1)
 
-        if self.norm:
-            for l in range(1, self.lmax+1):
-                edge_attrs[l] = edge_attrs[l] * _norm(l)
-                
-        for l in range(1, self.lmax+1):
-            edge_attrs[l] = edge_attrs[l].unsqueeze(-1)
+        if self.return_dict:
+            return edge_attrs
+        return torch.cat(flat_attrs, dim=-1)
 
-        return edge_attrs
+    def C(self, l: int) -> torch.Tensor:
+        return getattr(self, f"C{l}")
 
-    def D(self, l: int):
-        return dict(self.named_buffers())[f"D{l}"]
+    def CT(self, l: int) -> torch.Tensor:
+        return getattr(self, f"CT{l}")
     
     def __repr__(self):
-        return f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, traceless={self.traceless})"
+        return (
+            f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, "
+            f"traceless={self.traceless}, normalize={self.normalize}, "
+            f"return_dict={self.return_dict})"
+        )
     
-
 class SphericalHarmonics(torch.nn.Module):
     """
     Copy from e3nn for torch.save

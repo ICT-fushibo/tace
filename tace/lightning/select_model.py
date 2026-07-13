@@ -3,9 +3,12 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+# TODO, refactor code
+
+
 import importlib
 from typing import Any, Dict, List
-
+import logging
 
 import torch
 
@@ -43,6 +46,7 @@ def select_model(
         model_path = model_config.get('_target_', 'tace.models.e3nnTACE')
 
     wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
+
     if get_tace_use_compile() == "1" and model_path in {
         "tace.models.e3nnTACE",
         "tace.models._e3nn.e3nnTACE",
@@ -50,6 +54,13 @@ def select_model(
         model_path = "tace.models._e3nn_compile.e3nnTACE"
         if wrapper_path == "tace.models.TensorModel":
             wrapper_path = "tace.models.CompileTensorModel"
+    else:
+        logging.warning(
+            "You are not using AOTI. "
+            "For acceleration options, see "
+            "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
+        )
+
 
     # === wrapper cls ===
     WRAPPER_CLS = select_wrapper(model_config, wrapper_path)

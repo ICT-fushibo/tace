@@ -135,7 +135,7 @@ dataset:
   avg_graph_size_in_KB: 200 # in KB, the total disk usage equals the size of this multiplied by the total number of your structures.
   lmdb_wait_timeout: 86400 # in seconds; when training with multi-GPU, the maximum waiting time.
   force_dtype: null # 32 or 64, if your data grapg saved in lmdb, but original float64, you can force to float32 for convenience
-  keys: # all default key name is the property name
+  keys: # all default value is the property name
     fidelity_idx_key: fidelity_idx
     energy_key: energy
     forces_key: forces
@@ -272,6 +272,8 @@ model:
   # export TACE_USE_OEQ=1 to use openequivariance, 0 to disable
   # export TACE_USE_CUE=1 to use cuequivariance, 0 to disable
   # export TACE_USE_EQT=1 to use equitorch, 0 to disable for correlation > 2
+
+  # export TACE_USE_COMPILE=1 to use aoti, 0 to disable
   config:
 
     _target_: tace.models.e3nnTACE # [e3nnTACE] 
@@ -325,7 +327,7 @@ model:
       linear_type: aware # [aware, agnostic, identity]
       use_first_resnet: false
 
-    layer_norm: # If training is unstable, prioritize specifying pre_norm_type. If it is still unstable, specify pre_norm_type.
+    layer_norm: # If training is unstable, prioritize specifying pre_norm_type. If it is still unstable, specify final_norm_type.
       pre_norm_type: null     # [merge_rms_norm, merge_layer_norm]
       final_norm_type: null   # [merge_rms_norm, merge_layer_norm]
       use_first_pre_norm: false 
@@ -346,7 +348,7 @@ model:
       num_head: null
       use_graph_softmax: false
       use_so2_edge_ace: false
-      so2_l1l3: None,
+      so2_l1l3: null
       so2_linear_type: w1 # [w1, w1_w1, w1_w2], always use w1
       so2_agnostic: true
       use_temperature: true
@@ -423,7 +425,7 @@ model:
         enable: false
         normalizer: 1.0 # (float)
 
-      initial_noncollinear_magmoms: # only in SO(3) group, not O(3) now
+      initial_noncollinear_magmoms:
         enable: false
         normalizer: 1.0 # (float)
 

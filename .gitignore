@@ -38,6 +38,7 @@ tmp/
 xzm/
 draw/
 3bpa/
+_cart/
 
 # Ignore specific files
 .DS_Store
@@ -51,3 +52,4 @@ draw/
 !BaTiO3.xyz
 !Jd.pt
 !matbench_tece_rra.png
+!_cart/README.md

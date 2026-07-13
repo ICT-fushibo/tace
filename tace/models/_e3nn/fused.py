@@ -63,8 +63,8 @@ class uuuTensorProduct(torch.nn.Module):
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
         self.use_eqt = get_tace_use_eqt() == '1'
-        # self.use_oeq = TACE_USE_OEQ == '1'
-        # self.use_cue = TACE_USE_CUE == '1'
+        # self.use_oeq = get_tace_use_oeq() == '1'
+        self.use_cue = get_tace_use_cue() == '1'
 
         if self.use_eqt:
             from .._eqt import e3nnEqtTensorProduct
@@ -76,8 +76,23 @@ class uuuTensorProduct(torch.nn.Module):
                 path=instructions,
                 trainable=trainable,
             )
+        elif self.use_cue:
+            from .._cue import e3nnCueTensorProduct
+            self.fused_tp = e3nnCueTensorProduct(
+                irreps_in1=irreps_in1,
+                irreps_in2=irreps_in2,
+                irreps_out=irreps_out,
+                l1l2=l1l2,
+                l2l3=l2l3,
+                l3l1=l3l1,
+                trainable=trainable,
+            )
         else:
-            pass
+            logging.warning(
+                "You are not using Cuequivariance or Equitorch. "
+                "For acceleration options, see "
+                "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
+            )
 
     def forward(
             self, x: torch.Tensor, y: torch.Tensor, ws: Union[torch.Tensor, None] = None
