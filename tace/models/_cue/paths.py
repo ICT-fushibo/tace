@@ -42,9 +42,6 @@ def generate_cueq_paths(
     l2l3: Union[str, None] = None,
     l3l1: Union[str, None] = None,
 ):
-    """
-    Based on ceuq channelwise_tensor_product
-    """
     irreps_in1: cue.Irreps = cue.Irreps(O3_e3nn, irreps_in1)
     irreps_in2: cue.Irreps = cue.Irreps(O3_e3nn, irreps_in2)
     irreps_out: cue.Irreps = cue.Irreps(O3_e3nn, irreps_out)

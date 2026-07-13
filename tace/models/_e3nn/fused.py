@@ -12,7 +12,7 @@ from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
 
 
-from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt
+from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt, get_tace_use_compile
 from ..layout import LayoutTransform
 from ..so2 import (
     uvSO2Linear, SO2Gate, uuSO2Linear,
@@ -64,7 +64,7 @@ class uuuTensorProduct(torch.nn.Module):
         self.weight_numel = self.tp.weight_numel
         self.use_eqt = get_tace_use_eqt() == '1'
         # self.use_oeq = get_tace_use_oeq() == '1'
-        self.use_cue = get_tace_use_cue() == '1'
+        # self.use_cue = get_tace_use_cue() == '1'
 
         if self.use_eqt:
             from .._eqt import e3nnEqtTensorProduct
@@ -76,23 +76,24 @@ class uuuTensorProduct(torch.nn.Module):
                 path=instructions,
                 trainable=trainable,
             )
-        elif self.use_cue:
-            from .._cue import e3nnCueTensorProduct
-            self.fused_tp = e3nnCueTensorProduct(
-                irreps_in1=irreps_in1,
-                irreps_in2=irreps_in2,
-                irreps_out=irreps_out,
-                l1l2=l1l2,
-                l2l3=l2l3,
-                l3l1=l3l1,
-                trainable=trainable,
-            )
+        # elif self.use_cue:
+        #     from .._cue import e3nnCueTensorProduct
+        #     self.fused_tp = e3nnCueTensorProduct(
+        #         irreps_in1=irreps_in1,
+        #         irreps_in2=irreps_in2,
+        #         irreps_out=irreps_out,
+        #         l1l2=l1l2,
+        #         l2l3=l2l3,
+        #         l3l1=l3l1,
+        #         trainable=trainable,
+        #     ) # large memory
         else:
             logging.warning(
                 "You are not using Cuequivariance or Equitorch. "
                 "For acceleration options, see "
                 "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
             )
+            pass
 
     def forward(
             self, x: torch.Tensor, y: torch.Tensor, ws: Union[torch.Tensor, None] = None
@@ -142,8 +143,21 @@ class O3ScatterTensorProduct(torch.nn.Module):
         self.irreps_out = actual_irreps_out
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
+
         self.use_oeq = get_tace_use_oeq() == '1'
         self.use_cue = get_tace_use_cue() == '1'
+        self.use_aoti = get_tace_use_compile() == '1'
+
+        if self.use_aoti and self.use_cue:
+            logging.warning(
+                "CUE and AOTI cannot be used simultaneously in Scatter Tensor Product. "
+                "Falling back to AOTI with OEQ instead. "
+                "If execution fails, install OpenEquivariance with: pip install openequivariance"
+            )
+            self.use_oeq = True
+            self.use_cue = False
+        else:
+            pass
 
         if self.use_oeq:
             from .._oeq import e3nnOeqScatterTensorProduct
@@ -162,6 +176,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,
+                instructions=self.instructions,
             )
         else:
             logging.warning(
