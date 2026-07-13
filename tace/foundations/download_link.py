@@ -21,7 +21,6 @@ OAM_SERIES = {
     "TACE-OMat24-RRA-Preview": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA-Preview.pt",
     "TECE-OMat24-RRA": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OMat24-RRA.pt",
 
-    "TACE-OAM-1M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-1M.pt",
     "TACE-OAM-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-L.pt",
     "TACE-OAM-RRA-Preview": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-RRA-Preview.pt",
     "TECE-OAM-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OAM-RRA-1.0.pt",

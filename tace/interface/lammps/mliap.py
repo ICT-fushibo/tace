@@ -15,8 +15,6 @@ try:
 except ImportError:
     LAMMPS_ML_IAP_AVAILABLE = False
 
-from tace.lightning import load_tace
-
 class EdgeForcesWrapper(torch.nn.Module):
     def __init__(self, model: torch.nn.Module, **kwargs):
         super().__init__()
@@ -51,7 +49,7 @@ class TACELammpsCalc(MLIAPUnified):
     '''Not test for cpu running, only cuda devices are tested'''
     def __init__(self, model, **kwargs):
         super().__init__()
-        model = load_tace(model)
+        
         self.model = EdgeForcesWrapper(model, **kwargs)
         self.element_types = [chemical_symbols[s] for s in model.readout_fn.atomic_numbers]
         self.num_species = len(self.element_types)
