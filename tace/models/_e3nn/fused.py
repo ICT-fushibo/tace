@@ -12,7 +12,12 @@ from tace.utils.torch_scatter import scatter_sum
 from e3nn import o3
 
 
-from tace.utils.env import get_tace_use_oeq, get_tace_use_cue, get_tace_use_eqt, get_tace_use_compile
+from tace.utils.env import (
+    get_tace_use_oeq, 
+    get_tace_use_cue, 
+    get_tace_use_eqt, 
+    get_tace_use_compile,
+)
 from ..layout import LayoutTransform
 from ..so2 import (
     uvSO2Linear, SO2Gate, uuSO2Linear,
