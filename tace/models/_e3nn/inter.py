@@ -15,7 +15,7 @@ from ..mlp import FFN, ScaledSigmoid, ScaledSiLU
 from ..layout import LayoutTransform
 from .base import Interaction
 from ..linear import e3nnLinear
-from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct, UVSO2TensorProduct
+from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct
 from .nonlinear import get_nonlinear_layer
 from .residual import get_resnet_layer
 from .layer_norm import get_normalization_layer

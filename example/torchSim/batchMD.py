@@ -7,14 +7,19 @@ This is an example of molecular dynamics simulation for extended systems.
 '''
 import torch
 import torch_sim as ts
+
 integrator_cls = {
     "nve": ts.Integrator.nve,
     "nvt_langevin": ts.Integrator.nvt_langevin,
     "nvt_nose_hoover": ts.Integrator.nvt_nose_hoover,
-    "npt_langevin": ts.Integrator.npt_langevin,
-    "npt_nose_hoover": ts.Integrator.npt_nose_hoover,
+    "nvt_vrescale": ts.Integrator.nvt_vrescale,
+    "npt_langevin_anisotropic": ts.Integrator.npt_langevin_anisotropic,
+    "npt_langevin_isotropic": ts.Integrator.npt_langevin_isotropic,
+    "npt_nose_hoover_isotropic": ts.Integrator.npt_nose_hoover_isotropic,
+    "npt_crescale_isotropic": ts.Integrator.npt_crescale_isotropic,
+    "npt_crescale_triclinic": ts.Integrator.npt_crescale_triclinic,
 }
-import ase
+
 from ase.io import read
 
 

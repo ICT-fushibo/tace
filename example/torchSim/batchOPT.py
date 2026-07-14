@@ -16,6 +16,8 @@ import torch_sim as ts
 optimizer_cls ={
     'fire': ts.Optimizer.fire, # recommend
     'gradient_descent': ts.Optimizer.gradient_descent,
+    'bfgs': ts.Optimizer.bfgs,
+    'lbfgs': ts.Optimizer.lbfgs,
 }
 cell_filter_cls = {
     'unit': ts.CellFilter.unit,
