@@ -360,12 +360,39 @@ class SO2ASymmetricContraction(torch.nn.Module):
     def _select_weights(
         self,
         B: int,
-        weight_list: list[torch.Tensor],
+        weight_list: Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor, ...]],
         order_num_paths: list[int],
         *,
         mode: str,
         internal: bool,
     ) -> list[torch.Tensor]:
+        if not internal and isinstance(weight_list, torch.Tensor):
+            if weight_list.size(-1) != self.weight_numel:
+                raise ValueError(
+                    f"{mode} external edge-dependent weight must have last "
+                    f"dimension {self.weight_numel}, got {weight_list.size(-1)}"
+                )
+            if weight_list.dim() != 2 or weight_list.size(0) != B:
+                raise ValueError(
+                    f"{mode} external edge-dependent weight must have shape "
+                    f"({B}, {self.weight_numel}), got {tuple(weight_list.shape)}"
+                )
+
+            split_weights = []
+            offset = 0
+            n = self.lmax + 1
+            for order_idx, numel in enumerate(self.order_weight_numels):
+                w_order = weight_list[:, offset : offset + numel]
+                w_order = w_order.view(
+                    B,
+                    order_num_paths[order_idx],
+                    n,
+                    self.num_channels,
+                )
+                split_weights.append(w_order)
+                offset += numel
+            weight_list = split_weights
+
         selected_weights: list[torch.Tensor] = []
         for order_idx, w_order in enumerate(weight_list):
             expected_shape = (
@@ -395,7 +422,7 @@ class SO2ASymmetricContraction(torch.nn.Module):
     def forward(
         self,
         x: Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor, ...]],
-        weights: Union[list[torch.Tensor], None] = None,
+        weights: Union[torch.Tensor, list[torch.Tensor], None] = None,
     ) -> torch.Tensor:
         input_tensors, order_to_key = self._normalize_inputs(x)
 
@@ -1106,7 +1133,6 @@ class ComplexProductBasis(torch.nn.Module):
 #             f"channels={self.num_channels}, correlation={self.correlation}, "
 #             f"features={self.num_features}, num_paths_by_m={self.num_paths_by_m}"
 #         )
-
 
 
 
