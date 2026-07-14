@@ -14,7 +14,7 @@ import torch
 
 
 from tace.utils.env import get_tace_use_compile
-from ..utils.utils import deep_convert
+from tace.utils.utils import deep_convert
 
 
 def select_wrapper(model_config: Dict, wrapper_path: str = None) -> Any:

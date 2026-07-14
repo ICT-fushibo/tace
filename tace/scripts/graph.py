@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from tace.lightning.trainer import train
 from tace.lightning.lit_model import finetune, load_tace
-from tace.lightning.model import create_model
+from tace.lightning.torch_model import create_model
 from tace.dataset.dataloader import build_atomsList, compute_statistics
 from tace.dataset.datamodule import build_datamodule
 from tace.utils.hydra_resolver import register_resolvers

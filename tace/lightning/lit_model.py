@@ -24,7 +24,7 @@ from tace.utils._global import DTYPE, DEVICE
 from tace.utils.loss.uncertainty import UncertaintyLoss
 from tace.dataset.quantity import get_target_property, get_embedding_property
 from tace.models.adapter import TensorModel
-from .model import create_model
+from .torch_model import create_model
 from .los_skip import LossSkipController
 from .lora import to_lora_model
 from .u_shift import apply_u_shift

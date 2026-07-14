@@ -9,7 +9,7 @@ import torch
 
 from tace.lightning import load_tace, export_tace
 from tace.dataset.quantity import get_target_property, get_embedding_property
-from tace.lightning.model import create_model
+from tace.lightning.torch_model import create_model
 
 
 

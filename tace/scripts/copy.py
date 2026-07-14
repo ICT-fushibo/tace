@@ -7,7 +7,7 @@ import argparse
 import torch
 
 from tace.lightning import load_tace
-from tace.lightning.model import create_model
+from tace.lightning.torch_model import create_model
 from tace.utils._global import DTYPE
 
 
