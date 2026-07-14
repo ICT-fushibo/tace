@@ -16,7 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from tace.lightning.trainer import train
 from tace.lightning.lit_model import finetune, load_tace
-from tace.lightning.select_model import select_model
+from tace.lightning.model import create_model
 from tace.dataset.dataloader import build_atomsList, compute_statistics
 from tace.dataset.datamodule import build_datamodule
 from tace.utils.hydra_resolver import register_resolvers
@@ -81,15 +81,15 @@ def _prepare_data_fidelity(cfg):
     return model_config["fidelity"]
 
 
-def _select_model(cfg, statistics, target_property, embedding_property):
+def _create_model(cfg, statistics, target_property, embedding_property):
     """Instantiate a model while hiding data-pipeline-only Transformer fields."""
     model_config = _model_config(cfg)
     if not _is_transformer_tace(cfg):
-        return select_model(cfg, statistics, target_property, embedding_property)
+        return create_model(cfg, statistics, target_property, embedding_property)
 
     data_fidelity = model_config.pop("fidelity")
     try:
-        return select_model(cfg, statistics, target_property, embedding_property)
+        return create_model(cfg, statistics, target_property, embedding_property)
     finally:
         model_config["fidelity"] = data_fidelity
 
@@ -182,7 +182,7 @@ def build(cfg: DictConfig):
         _restore_loaded_model_config(cfg, model)
         cfg['finetune'] = cfg.get('finetune', {})
     else: # From scratch
-        model = _select_model(cfg, statistics, target_property, embedding_property)
+        model = _create_model(cfg, statistics, target_property, embedding_property)
 
     datamodule = build_datamodule(
         cfg, 

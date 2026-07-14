@@ -7,7 +7,7 @@ import argparse
 import torch
 
 from tace.lightning import load_tace
-from tace.lightning.select_model import select_model
+from tace.lightning.model import create_model
 from tace.utils._global import DTYPE
 
 
@@ -91,7 +91,7 @@ def main():
 
     src_model = load_tace(src_path, "cpu", strict=True, use_ema=True)
     # if dst_path.endswith("*.yaml"):
-    #     dst_model = select_model
+    #     dst_model = create_model
     # else:
     dst_model = load_tace(dst_path, "cpu", strict=True, use_ema=True)
 

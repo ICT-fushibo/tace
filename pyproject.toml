@@ -30,7 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 
 oeq = [
-    "openequivariance",
+    "openequivariance>=0.5.4",
 ]
 
 torchsim = [
@@ -56,10 +56,14 @@ openmm = [
     # conda install -c conda-forge nnpops
 ]
 
-lammps = [
-    "lammps",
+lammps12 = [
     "cython",
     "cupy-cuda12x",
+]
+
+lammps13 = [
+    "cython",
+    "cupy-cuda13x",
 ]
 
 d3 = [
@@ -99,4 +103,3 @@ include = [
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]
-# "tace.models.so2" = ["Jd.pt"]

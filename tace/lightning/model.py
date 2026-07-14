@@ -26,7 +26,7 @@ def select_wrapper(model_config: Dict, wrapper_path: str = None) -> Any:
     return wrap_cls
 
 
-def select_model(
+def create_model(
     cfg: Dict,
     statistics: Dict,
     target_property: List[str],

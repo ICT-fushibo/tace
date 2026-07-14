@@ -9,7 +9,7 @@ import torch
 
 from tace.lightning import load_tace, export_tace
 from tace.dataset.quantity import get_target_property, get_embedding_property
-from tace.lightning.select_model import select_model
+from tace.lightning.model import create_model
 
 
 
@@ -52,7 +52,7 @@ def load_from_checkpoint(
     target_property = get_target_property(cfg)
     embedding_property = get_embedding_property(cfg)
     statistics = checkpoint['hyper_parameters']['statistics']
-    model = select_model(cfg, statistics, target_property, embedding_property)
+    model = create_model(cfg, statistics, target_property, embedding_property)
     model.to(dtype=dominant_dtype)
     state_dict = {
         k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")

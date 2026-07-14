@@ -24,8 +24,8 @@ from tace.utils._global import DTYPE, DEVICE
 from tace.utils.loss.uncertainty import UncertaintyLoss
 from tace.dataset.quantity import get_target_property, get_embedding_property
 from tace.models.adapter import TensorModel
-from .select_model import select_model
-from .skip import LossSkipController
+from .model import create_model
+from .los_skip import LossSkipController
 from .lora import to_lora_model
 from .u_shift import apply_u_shift
 from ..utils.loss.dens import add_gaussian_noise_to_position
@@ -624,7 +624,7 @@ class LightningWrapperModel(L.LightningModule):
         target_property = get_target_property(cfg)
         embedding_property = get_embedding_property(cfg)
         statistics = checkpoint['hyper_parameters']['statistics']
-        model = select_model(cfg, statistics, target_property, embedding_property)
+        model = create_model(cfg, statistics, target_property, embedding_property)
         model.to(dtype=dominant_dtype)
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
@@ -675,7 +675,7 @@ def _load_tace(
                 **kwargs,
             )
             if isinstance(obj, dict) and "state_dict" in obj:
-                model = select_model(
+                model = create_model(
                     **{k: v for k, v in obj.items() if k != "state_dict"}
                 )
                 model.load_state_dict(obj["state_dict"], strict=strict)
