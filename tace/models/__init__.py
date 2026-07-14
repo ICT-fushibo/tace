@@ -4,7 +4,7 @@ except Exception:
     cartTACE = None
 from ._e3nn import e3nnTACE
 from .adapter import TensorModel
-from ._e3nn_compile import CompileTensorModel
+from .compile import CompileTensorModel
 
 __all__ = [
     "cartTACE",

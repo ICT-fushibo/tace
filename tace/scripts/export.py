@@ -7,17 +7,13 @@
 import argparse
 
 import torch
-from torch_geometric.loader import DataLoader
 
 
 from tace.lightning import load_tace, export_tace
-from tace.dataset.graph import from_atoms
-from tace.dataset.quantity import KEYS, KeySpecification, update_keyspec_from_kwargs
-from tace.models._e3nn_compile import export_ase_aotinductor
 from tace.utils._global import DTYPE
 
 
-ALLOWED_BACKEND = ["state_dict", "lammps", "aotinductor"]
+ALLOWED_BACKEND = ["state_dict", "lammps"]
 
 
 def parse_args():
@@ -57,37 +53,7 @@ def parse_args():
         choices=ALLOWED_BACKEND, 
         help="Specify the backend to export"
     )
-    parser.add_argument(
-        "-e", "--example",
-        type=str,
-        default=None,
-        help="ASE-readable structure used as the AOTInductor trace sample",
-    )
     return parser.parse_args()
-
-
-def build_compile_sample(model, example_path: str, neighborlist_backend: str):
-    if example_path is None:
-        return None
-    import ase.io
-
-    atoms = ase.io.read(example_path, index=0)
-    key_specification = KeySpecification()
-    update_keyspec_from_kwargs(key_specification, KEYS)
-    data = [
-        from_atoms(
-            model.get_torch_element(),
-            atoms,
-            model.get_cutoff(),
-            max_neighbors=model.get_max_neighbors(),
-            target_property=model.get_target_property(),
-            embedding_property=model.get_embedding_property(),
-            keyspec=key_specification,
-            training=False,
-            neighborlist_backend=neighborlist_backend,
-        )
-    ]
-    return next(iter(DataLoader(dataset=data, batch_size=1, shuffle=False)))
 
 
 def main():
@@ -108,14 +74,6 @@ def main():
         model.lmp = True
         lammps_model = TACELammpsCalc(model)
         torch.save(lammps_model, args.model + "-lammps_mliap.pt")
-    elif args.backend == "aotinductor":
-        sample = build_compile_sample(
-            model,
-            args.example,
-            args.neighborlist_backend,
-        )
-        output_path = args.model + "-ase.pt2"
-        export_ase_aotinductor(model, output_path, sample_data=sample)
     else:
         raise ValueError(f"Unsupported backend '{args.backend}'. One of {ALLOWED_BACKEND} is available.")
 

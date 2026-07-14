@@ -51,7 +51,7 @@ def select_model(
         "tace.models.e3nnTACE",
         "tace.models._e3nn.e3nnTACE",
     }:
-        model_path = "tace.models._e3nn_compile.e3nnTACE"
+        model_path = "tace.models.compile.e3nnTACE"
         if wrapper_path == "tace.models.TensorModel":
             wrapper_path = "tace.models.CompileTensorModel"
     else:

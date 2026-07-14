@@ -664,7 +664,7 @@ def _load_tace(
                 use_ema=use_ema,
             )
         elif model_path.endswith(".pt2"):
-            from tace.models._e3nn_compile import load_ase_aotinductor
+            from tace.models.compile import load_ase_aotinductor
 
             model = load_ase_aotinductor(model_path, device)
         elif (model_path.endswith(".pt") or model_path.endswith(".pth")):
