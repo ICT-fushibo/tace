@@ -28,7 +28,7 @@ class DenoisingPosParams:
 
 DeNS = DenoisingPosParams()
 
-logging.info("DeNS Loss Ratio: %s", DeNS.loss_ratio)
+# logging.info("DeNS Loss Ratio: %s", DeNS.loss_ratio)
 
 def add_gaussian_noise_to_position(
     batch, 
