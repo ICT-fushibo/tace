@@ -5,6 +5,7 @@
 
 
 import argparse
+from pathlib import Path
 
 import torch
 
@@ -13,7 +14,11 @@ from tace.lightning import load_tace, export_tace
 from tace.utils._global import DTYPE
 
 
-ALLOWED_BACKEND = ["state_dict", "lammps"]
+ALLOWED_BACKEND = ["state_dict", "aoti", "lammps"]
+
+
+def _default_aoti_output_path(model_path: str) -> str:
+    return str(Path(model_path).with_suffix(".pt2"))
 
 
 def parse_args():
@@ -25,6 +30,13 @@ def parse_args():
         type=str,
         required=True,
         help="Model path",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="Output model path",
     )
     parser.add_argument(
         "-l", "--fidelity_idx",
@@ -43,7 +55,6 @@ def parse_args():
         "--device", 
         type=str, 
         default="cuda",
-        choices=["cpu", "cuda"], 
         help="Device for inference"
     )
     parser.add_argument(
@@ -68,12 +79,18 @@ def main():
     model.to(dtype=args_dtype, device=args.device)
 
     if args.backend == "state_dict":
-        export_tace(model, args.model + "-state.pt")
+        export_tace(model, args.output or args.model + "-state.pt")
+    elif args.backend == "aoti":
+        from tace.models.compile import export_aotinductor
+
+        output_path = args.output or _default_aoti_output_path(args.model)
+        output_path = export_aotinductor(model, output_path)
+        print(f"[Done] AOTInductor graph model saved to: {output_path}")
     elif args.backend == "lammps":
         from tace.interface.lammps import TACELammpsCalc
         model.lmp = True
         lammps_model = TACELammpsCalc(model)
-        torch.save(lammps_model, args.model + "-lammps_mliap.pt")
+        torch.save(lammps_model, args.output or args.model + "-lammps_mliap.pt")
     else:
         raise ValueError(f"Unsupported backend '{args.backend}'. One of {ALLOWED_BACKEND} is available.")
 

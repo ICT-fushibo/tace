@@ -1,6 +1,9 @@
 import json
+import importlib
+import os
 from pathlib import Path
-from typing import Dict, Sequence, Union
+import zipfile
+from typing import Dict, Sequence, Set, Union
 
 import torch
 
@@ -9,8 +12,10 @@ from .compile import trace_to_fx
 from .wrapper import CompileTensorModel, _FlatE3nnCompileModel
 
 
+TACE_AOTI_FORMAT = "tace_graph_v1"
 ASE_AOTI_FORMAT = "tace_ase_v1"
-ASE_AOTI_INPUT_KEYS = (
+TACE_AOTI_CUSTOM_OPS_LIBS_ENTRY = "tace_custom_ops_libs.txt"
+TACE_AOTI_INPUT_KEYS = (
     "positions",
     "node_attrs",
     "edge_index",
@@ -20,6 +25,7 @@ ASE_AOTI_INPUT_KEYS = (
     "ptr",
     "fidelity_idx",
 )
+ASE_AOTI_INPUT_KEYS = TACE_AOTI_INPUT_KEYS
 
 
 class AOTICompiledTensorModel(torch.nn.Module):
@@ -50,9 +56,10 @@ class AOTICompiledTensorModel(torch.nn.Module):
     def forward(
         self, data: Dict[str, torch.Tensor]
     ) -> Dict[str, Union[torch.Tensor, None]]:
+        data = _canonicalize_inputs(data, self.input_keys, self.fidelity_idx)
         missing = [key for key in self.input_keys if key not in data]
         if missing:
-            raise KeyError(f"missing TACE ASE .pt2 inputs: {missing}")
+            raise KeyError(f"missing TACE graph .pt2 inputs: {missing}")
         outputs = self.compiled_model(*(data[key] for key in self.input_keys))
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
@@ -73,7 +80,7 @@ class AOTICompiledTensorModel(torch.nn.Module):
         missing = set(target_property) - set(self.exported_target_property)
         if missing:
             raise ValueError(
-                "The TACE ASE .pt2 model was not exported with target "
+                "The TACE graph .pt2 model was not exported with target "
                 f"properties {sorted(missing)}."
             )
         self.target_property = list(target_property)
@@ -113,12 +120,12 @@ class AOTICompiledTensorModel(torch.nn.Module):
         if self.compile_device.type == "cuda" and requested.type == "cuda":
             return
         raise RuntimeError(
-            f"TACE ASE .pt2 was compiled for {self.compile_device}, "
+            f"TACE graph .pt2 was compiled for {self.compile_device}, "
             f"but device={requested} was requested."
         )
 
 
-def export_ase_aotinductor(
+def export_aotinductor(
     model: torch.nn.Module,
     output_path: Union[str, Path],
     sample_data: Union[Dict[str, torch.Tensor], None] = None,
@@ -126,13 +133,13 @@ def export_ase_aotinductor(
     model.eval()
     compile_model = _as_compile_tensor_model(model)
     CompileTensorModel._validate_compile_properties(compile_model.readout_fn)
-    input_keys = ASE_AOTI_INPUT_KEYS
+    input_keys = TACE_AOTI_INPUT_KEYS
     output_keys = compile_model._output_keys()
     if not output_keys:
-        raise ValueError("TACE ASE .pt2 export needs at least one output property.")
+        raise ValueError("TACE graph .pt2 export needs at least one output property.")
 
     if sample_data is None:
-        sample_data = _synthetic_ase_sample(compile_model)
+        sample_data = _synthetic_graph_sample(compile_model)
     else:
         sample_data = {key: value for key, value in sample_data.items()}
     _ensure_sample_inputs(sample_data, input_keys, compile_model)
@@ -141,7 +148,7 @@ def export_ase_aotinductor(
     flat_model.eval()
     inputs = tuple(sample_data[key] for key in input_keys)
     traced = trace_to_fx(flat_model, inputs)
-    dynamic_shapes = _ase_dynamic_shapes()
+    dynamic_shapes = _graph_dynamic_shapes()
     exported = torch.export.export(
         traced,
         inputs,
@@ -150,7 +157,7 @@ def export_ase_aotinductor(
         prefer_deferred_runtime_asserts_over_guards=True,
     )
 
-    output_path = str(output_path)
+    output_path = _normalize_pt2_path(output_path)
     metadata = _export_metadata(compile_model, input_keys, output_keys)
     inductor_configs = _valid_inductor_configs(
         {
@@ -169,21 +176,38 @@ def export_ase_aotinductor(
         package_path=output_path,
         inductor_configs=inductor_configs,
     )
+    _embed_custom_ops_libs(out_path, _custom_ops_libs_from_env())
     return str(out_path)
+
+
+def load_aotinductor(
+    model_path: Union[str, Path],
+    device: Union[str, torch.device],
+) -> AOTICompiledTensorModel:
+    _import_custom_ops_libs(str(model_path))
+    compiled_model = torch._inductor.aoti_load_package(str(model_path))
+    metadata = dict(compiled_model.get_metadata())
+    if metadata.get("tace_format") not in {TACE_AOTI_FORMAT, ASE_AOTI_FORMAT}:
+        raise ValueError(
+            f"{model_path} is not a TACE graph .pt2 package "
+            f"({metadata.get('tace_format')!r})."
+        )
+    return AOTICompiledTensorModel(compiled_model, metadata, device)
+
+
+def export_ase_aotinductor(
+    model: torch.nn.Module,
+    output_path: Union[str, Path],
+    sample_data: Union[Dict[str, torch.Tensor], None] = None,
+) -> str:
+    return export_aotinductor(model, output_path, sample_data)
 
 
 def load_ase_aotinductor(
     model_path: Union[str, Path],
     device: Union[str, torch.device],
 ) -> AOTICompiledTensorModel:
-    compiled_model = torch._inductor.aoti_load_package(str(model_path))
-    metadata = dict(compiled_model.get_metadata())
-    if metadata.get("tace_format") != ASE_AOTI_FORMAT:
-        raise ValueError(
-            f"{model_path} is not a TACE ASE .pt2 package "
-            f"({metadata.get('tace_format')!r})."
-        )
-    return AOTICompiledTensorModel(compiled_model, metadata, device)
+    return load_aotinductor(model_path, device)
 
 
 def _as_compile_tensor_model(model: torch.nn.Module) -> CompileTensorModel:
@@ -194,29 +218,44 @@ def _as_compile_tensor_model(model: torch.nn.Module) -> CompileTensorModel:
         wrapped.reset_fidelity_idx(model.get_fidelity_idx())
         wrapped.train(model.training)
         return wrapped
-    raise TypeError("TACE ASE .pt2 export requires a TensorModel-like model.")
+    raise TypeError("TACE graph .pt2 export requires a TensorModel-like model.")
 
 
-def _synthetic_ase_sample(model: CompileTensorModel) -> Dict[str, torch.Tensor]:
+def _synthetic_graph_sample(model: CompileTensorModel) -> Dict[str, torch.Tensor]:
     dtype = model.get_model_dtype()
     device = next(model.parameters()).device
     num_elements = len(model.get_atomic_numbers())
-    node_attrs = torch.zeros((2, num_elements), dtype=dtype, device=device)
+    node_attrs = torch.zeros((4, num_elements), dtype=dtype, device=device)
     node_attrs[:, 0] = 1.0
+    lattice = torch.eye(3, dtype=dtype, device=device).reshape(1, 3, 3)
+    lattice = lattice.repeat(2, 1, 1) * max(model.get_cutoff() * 4.0, 1.0)
     return {
         "positions": torch.tensor(
-            [[0.0, 0.0, 0.0], [0.5 * model.get_cutoff(), 0.0, 0.0]],
+            [
+                [0.0, 0.0, 0.0],
+                [0.5 * model.get_cutoff(), 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.5 * model.get_cutoff(), 0.0, 0.0],
+            ],
             dtype=dtype,
             device=device,
         ),
         "node_attrs": node_attrs,
-        "edge_index": torch.tensor([[0, 1], [1, 0]], dtype=torch.int64, device=device),
-        "edge_shifts": torch.zeros((2, 3), dtype=dtype, device=device),
-        "lattice": torch.eye(3, dtype=dtype, device=device).reshape(1, 3, 3)
-        * max(model.get_cutoff() * 4.0, 1.0),
-        "batch": torch.zeros(2, dtype=torch.int64, device=device),
-        "ptr": torch.tensor([0, 2], dtype=torch.int64, device=device),
-        "fidelity_idx": torch.tensor([model.get_fidelity_idx()], dtype=torch.int64, device=device),
+        "edge_index": torch.tensor(
+            [[0, 1, 2, 3], [1, 0, 3, 2]],
+            dtype=torch.int64,
+            device=device,
+        ),
+        "edge_shifts": torch.zeros((4, 3), dtype=dtype, device=device),
+        "lattice": lattice,
+        "batch": torch.tensor([0, 0, 1, 1], dtype=torch.int64, device=device),
+        "ptr": torch.tensor([0, 2, 4], dtype=torch.int64, device=device),
+        "fidelity_idx": torch.full(
+            (2,),
+            model.get_fidelity_idx(),
+            dtype=torch.int64,
+            device=device,
+        ),
     }
 
 
@@ -225,9 +264,12 @@ def _ensure_sample_inputs(
     input_keys: Sequence[str],
     model: CompileTensorModel,
 ) -> None:
+    sample_data.update(
+        _canonicalize_inputs(sample_data, input_keys, model.get_fidelity_idx())
+    )
     missing = [key for key in input_keys if key not in sample_data]
     if missing:
-        raise KeyError(f"missing TACE ASE .pt2 sample inputs: {missing}")
+        raise KeyError(f"missing TACE graph .pt2 sample inputs: {missing}")
     device = next(model.parameters()).device
     dtype = model.get_model_dtype()
     for key, value in list(sample_data.items()):
@@ -239,18 +281,19 @@ def _ensure_sample_inputs(
             sample_data[key] = value.to(device=device)
 
 
-def _ase_dynamic_shapes() -> tuple[Dict[int, object], ...]:
+def _graph_dynamic_shapes() -> tuple[Dict[int, object], ...]:
     num_nodes = torch.export.Dim("num_nodes", min=2)
     num_edges = torch.export.Dim("num_edges", min=2)
+    num_graphs = torch.export.Dim("num_graphs", min=1)
     return (
         {0: num_nodes},
         {0: num_nodes},
         {1: num_edges},
         {0: num_edges},
-        {},
+        {0: num_graphs},
         {0: num_nodes},
-        {},
-        {},
+        {0: num_graphs + 1},
+        {0: num_graphs},
     )
 
 
@@ -260,7 +303,8 @@ def _export_metadata(
     output_keys: Sequence[str],
 ) -> Dict[str, str]:
     return {
-        "tace_format": ASE_AOTI_FORMAT,
+        "tace_format": TACE_AOTI_FORMAT,
+        "tace_aoti_target": "graph",
         "tace_input_keys": json.dumps(list(input_keys)),
         "tace_output_keys": json.dumps(list(output_keys)),
         "tace_target_property": json.dumps(model.get_target_property()),
@@ -287,6 +331,72 @@ def _valid_inductor_configs(configs: Dict[str, object]) -> Dict[str, object]:
         return configs
 
 
+def _canonicalize_inputs(
+    data: Dict[str, torch.Tensor],
+    input_keys: Sequence[str],
+    fidelity_idx: int,
+) -> Dict[str, torch.Tensor]:
+    data = _as_tensor_dict(data)
+    if "fidelity_idx" in input_keys and "fidelity_idx" not in data:
+        if "ptr" not in data:
+            raise KeyError("missing TACE graph .pt2 inputs: ['ptr']")
+        data["fidelity_idx"] = torch.full(
+            (data["ptr"].numel() - 1,),
+            fidelity_idx,
+            dtype=torch.int64,
+            device=data["ptr"].device,
+        )
+    return {
+        key: value.contiguous() if torch.is_tensor(value) else value
+        for key, value in data.items()
+    }
+
+
+def _as_tensor_dict(data) -> Dict[str, torch.Tensor]:
+    if isinstance(data, dict):
+        return dict(data)
+    if hasattr(data, "items"):
+        return dict(data.items())
+    if hasattr(data, "keys"):
+        return {key: data[key] for key in data.keys()}
+    return dict(data)
+
+
+def _normalize_pt2_path(output_path: Union[str, Path]) -> str:
+    output_path = str(output_path)
+    if not output_path.endswith(".pt2"):
+        output_path += ".pt2"
+    return output_path
+
+
+def _custom_ops_libs_from_env() -> Set[str]:
+    libs: Set[str] = set()
+    if os.environ.get("TACE_USE_OEQ", "0") == "1":
+        libs.add("openequivariance")
+    if os.environ.get("TACE_USE_CUE", "0") == "1":
+        libs.update({"cuequivariance", "cuequivariance_torch"})
+    return libs
+
+
+def _embed_custom_ops_libs(pt2_path: Union[str, Path], custom_ops_libs: Set[str]) -> None:
+    if not custom_ops_libs:
+        return
+    with zipfile.ZipFile(pt2_path, "a") as archive:
+        archive.writestr(
+            TACE_AOTI_CUSTOM_OPS_LIBS_ENTRY,
+            " ".join(sorted(custom_ops_libs)),
+        )
+
+
+def _import_custom_ops_libs(pt2_path: Union[str, Path]) -> None:
+    with zipfile.ZipFile(pt2_path, "r") as archive:
+        if TACE_AOTI_CUSTOM_OPS_LIBS_ENTRY not in archive.namelist():
+            return
+        libs = archive.read(TACE_AOTI_CUSTOM_OPS_LIBS_ENTRY).decode().split()
+    for lib in libs:
+        importlib.import_module(lib)
+
+
 def _metadata_json(metadata: Dict[str, str], key: str):
     value = metadata[key]
     if isinstance(value, bytes):
@@ -298,8 +408,8 @@ def _dtype_from_name(name: str) -> torch.dtype:
     if name.startswith("torch."):
         name = name[len("torch.") :]
     if not hasattr(torch, name):
-        raise ValueError(f"unsupported TACE ASE .pt2 dtype {name!r}")
+        raise ValueError(f"unsupported TACE graph .pt2 dtype {name!r}")
     dtype = getattr(torch, name)
     if not isinstance(dtype, torch.dtype):
-        raise ValueError(f"unsupported TACE ASE .pt2 dtype {name!r}")
+        raise ValueError(f"unsupported TACE graph .pt2 dtype {name!r}")
     return dtype

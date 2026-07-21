@@ -122,16 +122,22 @@ class TACETorchSimCalc(ModelInterface):
         self._memory_scales_with = "n_atoms_x_density"
 
         # Load TACE model
+        load_device = (
+            self._device
+            if isinstance(model, (str, Path)) and str(model).endswith(".pt2")
+            else "cpu"
+        )
         model: TensorModel = load_tace(
             model, 
-            'cpu', 
+            load_device,
             strict=True, 
             use_ema=True, 
             target_property=target_property
         ) 
-        model.flags.compute_forces = self._compute_forces
-        model.flags.compute_stress = self._compute_stress
-        model.compute_first_derivative = self._compute_forces or self._compute_stress
+        if hasattr(model, "flags"):
+            model.flags.compute_forces = self._compute_forces
+            model.flags.compute_stress = self._compute_stress
+            model.compute_first_derivative = self._compute_forces or self._compute_stress
         model.reset_fidelity_idx(fidelity_idx) 
         model.eval()
         for param in model.parameters():
@@ -142,13 +148,14 @@ class TACETorchSimCalc(ModelInterface):
         if self._device is not None:
             self.model = self.model.to(device=self._device)
         # Set model properties
-        self.r_max = self.model.readout_fn.cutoff
-        atomic_nums = self.model.readout_fn.atomic_numbers
-        if not isinstance(atomic_nums, torch.Tensor):
-            raise TypeError("TACE model atomic_numbers must be a tensor")
-        
+        self.r_max = self.model.get_cutoff()
+        atomic_nums = torch.tensor(
+            self.model.get_atomic_numbers(),
+            dtype=torch.int64,
+            device=self.device,
+        )
         self.torch_element = model.get_torch_element()
-        self.model.atomic_numbers = atomic_nums.detach().clone().to(device=self.device)
+        self.model.atomic_numbers = atomic_nums.detach().clone()
 
         self.atomic_numbers_in_init = atomic_numbers is not None
         self.system_idx_in_init = system_idx is not None
