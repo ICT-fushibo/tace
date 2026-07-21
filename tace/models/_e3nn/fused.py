@@ -40,6 +40,7 @@ class uuuTensorProduct(torch.nn.Module):
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
         trainable: bool = False,
+        warning: bool = False,
     ) -> None:
         super().__init__()
 
@@ -93,13 +94,12 @@ class uuuTensorProduct(torch.nn.Module):
         #         l3l1=l3l1,
         #         trainable=trainable,
         #     ) # large memory
-        else:
+        elif warning:
             logging.warning(
-                "You are not using Cuequivariance or Equitorch. "
+                "Correlation >= 3 is running without Equitorch. "
                 "For acceleration options, see "
                 "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
             )
-            pass
 
     def forward(
             self, x: torch.Tensor, y: torch.Tensor, ws: Union[torch.Tensor, None] = None
@@ -183,12 +183,6 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l2l3=l2l3,
                 l3l1=l3l1,
                 instructions=self.instructions,
-            )
-        else:
-            logging.warning(
-                "You are not using OpenEquivariance or Cuequivariance. "
-                "For acceleration options, see "
-                "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
             )
 
     def forward(

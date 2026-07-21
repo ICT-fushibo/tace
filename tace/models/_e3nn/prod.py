@@ -10,6 +10,7 @@ from typing import Dict, Union
 import torch
 from e3nn import o3
 
+from tace.utils.env import get_tace_use_eqt
 
 from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
 
@@ -82,6 +83,9 @@ class CgtpACE(Product):
             )
 
         product_in1 = self.irreps_hidden
+        warn_without_eqt = (
+            self.correlation >= 3 and get_tace_use_eqt() != "1"
+        )
 
         for nu in range(2, self.correlation+1):
             this_ace = uuuTensorProduct(
@@ -90,6 +94,7 @@ class CgtpACE(Product):
                 irreps_out=self.irreps_tp_out_list[nu-2],
                 l1l2=self.l1l2,
                 trainable=self.use_bilinear_ace,
+                warning=warn_without_eqt and nu == 2,
             )
             self.aces.append(this_ace)
             self.coefs.append(coefs_cls(
