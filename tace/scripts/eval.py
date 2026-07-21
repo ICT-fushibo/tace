@@ -38,7 +38,13 @@ def parse_args():
     parser.add_argument("-sd", "--scalar_descriptor", type=int, default=0, help="if a scalar descriptor exists, output to xyz")
     parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float64"], help="Tensor precision")
     parser.add_argument("--device", type=str, default="cuda", choices=["cpu", "cuda"], help="Device for inference")
-    parser.add_argument("--nl_backend", type=str, default="matscipy", choices=["ase", "vesin", "matscipy"], help="nl_backend")
+    parser.add_argument(
+        "--nl_backend",
+        type=str,
+        default="matscipy",
+        choices=["ase", "vesin", "matscipy", "nvidia"],
+        help="nl_backend",
+    )
     # parser.add_argument("-c", "--compile", type=int, default=0, help="Compile to jit-model, not support know")
 
     # Keys for properties, if need print test metrics

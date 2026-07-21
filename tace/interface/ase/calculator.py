@@ -49,7 +49,8 @@ class TACEAseCalc(Calculator):
         Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
         If you want to use this parameter, you must provide all the required physical quantities.
     neighborlist_backend: str
-        Support backend in one of [ase, matscipy, vesin], recommend matscipy
+        Support backend in one of [ase, matscipy, vesin, nvidia],
+        recommend matscipy.
     **kwargs
         Additional keyword arguments passed to the ASE Calculator base class.
     """

@@ -3,14 +3,16 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import os
 from typing import Optional, Tuple, Union
-
-from ase.geometry import complete_cell
 
 import numpy as np
 from matscipy.neighbours import neighbour_list
 try:
     from ase.neighborlist import primitive_neighbor_list
+except ImportError:
+    pass
+try:
     from vesin import NeighborList as vesin_nl
 except ImportError:
     pass
@@ -18,7 +20,126 @@ except ImportError:
 
 # self-interaction: ase
 # 1D, 2D: ase, matscipy
-NL_BACKEND = ["ase", "vesin", "matscipy"]
+NL_BACKEND = ["ase", "vesin", "matscipy", "nvidia"]
+
+NV_CELL_LIST_THRESHOLD = 1024
+NV_NONPERIODIC_CELL_LIST_THRESHOLD = 4096
+NV_CPU_CELL_LIST_THRESHOLD = 128
+
+
+def _grow_search_capacity(capacity: int) -> int:
+    return max(capacity + 1, (capacity * 5 + 3) // 4)
+
+
+def _choose_nv_method(n_atoms: int, periodic: bool, device) -> str:
+    if device.type == "cpu":
+        threshold = NV_CPU_CELL_LIST_THRESHOLD
+    elif periodic:
+        threshold = NV_CELL_LIST_THRESHOLD
+    else:
+        threshold = NV_NONPERIODIC_CELL_LIST_THRESHOLD
+    return "batch_cell_list" if n_atoms >= threshold else "batch_naive"
+
+
+def _get_nv_start_capacity(n_atoms: int, max_neighbors: Union[int, str, None]) -> int:
+    if max_neighbors is None or max_neighbors == "inf":
+        return max(1, min(max(n_atoms - 1, 1), 64))
+    return max(1, int(max_neighbors))
+
+
+def _build_nvalchemiops_edges(
+    positions: np.ndarray,
+    cutoff: float,
+    pbc: Tuple[bool, bool, bool],
+    lattice: Union[np.ndarray, None],
+    max_neighbors: Union[int, str, None],
+):
+    try:
+        import torch
+        from nvalchemiops.torch.neighbors import neighbor_list as nvidia_neighbor_list
+    except ImportError as exc:
+        raise ImportError(
+            "neighborlist_backend='nvidia' requires "
+            "`nvalchemi-toolkit-ops` from https://github.com/NVIDIA/nvalchemi-toolkit-ops."
+        ) from exc
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dtype = torch.float64 if np.asarray(positions).dtype == np.float64 else torch.float32
+    num_atoms = int(positions.shape[0])
+    periodic = any(pbc)
+
+    pos = torch.as_tensor(positions, dtype=dtype, device=device)
+    if periodic:
+        cell = torch.as_tensor(lattice, dtype=dtype, device=device).reshape(1, 3, 3)
+        pbc_tensor = torch.tensor([pbc], dtype=torch.bool, device=device)
+    else:
+        cell = None
+        pbc_tensor = None
+
+    batch_idx = torch.zeros(num_atoms, dtype=torch.int32, device=device)
+    batch_ptr = torch.tensor([0, num_atoms], dtype=torch.int32, device=device)
+    method = _choose_nv_method(num_atoms, periodic=periodic, device=device)
+    extra_kwargs = {}
+    if method == "batch_naive":
+        extra_kwargs["max_atoms_per_system"] = num_atoms
+
+    search_capacity = _get_nv_start_capacity(num_atoms, max_neighbors)
+    while True:
+        result = nvidia_neighbor_list(
+            pos,
+            float(cutoff),
+            cell=cell,
+            pbc=pbc_tensor,
+            batch_idx=batch_idx,
+            batch_ptr=batch_ptr,
+            method=method,
+            max_neighbors=int(search_capacity),
+            return_neighbor_list=False,
+            **extra_kwargs,
+        )
+        if len(result) == 2:
+            neighbor_matrix, num_neighbors = result
+            shifts = torch.zeros(
+                (*neighbor_matrix.shape, 3), dtype=torch.int32, device=device
+            )
+        else:
+            neighbor_matrix, num_neighbors, shifts = result
+
+        max_found = int(num_neighbors.max().item()) if num_neighbors.numel() else 0
+        if max_found <= search_capacity:
+            break
+        search_capacity = max(max_found, _grow_search_capacity(search_capacity))
+
+    total_atoms, capacity = neighbor_matrix.shape
+    slots = torch.arange(capacity, dtype=torch.long, device=device).expand(
+        total_atoms, capacity
+    )
+    valid = (slots < num_neighbors.unsqueeze(1)).reshape(-1)
+    edge_slots = torch.nonzero(valid, as_tuple=False).flatten()
+
+    if edge_slots.numel() == 0:
+        empty_index = np.empty((0,), dtype=np.int64)
+        empty_shifts = np.empty((0, 3), dtype=np.int64)
+        empty_distances = np.empty((0,), dtype=np.float64)
+        return empty_index, empty_index, empty_shifts, empty_distances
+
+    center = (edge_slots // capacity).to(dtype=torch.long)
+    neighbor = neighbor_matrix.reshape(-1).index_select(0, edge_slots).to(torch.long)
+    shifts = shifts.reshape(-1, 3).index_select(0, edge_slots).to(torch.long)
+
+    source = center
+    target = neighbor
+    edge_vec = pos.index_select(0, target) - pos.index_select(0, source)
+    if periodic:
+        edge_vec = edge_vec + shifts.to(dtype=dtype) @ cell[0]
+    distances = torch.linalg.vector_norm(edge_vec, dim=1)
+
+    return (
+        source.cpu().numpy().astype(np.int64),
+        target.cpu().numpy().astype(np.int64),
+        shifts.cpu().numpy().astype(np.int64),
+        distances.cpu().numpy(),
+    )
 
 
 def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf"):
@@ -46,6 +167,7 @@ def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf")
         dst_sorted[mask],
         shifts_sorted[mask],
     )
+
 
 def get_neighborhood(
     positions: np.ndarray,
@@ -131,6 +253,14 @@ def get_neighborhood(
             self_interaction=False,
             use_scaled_positions=False,
         )
+    elif backend in ("nvidia"):
+        edges = _build_nvalchemiops_edges(
+            positions=positions,
+            cutoff=cutoff,
+            pbc=pbc,
+            lattice=lattice,
+            max_neighbors=max_neighbors,
+        )
 
     source, target, shifts = filter_max_neighbors(*edges, max_neighbors=max_neighbors)
 
@@ -178,6 +308,3 @@ def get_neighborhood_for_calculator(
     edge_index = np.stack((source, target))
 
     return edge_index, edge_shifts
-
-
-
