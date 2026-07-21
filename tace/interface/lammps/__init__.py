@@ -1,3 +1,3 @@
-from .mliap import TACELammpsCalc
+from .mliap import TACEAOTILammpsCalc, TACELammpsCalc
 
-__all__ = ["TACELammpsCalc"]
+__all__ = ["TACEAOTILammpsCalc", "TACELammpsCalc"]

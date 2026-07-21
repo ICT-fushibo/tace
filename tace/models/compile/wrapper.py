@@ -3,7 +3,7 @@ from typing import Dict, Sequence, Union
 import torch
 
 from ..adapter import TensorModel
-from ..lammps import Graph
+from ..lammps import AOTI_LAMMPS_GHOST_EXCHANGE, Graph
 from ..utils import compute_symmetric_displacement
 from .compile import compiled_call, trace_and_compile
 
@@ -272,3 +272,60 @@ class _FlatE3nnCompileModel(torch.nn.Module):
                 torch.abs(stress) < 1e10, stress, torch.zeros_like(stress)
             )
         return output
+
+
+class _FlatE3nnLammpsCompileModel(torch.nn.Module):
+    def __init__(
+        self,
+        model: CompileTensorModel,
+        input_keys: Sequence[str],
+    ) -> None:
+        super().__init__()
+        if "energy" not in model.get_target_property():
+            raise ValueError("LAMMPS AOTI export requires an energy model.")
+        self.readout_fn = model.readout_fn
+        self.input_keys = tuple(input_keys)
+        self.fidelity_idx = model.fidelity_idx
+
+    def forward(self, *args: torch.Tensor) -> tuple[torch.Tensor, ...]:
+        data = {key: value for key, value in zip(self.input_keys, args)}
+        graph = self._prepare_graph(data)
+        output = self.readout_fn(data, graph)
+        pair_forces = torch.autograd.grad(
+            outputs=output["energy"],
+            inputs=graph.edge_vector,
+            grad_outputs=torch.ones_like(output["energy"]),
+            retain_graph=False,
+            create_graph=False,
+        )[0]
+        if pair_forces is None:
+            pair_forces = torch.zeros_like(graph.edge_vector)
+        return output["energy"][0], output["node_energy"], pair_forces
+
+    def _prepare_graph(self, data: Dict[str, torch.Tensor]) -> Graph:
+        node_fidelity = (
+            data["fidelity_idx"][data["batch"]]
+            if "fidelity_idx" in data
+            else torch.full_like(data["batch"], self.fidelity_idx, dtype=torch.int64)
+        )
+        nlocal = data["batch"].size(0)
+        nghosts = data["node_attrs"].size(0) - nlocal
+        dtype = data["node_attrs"].dtype
+        device = data["node_attrs"].device
+        positions = torch.zeros((nlocal, 3), dtype=dtype, device=device)
+        edge_vector = data["edge_vector"].requires_grad_(True)
+        edge_length = (edge_vector**2).sum(dim=1, keepdim=True).sqrt() + 1e-9
+        return Graph(
+            lmp=True,
+            lmp_data=AOTI_LAMMPS_GHOST_EXCHANGE,
+            lmp_natoms=(nlocal, nghosts),
+            num_graphs=2,
+            displacement=None,
+            positions=positions,
+            edge_vector=edge_vector,
+            edge_length=edge_length,
+            lattice=torch.zeros((2, 3, 3), dtype=dtype, device=device),
+            node_fidelity=node_fidelity,
+            num_atoms_arange=torch.arange(nlocal, device=device, dtype=torch.int64),
+            dcutoff=None,
+        )

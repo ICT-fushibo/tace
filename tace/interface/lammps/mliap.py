@@ -4,11 +4,16 @@
 ################################################################################
 
 import logging
-from typing import Dict, Tuple
+import os
+from pathlib import Path
+import tempfile
+from typing import Dict, Sequence, Tuple, Union
 
 
 import torch
 from ase.data import chemical_symbols
+
+from tace.models.lammps import use_lammps_mliap_data
 try:
     from lammps.mliap.mliap_unified_abc import MLIAPUnified
     LAMMPS_ML_IAP_AVAILABLE = True
@@ -128,3 +133,69 @@ class TACELammpsCalc(MLIAPUnified):
 
     def compute_gradients(self, data):
         pass
+
+
+class TACEAOTILammpsCalc(TACELammpsCalc):
+    def __init__(
+        self,
+        package_path: Union[str, Path],
+        atomic_numbers: Sequence[int],
+        cutoff: float,
+        dtype: torch.dtype,
+    ) -> None:
+        MLIAPUnified.__init__(self)
+        package_path = Path(package_path)
+        self.package_bytes = package_path.read_bytes()
+        self.package_filename = package_path.name
+        self.element_types = [chemical_symbols[int(z)] for z in atomic_numbers]
+        self.num_species = len(self.element_types)
+        self.rcutfac = 0.5 * float(cutoff)
+        self.nparams = 1
+        self.ndescriptors = 1
+        self.dtype = dtype
+        self.device = "cpu"
+        self.model = None
+        self.initialized = False
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state["model"] = None
+        state["device"] = "cpu"
+        state["initialized"] = False
+        return state
+
+    def _initialize_device(self, data):
+        from tace.models.compile import load_lammps_aotinductor
+
+        device = torch.as_tensor(data.elems).device
+        self.device = device
+        with tempfile.TemporaryDirectory(prefix="tace-lammps-aoti-") as tmpdir:
+            package_path = os.path.join(tmpdir, self.package_filename)
+            with open(package_path, "wb") as package_file:
+                package_file.write(self.package_bytes)
+            self.model = load_lammps_aotinductor(package_path, device)
+        logging.info(f"TACE AOTI model initialized on device: {device}")
+        self.initialized = True
+
+    def compute_forces(self, data):
+        nlocal = data.nlocal
+        ntotal = data.ntotal
+        npairs = data.npairs
+        nghosts = ntotal - nlocal
+        species = torch.as_tensor(data.elems, dtype=torch.int64)
+
+        if not self.initialized:
+            self._initialize_device(data)
+
+        if nlocal == 0 or npairs <= 1:
+            return
+        if self.device.type != "cpu":
+            torch.cuda.synchronize()
+
+        batch = self._prepare_batch(data, nlocal, nghosts, species)
+        with use_lammps_mliap_data(data):
+            _, node_energy, pair_forces = self.model(batch)
+        if self.device.type != "cpu":
+            torch.cuda.synchronize()
+
+        self._update_lammps_data(data, node_energy, pair_forces, nlocal)

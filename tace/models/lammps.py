@@ -3,10 +3,82 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import NamedTuple, Tuple, Any, Union
+from contextlib import contextmanager
+import threading
+from typing import Any, Iterator, NamedTuple, Tuple, Union
 
 
 import torch
+
+
+AOTI_LAMMPS_GHOST_EXCHANGE = object()
+_LAMMPS_MLIAP_CONTEXT = threading.local()
+
+
+def _current_lammps_mliap_data() -> Any:
+    data = getattr(_LAMMPS_MLIAP_CONTEXT, "data", None)
+    if data is None:
+        raise RuntimeError(
+            "LAMMPS AOTI ghost exchange was called without active MLIAP data."
+        )
+    return data
+
+
+@contextmanager
+def use_lammps_mliap_data(data: Any) -> Iterator[None]:
+    previous = getattr(_LAMMPS_MLIAP_CONTEXT, "data", None)
+    _LAMMPS_MLIAP_CONTEXT.data = data
+    try:
+        yield
+    finally:
+        if previous is None:
+            del _LAMMPS_MLIAP_CONTEXT.data
+        else:
+            _LAMMPS_MLIAP_CONTEXT.data = previous
+
+
+@torch.library.custom_op("tace::lammps_forward_exchange", mutates_args=())
+def _lammps_forward_exchange(node_features: torch.Tensor) -> torch.Tensor:
+    lmp_data = _current_lammps_mliap_data()
+    original_shape = node_features.shape
+    node_features_flat = node_features.reshape(node_features.size(0), -1)
+    out_flat = torch.empty_like(node_features_flat)
+    lmp_data.forward_exchange(node_features_flat, out_flat, out_flat.size(-1))
+    return out_flat.reshape(original_shape)
+
+
+@_lammps_forward_exchange.register_fake
+def _lammps_forward_exchange_fake(node_features: torch.Tensor) -> torch.Tensor:
+    return torch.empty_like(node_features)
+
+
+@torch.library.custom_op("tace::lammps_reverse_exchange", mutates_args=())
+def _lammps_reverse_exchange(grad_output: torch.Tensor) -> torch.Tensor:
+    lmp_data = _current_lammps_mliap_data()
+    original_shape = grad_output.shape
+    grad_output_flat = grad_output.reshape(grad_output.size(0), -1)
+    grad_input_flat = torch.empty_like(grad_output_flat)
+    lmp_data.reverse_exchange(
+        grad_output_flat,
+        grad_input_flat,
+        grad_input_flat.size(-1),
+    )
+    return grad_input_flat.reshape(original_shape)
+
+
+@_lammps_reverse_exchange.register_fake
+def _lammps_reverse_exchange_fake(grad_output: torch.Tensor) -> torch.Tensor:
+    return torch.empty_like(grad_output)
+
+
+def _lammps_exchange_backward(ctx, grad_output: torch.Tensor):
+    return _lammps_reverse_exchange(grad_output)
+
+
+torch.library.register_autograd(
+    _lammps_forward_exchange,
+    _lammps_exchange_backward,
+)
 
 
 class GhostExchange(torch.autograd.Function):
@@ -47,7 +119,7 @@ class e3nnGhostExchangeMixin:
         node_feats = node_feats.contiguous()
         expected_total = nlocal + nghosts
         if node_feats.shape[0] == expected_total:
-            node_feats = GhostExchange.apply(node_feats, lmp_data)
+            node_feats = self._exchange_lammps(node_feats, lmp_data)
             return node_feats
         pad = torch.zeros(
             (nghosts, node_feats.shape[1]),
@@ -55,8 +127,14 @@ class e3nnGhostExchangeMixin:
             device=node_feats.device,
         )
         node_feats = torch.cat((node_feats, pad), dim=0)
-        node_feats = GhostExchange.apply(node_feats, lmp_data)
+        node_feats = self._exchange_lammps(node_feats, lmp_data)
         return node_feats
+
+    @staticmethod
+    def _exchange_lammps(node_feats: torch.Tensor, lmp_data: Any) -> torch.Tensor:
+        if lmp_data is AOTI_LAMMPS_GHOST_EXCHANGE:
+            return _lammps_forward_exchange(node_feats)
+        return GhostExchange.apply(node_feats, lmp_data)
 
     def truncate_ghosts(
         self, tensor: Union[torch.Tensor, None], nlocal: Union[int, None] = None
@@ -68,7 +146,7 @@ class e3nnGhostExchangeMixin:
  
 class Graph(NamedTuple):
     lmp: bool
-    lmp_data: Union[torch.Tensor, None]
+    lmp_data: Any
     lmp_natoms: Tuple[int, int]
     num_graphs: int
     displacement: Union[torch.Tensor, None]
