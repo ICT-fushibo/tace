@@ -681,8 +681,13 @@ def _load_tace(
                 model.load_state_dict(obj["state_dict"], strict=strict)
             elif isinstance(obj, torch.nn.Module):
                 model = obj
+            else:
+                raise ValueError(
+                    "Unsupported .pt/.pth TACE model format. Expected a TACE "
+                    "state_dict package or a serialized torch.nn.Module."
+                )
         else:
-            raise ValueError("❌ Model path must end with .ckpt, .pt or .pth")
+            raise ValueError("Model path must end with .ckpt, .pt2, .pt or .pth")
     elif isinstance(model, torch.nn.Module):
         pass
     else:

@@ -13,18 +13,28 @@ from torch_geometric.loader import DataLoader
 
 from tace.dataset.graph import from_atoms
 from tace.dataset.quantity import KEYS, KeySpecification, update_keyspec_from_kwargs
-from tace.lightning import load_tace
+from tace.lightning import export_tace, load_tace
 from tace.models.compile import export_aotinductor
 from tace.utils._global import DTYPE
 
 
+ALLOWED_BACKEND = ["state_dict", "full_model", "aoti"]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Export a TACE model to a unified AOTInductor .pt2 graph package.",
+        description="Export a TACE model for eval or native torch deployment.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("-m", "--model", type=str, required=True, help="Model path")
-    parser.add_argument("-o", "--output", type=str, default=None, help="Output .pt2 path")
+    parser.add_argument("-o", "--output", type=str, default=None, help="Output path")
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="state_dict",
+        choices=ALLOWED_BACKEND,
+        help="Export format",
+    )
     parser.add_argument(
         "-l",
         "--fidelity_idx",
@@ -39,7 +49,7 @@ def parse_args():
         default=None,
         help="Model dtype",
     )
-    parser.add_argument("--device", type=str, default="cuda", help="Compile device")
+    parser.add_argument("--device", type=str, default="cuda", help="Load or compile device")
     parser.add_argument(
         "--sample",
         type=str,
@@ -68,8 +78,18 @@ def parse_args():
     return parser.parse_args()
 
 
-def _default_output_path(model_path: str) -> str:
+def _default_aoti_output_path(model_path: str) -> str:
     return str(Path(model_path).with_suffix(".pt2"))
+
+
+def _default_state_dict_output_path(model_path: str) -> str:
+    path = Path(model_path)
+    return str(path.with_name(path.name + "-state_dict.pt"))
+
+
+def _default_full_model_output_path(model_path: str) -> str:
+    path = Path(model_path)
+    return str(path.with_name(path.name + "-full_model.pt"))
 
 
 def _build_sample_data(
@@ -129,7 +149,7 @@ def main():
         param.requires_grad = False
 
     sample_data = None
-    if args.sample:
+    if args.backend == "aoti" and args.sample:
         sample_data = _build_sample_data(
             model,
             args.sample,
@@ -139,9 +159,22 @@ def main():
             args.device,
         )
 
-    output_path = args.output or _default_output_path(args.model)
-    output_path = export_aotinductor(model, output_path, sample_data=sample_data)
-    print(f"[Done] AOTInductor graph model saved to: {output_path}")
+    if args.backend == "state_dict":
+        output_path = args.output or _default_state_dict_output_path(args.model)
+        export_tace(model, output_path)
+        print(f"[Done] state_dict model saved to: {output_path}")
+    elif args.backend == "full_model":
+        output_path = args.output or _default_full_model_output_path(args.model)
+        torch.save(model, output_path)
+        print(f"[Done] full_model saved to: {output_path}")
+    elif args.backend == "aoti":
+        output_path = args.output or _default_aoti_output_path(args.model)
+        output_path = export_aotinductor(model, output_path, sample_data=sample_data)
+        print(f"[Done] AOTInductor graph model saved to: {output_path}")
+    else:
+        raise ValueError(
+            f"Unsupported backend '{args.backend}'. One of {ALLOWED_BACKEND} is available."
+        )
 
 
 if __name__ == "__main__":
