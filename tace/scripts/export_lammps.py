@@ -37,7 +37,7 @@ def parse_args():
         help="Output .pt2 path used by the aoti backend",
     )
     parser.add_argument(
-        "-l",
+        "-f",
         "--fidelity_idx",
         type=int,
         default=None,

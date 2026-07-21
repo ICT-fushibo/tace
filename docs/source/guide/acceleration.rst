@@ -1,75 +1,244 @@
+.. _acceleration-tutorial:
+
 Acceleration Tutorial
 =====================
 
-TACE provides two primary acceleration methods. Unless your machine is 
-particularly old, you should enable both, as doing so can deliver nearly a ``5x`` 
-performance improvement. All acceleration methods are controlled through 
-``environment variables`` and can be used during ``train/valid/test``.
+TACE supports two complementary forms of acceleration:
 
-- The most computationally expensive part of equivariant models is typically 
-  edge-level computation. Therefore, the core idea behind external acceleration
-  libraries ``oeq`` and ``cueq`` is to avoid computing and storing all 
-  edge-level tensors simultaneously.  
-  
-- You can also use PyTorch compilation techniques to accelerate the entire model. 
-  This can provide a 2-3x speedup. Currently, compilation supports predictions 
-  only for ``energy, forces, stress, and virials``. Support for additional 
-  physical quantities will be added gradually in future releases.
+* external equivariant kernels, such as OpenEquivariance and
+  cuEquivariance, accelerate the most expensive edge-level operations;
+* PyTorch compilation accelerates a larger part of the model and can either
+  run inside the current Python process or produce an AOTInductor package for
+  later deployment.
 
+The acceleration backend must be selected before the model is constructed.
+The same settings can be used during training, validation, testing, and model
+export, subject to the backend limitations described below.
 
-External kernel
----------------
+External Kernels
+----------------
 
-The following table summarizes the available external kernel for TACE:
+The following external kernels are available:
 
-+--------------------+-------------+
-| Backend            | Support ?   |
-+====================+=============+
-.. | cartnn             | ✔           |
-.. +--------------------+-------------+
-.. | e3nn               | ✔           |
-+--------------------+-------------+
-| equitroch          | ✔           |
-+--------------------+-------------+
-| openequivariance   | ✔           |
-+--------------------+-------------+
-| cuequivariance     | ✔           | 
-+--------------------+-------------+
-| compile            | ✔           | 
-+--------------------+-------------+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 20 40
 
-Set the corresponding environment variable to 1 to enable it, and 0 to disable it.
+   * - Backend
+     - Supported
+     - Environment variable
+   * - Equitorch
+     - Yes
+     - ``TACE_USE_EQT=1``
+   * - OpenEquivariance
+     - Yes
+     - ``TACE_USE_OEQ=1``
+   * - cuEquivariance
+     - Yes
+     - ``TACE_USE_CUE=1``
 
-   .. code-block:: bash
+For example:
 
-      export TACE_USE_OEQ=1       # openequivariance
-      export TACE_USE_CUE=1       # cuequivariance
-      export TACE_USE_EQT=1       # equitroch      
+.. code-block:: bash
 
-      export TACE_USE_COMPILE=1   # compile whole model
+   export TACE_USE_OEQ=1
+
+Only enable one equivariant kernel backend at a time. OpenEquivariance is the
+recommended default for supported NVIDIA GPUs. Equitorch is mainly useful for
+models with ``correlation > 2`` and is not normally required.
 
 .. note::
 
-  - If your model is a parameter dictionary, the relevant environment variables 
-    can be used to replace or modify the model at runtime. However, once the model 
-    has been serialized, it can no longer be modified through environment variables. 
-    Therefore, you should set the required environment variables before exporting 
-    the model, for example, before exporting a model for use with LAMMPS.
+   Environment variables can replace compatible modules while a checkpoint or
+   state-dict package is being loaded. Once the complete Python model has been
+   serialized, its modules are already fixed. Set the required acceleration
+   variables before exporting a full model or a LAMMPS model.
 
-  - ``eqt`` is primarily intended to accelerate models with ``correlation > 2`` 
-    and is generally not recommended for typical use cases. 
+PyTorch Compilation
+-------------------
 
+TACE provides two different compilation workflows.
 
-.. 1. ``tace.models.e3nnTACE``
-   
-..    Support ``oeq``, ``cue`` and ``eqt``.
-   
-.. 2. ``tace.models.cartTACE``
+.. list-table::
+   :header-rows: 1
+   :widths: 28 34 38
 
-..    This model does not support acceleration.
+   * - Workflow
+     - How to enable it
+     - Intended use
+   * - In-process compilation
+     - ``TACE_USE_COMPILE=1``
+     - Training, validation, and inference in the current Python process
+   * - AOTInductor (AOTI)
+     - ``tace-export-eval --backend aoti`` or
+       ``tace-export-lammps --backend aoti``
+     - Ahead-of-time deployment without compiling again at startup
 
-..    The Cartesian version of TACE is currently being refactored for better future compatibility.
+In-process compilation caches compiled graphs in memory and does not create a
+deployment artifact:
 
-..    If you need to use the Cartesian version at this time, please refer to version v0.1.0:
+.. code-block:: bash
 
-..    https://github.com/xvzemin/tace/tree/v0.1.0
+   export TACE_USE_COMPILE=1
+   tace-train -cn tace.yaml
+
+AOTI produces a ``.pt2`` package containing compiled native code. Loading the
+package does not call ``torch.compile`` again.
+
+.. important::
+
+   TACE AOTInductor compilation and export require **PyTorch 2.11 or newer**.
+   Earlier PyTorch versions are not supported for AOTI export.
+
+Compilation currently supports energy and its force, stress, and virial
+derivatives, together with their direct prediction variants. Models using
+unsupported output properties or LES cannot be exported through the current
+AOTI path.
+
+AOTI packages contain machine-specific native code. Compile on the deployment
+machine, or on a machine with a compatible operating system, PyTorch/CUDA ABI,
+and GPU architecture. A package compiled for CUDA cannot be loaded on CPU.
+
+.. _tace-export-tutorial:
+
+TACE Export Tutorial
+--------------------
+
+Use the export command that matches the target workflow:
+
+* ``tace-export-train`` creates an editable model package for continued
+  training, fine-tuning, or transfer learning;
+* ``tace-export-eval`` creates a native PyTorch inference model or an AOTI
+  graph package;
+* ``tace-export-lammps`` creates a LAMMPS ML-IAP model, optionally backed by
+  AOTI.
+
+The commands accept ``.ckpt``, state-dict ``.pt``/``.pth`` packages, and
+serialized full models as input. Use ``-f`` to select a fidelity and ``--dtype``
+to change model precision during export.
+
+Export for Training
+~~~~~~~~~~~~~~~~~~~
+
+Use this form when the result must remain editable by TACE:
+
+.. code-block:: bash
+
+   tace-export-train -m model.ckpt
+
+The default output is ``model.ckpt-state.pt``. It stores the state dictionary
+and the model configuration required by ``load_tace`` and training utilities.
+The command loads EMA parameters when they are available.
+
+An explicit output, fidelity, and precision can also be selected:
+
+.. code-block:: bash
+
+   tace-export-train \
+     -m model.ckpt \
+     -o model-fidelity-1.pt \
+     -f 1 \
+     --dtype float32
+
+Export for Native PyTorch Inference
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The default ``state_dict`` backend is portable and reconstructs the model from
+its saved configuration:
+
+.. code-block:: bash
+
+   tace-export-eval -m model.ckpt --backend state_dict --device cpu
+
+The default output is ``model.ckpt-state_dict.pt``. This is the recommended
+non-compiled format for normal evaluation and Python deployment.
+
+The ``full_model`` backend serializes the complete Python module with
+``torch.save``:
+
+.. code-block:: bash
+
+   tace-export-eval -m model.ckpt --backend full_model --device cpu
+
+The default output is ``model.ckpt-full_model.pt``. It is convenient, but more
+tightly coupled to the TACE and PyTorch versions used during export.
+
+Both formats are loaded through the same API:
+
+.. code-block:: python
+
+   from tace.lightning import load_tace
+
+   model = load_tace("model.ckpt-state_dict.pt", device="cuda")
+   model.eval()
+
+Export AOTI for ASE and TorchSim
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Set external-kernel variables before export, then select the ``aoti`` backend:
+
+.. code-block:: bash
+
+   export TACE_USE_OEQ=1
+
+   tace-export-eval \
+     -m model.ckpt \
+     --backend aoti \
+     --device cuda \
+     --sample structures.xyz \
+     --sample-index ":10" \
+     --batch-size 2
+
+``--sample`` is optional. When supplied, TACE uses ASE-readable structures to
+trace realistic graph shapes; otherwise it builds a synthetic dynamic sample.
+The default output is ``model.pt2``. ``tace-compile`` is an alias for
+``tace-export-eval`` and accepts the same options.
+
+The graph ``.pt2`` package can be loaded with ``load_tace`` and shared by native
+PyTorch consumers, including the ASE and TorchSim integrations:
+
+.. code-block:: python
+
+   from tace.lightning import load_tace
+
+   model = load_tace("model.pt2", device="cuda")
+   outputs = model(batch)
+
+Export for LAMMPS
+~~~~~~~~~~~~~~~~~
+
+The regular ML-IAP backend serializes the eager model:
+
+.. code-block:: bash
+
+   export TACE_USE_OEQ=1
+   tace-export-lammps -m model.pt --backend mliap --device cuda
+
+This creates ``model.pt-lammps_mliap.pt`` by default.
+
+To compile the LAMMPS tensor graph ahead of time:
+
+.. code-block:: bash
+
+   export TACE_USE_OEQ=1
+   tace-export-lammps \
+     -m model.pt \
+     --backend aoti \
+     --device cuda
+
+The AOTI backend creates two files:
+
+* ``model.pt-lammps_aoti.pt2`` is the compiled AOTInductor package;
+* ``model.pt-lammps_aoti.pt`` is the ``MLIAPUnified`` loader used by LAMMPS.
+
+LAMMPS ML-IAP loads a pickled Python interface, so ``pair_style`` must point to
+the ``.pt`` loader rather than directly to the ``.pt2`` package. The loader
+contains the package bytes and loads the compiled model without recompilation:
+
+.. code-block:: text
+
+   pair_style mliap unified model.pt-lammps_aoti.pt 0
+   pair_coeff * * H C N
+
+Use ``--aoti-package`` to choose the package path and ``-o`` to choose the
+ML-IAP loader path. Detailed LAMMPS setup is covered in :doc:`lammps`.

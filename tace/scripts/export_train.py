@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument("-m", "--model", type=str, required=True, help="Model path")
     parser.add_argument("-o", "--output", type=str, default=None, help="Output .pt path")
     parser.add_argument(
-        "-l",
+        "-f",
         "--fidelity_idx",
         type=int,
         default=None,

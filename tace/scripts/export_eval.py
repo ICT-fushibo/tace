@@ -36,7 +36,7 @@ def parse_args():
         help="Export format",
     )
     parser.add_argument(
-        "-l",
+        "-f",
         "--fidelity_idx",
         type=int,
         default=None,
