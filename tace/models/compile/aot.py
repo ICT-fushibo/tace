@@ -216,7 +216,9 @@ def export_aotinductor(
     flat_model.eval()
     inputs = tuple(sample_data[key] for key in input_keys)
     traced = trace_to_fx(flat_model, inputs)
-    dynamic_shapes = _graph_dynamic_shapes()
+    dynamic_shapes = _graph_dynamic_shapes(
+        num_graphs=sample_data["ptr"].numel() - 1
+    )
     exported = torch.export.export(
         traced,
         inputs,
@@ -460,19 +462,31 @@ def _ensure_sample_inputs(
             sample_data[key] = value.to(device=device)
 
 
-def _graph_dynamic_shapes() -> tuple[Dict[int, object], ...]:
+def _graph_dynamic_shapes(num_graphs: int) -> tuple[Dict[int, object], ...]:
     num_nodes = torch.export.Dim("num_nodes", min=2)
     num_edges = torch.export.Dim("num_edges", min=2)
-    num_graphs = torch.export.Dim("num_graphs", min=1)
+    if num_graphs == 1:
+        return (
+            {0: num_nodes},
+            {0: num_nodes},
+            {1: num_edges},
+            {0: num_edges},
+            {},
+            {0: num_nodes},
+            {},
+            {},
+        )
+
+    num_graphs_dim = torch.export.Dim("num_graphs", min=1)
     return (
         {0: num_nodes},
         {0: num_nodes},
         {1: num_edges},
         {0: num_edges},
-        {0: num_graphs},
+        {0: num_graphs_dim},
         {0: num_nodes},
-        {0: num_graphs + 1},
-        {0: num_graphs},
+        {0: num_graphs_dim + 1},
+        {0: num_graphs_dim},
     )
 
 
