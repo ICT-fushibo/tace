@@ -103,14 +103,13 @@ If you use cartnn, Cartesian-3j, cMACE, cNequIP, cAllegro, please cite our paper
 
 .. code-block:: bibtex
 
-   @misc{xu2026cartesian3jframeworkmachinelearning,
-         title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials}, 
-         author={Zemin Xu and Chenyu Wu and Wenbo Xie and P. Hu},
-         year={2026},
-         eprint={2512.16882},
-         archivePrefix={arXiv},
-         primaryClass={physics.chem-ph},
-         url={https://arxiv.org/abs/2512.16882}, 
+   @inproceedings{
+      xu2026a,
+      title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials},
+      author={Zemin Xu and Chenyu Wu and Wenbo Xie and Peijun Hu},
+      booktitle={Forty-third International Conference on Machine Learning},
+      year={2026},
+      url={https://openreview.net/forum?id=9ZWK6gneWq}
    }
 
 Contact
