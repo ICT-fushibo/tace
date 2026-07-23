@@ -66,10 +66,10 @@ To convert this checkpoint into a format readable by LAMMPS, execute the followi
 .. code-block:: bash
 
    # Use your own model, or tace foundational model
-   cp ~/.cache/tace/TACE-OAM-L.pt .
+   cp ~/.cache/tace/TACE-OAM-7M.pt .
 
    # tace-export -h 
-   tace-export -m TACE-OAM-L.pt --backend lammps 
+   tace-export -m TACE-OAM-7M.pt --backend lammps 
 
 After running `tace-export`, you will get a file with extension `*-lammps_mliap.pt`.  
 This is the exported model file that you will use in LAMMPS.  
@@ -95,7 +95,7 @@ This is the exported model file that you will use in LAMMPS.
    mass 2 12.0107  # C
    mass 3 14.0067  # N
 
-   pair_style      mliap unified TACE-v1-OMat24-M.pt-lammps_mliap.pt 0
+   pair_style      mliap unified TACE-OAM-7M.pt-lammps_mliap.pt 0
    pair_coeff      * * H C N
 
    neighbor        2.0 bin

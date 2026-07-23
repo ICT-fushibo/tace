@@ -12,7 +12,7 @@ from ase.optimize import LBFGS, FIRE
 from tace.interface.ase import TACEAseCalc
 from tace.foundations import tace_foundations
 
-model = tace_foundations["TACE-v1-LES-REICO-5-PdAgCHO.pt"]
+model = tace_foundations["TACE-OAM-7M"]
 model = "/share2/vortex/xuzemin/last.ckpt"
 dtype = "float32"
 device = 'cuda' if torch.cuda.is_available() else 'cpu'

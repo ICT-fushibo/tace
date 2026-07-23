@@ -17,7 +17,7 @@ from tace.foundations import tace_foundations
 from tace.interface.ase import TACEAseCalc, add_dispersion
 
 
-model = tace_foundations["TACE-OAM-L"]
+model = tace_foundations["TACE-OAM-7M"]
 calculator = TACEAseCalc(
     model=model,
     dtype='float32',

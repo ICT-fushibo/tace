@@ -38,7 +38,7 @@ as an ASE calculator:
 
     # Load a pretrained foundational model
     # The model will be auto-downloaded to ~/.cache/tace if not present
-    model = tace_foundations["TACE-OAM-L.pt"]
+    model = tace_foundations["TACE-OAM-7M"]
 
     dtype = "float32"
     device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -35,7 +35,7 @@ init_conf = BaTiO3
 
 init_atomsList = [init_conf] * 2
 # Put your (auto)download model in ~/.cache/tace
-model = tace_foundations["TACE-OAM-L"]
+model = tace_foundations["TACE-OAM-7M"]
 
 dtype = 'float32'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
