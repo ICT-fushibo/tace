@@ -16,16 +16,17 @@ from ..utils._global import CACHE_DIR
 
 
 OAM_SERIES = {
-    # "TACE-OMat24-1M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-1M.pt",
-
     "TACE-OMat24-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-L.pt",
     "TACE-OAM-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-L.pt",
 
-    "TACE-OMat24-RRA": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA.pt",
+    "TACE-OMat24-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA-1.0.pt",
     "TACE-OMat24-RRA-Preview": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA-Preview.pt",
 
-    "TECE-OAM-OMat24": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OAM-OMat24.pt",
+    "TECE-OMat24-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OMat24-RRA-1.0.pt",
     "TECE-OAM-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OAM-RRA-1.0.pt",
+
+    "TACE-OMat24-7M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-7M.pt",
+    "TACE-OAM-7M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-7M.pt",
 }
 
 REICO_SERIES = {
