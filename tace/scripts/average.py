@@ -29,6 +29,7 @@ def average_models(model_paths, ema=False):
             device="cpu",
             strict=True,
             use_ema=ema,
+            dtype=model_avg.get_model_dtype(),
         )
         model.eval()
         with torch.no_grad():

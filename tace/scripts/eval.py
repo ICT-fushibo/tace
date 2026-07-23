@@ -19,7 +19,6 @@ from e3nn.util.jit import compile
 from tace.lightning import load_tace
 from tace.dataset.graph import from_atoms
 from tace.utils.metrics import build_metrics, update_metrics
-from tace.utils._global import DTYPE
 from tace.utils.utils import num_params
 from tace.dataset.quantity import KeySpecification, update_keyspec_from_kwargs, PROPERTY
 from tace.dataset.read import check_keys
@@ -60,22 +59,22 @@ def main():
     atoms_list_copy = copy.deepcopy(atomsList)
     key_spec = KeySpecification()
     update_keyspec_from_kwargs(key_spec, vars(args))
-    model = load_tace(args.model, args.device, strict=True, use_ema=args.ema)
+    model = load_tace(
+        args.model,
+        args.device,
+        strict=True,
+        use_ema=args.ema,
+        dtype=args.dtype,
+    )
     print(f"Number of parameters: {num_params(model)}")
     max_neighbors = model.get_max_neighbors()
     cutoff = model.get_cutoff()
     element = model.get_torch_element()
-    model_dtype = model.get_model_dtype()
     target_property = model.get_target_property()
     embedding_property = model.get_embedding_property()
-    args_dtype = DTYPE[args.dtype]
-    model.eval().to(args.device)
+    model.eval()
     for param in model.parameters():
         param.requires_grad = False
-    if args_dtype != model_dtype:
-        print(f"[Warning] Model dtype {(model_dtype)} does not match args.dtype {(args_dtype)}. Forcing dtype to {args_dtype}")
-    torch.set_default_dtype(args_dtype)
-    model.to(args_dtype)
 
     # Build metrics
     if args.test == 1:

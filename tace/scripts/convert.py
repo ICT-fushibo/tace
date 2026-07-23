@@ -10,7 +10,6 @@ import torch
 
 from tace.lightning import load_tace
 from tace.lightning.lora import from_lora_to_merged_model
-from tace.utils._global import DTYPE
 
 ALLOWED_TYPE = ["merge_lora", "merged_lora"]
 
@@ -52,14 +51,15 @@ def count_parameters(model: torch.nn.Module) -> int:
 
 def main():
     args = parse_args()
-    model = load_tace(args.model, 'cpu', strict=True, use_ema=True)
+    model = load_tace(
+        args.model,
+        "cpu",
+        strict=True,
+        use_ema=True,
+        dtype=args.dtype,
+    )
     if bool(args.debug):
         print(model)
-    model_dtype = model.readout_fn.cutoff.dtype
-    args_dtype = DTYPE[args.dtype] or model_dtype
-    if args_dtype != model_dtype:
-        print(f"[Warning] Model dtype does not match args.dtype. Forcing dtype from {model_dtype} to {args_dtype}")
-    model.to(dtype=args_dtype)
     if args.type in {"merge_lora", "merged_lora"}:
         total_before = count_parameters(model)
         model = from_lora_to_merged_model(model)
@@ -70,7 +70,6 @@ def main():
         print(f"  Your LoRA:     {total_before - total_after}")
         print(f"  Before merged: {total_before}")
         print(f"  After merged:  {total_after}")
-        model.to(dtype=args_dtype)
         torch.save(model, args.model + "-merged_lora.pt")
     else:
         raise ValueError(f"Unsupported convert type '{args.type}'. One of {ALLOWED_TYPE} is available.")

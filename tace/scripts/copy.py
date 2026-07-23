@@ -7,8 +7,6 @@ import argparse
 import torch
 
 from tace.lightning import load_tace
-from tace.lightning.torch_model import create_model
-from tace.utils._global import DTYPE
 
 
 def parse_args():
@@ -89,25 +87,23 @@ def main():
 
     src_path, dst_path = args.model
 
-    src_model = load_tace(src_path, "cpu", strict=True, use_ema=True)
     # if dst_path.endswith("*.yaml"):
     #     dst_model = create_model
     # else:
-    dst_model = load_tace(dst_path, "cpu", strict=True, use_ema=True)
-
-    model_dtype = dst_model.readout_fn.cutoff.dtype
-    args_dtype = DTYPE[args.dtype] or model_dtype
-
-    if args_dtype != model_dtype:
-        print(
-            f"[Warning] Model dtype does not match args.dtype. "
-            f"Forcing dtype from {model_dtype} to {args_dtype}"
-        )
-
-    torch.set_default_dtype(args_dtype)
-
-    src_model.to(dtype=args_dtype, device="cpu")
-    dst_model.to(dtype=args_dtype, device="cpu")
+    dst_model = load_tace(
+        dst_path,
+        "cpu",
+        strict=True,
+        use_ema=True,
+        dtype=args.dtype,
+    )
+    src_model = load_tace(
+        src_path,
+        "cpu",
+        strict=True,
+        use_ema=True,
+        dtype=dst_model.get_model_dtype(),
+    )
 
     merged_state = merge_state_dict(src_model, dst_model)
 

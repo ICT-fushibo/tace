@@ -176,6 +176,7 @@ def build(cfg: DictConfig):
                 device="cpu",
                 strict=True,
                 use_ema=True,
+                dtype=cfg["trainer"]["precision"],
             )
         statistics = model.readout_fn.statistics
         atomic_numbers = statistics[0]["atomic_numbers"]

@@ -3,7 +3,6 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import warnings
 from typing import Union
 
 
@@ -14,7 +13,6 @@ from ase.calculators.mixing import SumCalculator
 from torch_geometric.loader import DataLoader
 
 
-from tace.models.adapter import TensorModel
 from tace.lightning import load_tace
 from tace.dataset.quantity import PROPERTY
 from tace.dataset.graph import from_atoms
@@ -24,7 +22,7 @@ from tace.dataset.quantity import (
     KeySpecification,
     update_keyspec_from_kwargs,
 )
-from tace.utils._global import DTYPE, DEVICE
+from tace.utils._global import DEVICE
 
 
 class TACEAseCalc(Calculator):
@@ -67,25 +65,23 @@ class TACEAseCalc(Calculator):
         **kwargs,
     ):
         super().__init__(**kwargs)
+        self.device = DEVICE[
+            device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        ]
         # === init ===
-        model: TensorModel = load_tace(
-            model, 
-            device, 
-            strict=True, 
-            use_ema=True, 
-            target_property=target_property
+        model = load_tace(
+            model,
+            self.device,
+            strict=True,
+            use_ema=True,
+            target_property=target_property,
+            dtype=dtype,
         )
         model.eval()
         for param in model.parameters():
             param.requires_grad = False
 
-        model_dtype = model.get_model_dtype()
-        self.dtype = DTYPE[dtype or model_dtype]
-        self.device = DEVICE[device or torch.device("cuda" if torch.cuda.is_available() else "cpu")]
-        torch.set_default_dtype(self.dtype)
-        if DTYPE[dtype] != DTYPE[model_dtype]:
-            print(f"[Warning] Model dtype {(model_dtype)} does not match args.dtype {(dtype)}. Forcing dtype to {self.dtype}")
-        model = model.to(dtype=self.dtype)
+        self.dtype = model.get_model_dtype()
         self.target_property = model.get_target_property() 
         self.embedding_property = model.get_embedding_property()
         self.max_neighbors = model.get_max_neighbors()
@@ -107,7 +103,7 @@ class TACEAseCalc(Calculator):
             self.fidelity_idx = model.get_fidelity_idx()
         self.keySpecification = KeySpecification()
         update_keyspec_from_kwargs(self.keySpecification, KEYS)
-        self.model = model.to(self.device)
+        self.model = model
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         Calculator.calculate(self, atoms)

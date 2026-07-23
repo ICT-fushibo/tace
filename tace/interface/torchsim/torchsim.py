@@ -24,9 +24,8 @@ except ImportError as e:
     print(f"[warning] torch_sim import failed: {e}")
 
 
-from tace.models.adapter import TensorModel
 from tace.lightning import load_tace
-from tace.utils._global import DTYPE, DEVICE
+from tace.utils._global import DEVICE
 
   
 class TACETorchSimCalc(ModelInterface):
@@ -115,25 +114,21 @@ class TACETorchSimCalc(ModelInterface):
         self._device = DEVICE[device] or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        self._dtype = DTYPE[dtype]
         self._compute_forces = compute_forces
         self._compute_stress = compute_stress
         self.neighbor_list_fn = neighbor_list_fn
         self._memory_scales_with = "n_atoms_x_density"
 
         # Load TACE model
-        load_device = (
-            self._device
-            if isinstance(model, (str, Path)) and str(model).endswith(".pt2")
-            else "cpu"
-        )
-        model: TensorModel = load_tace(
-            model, 
-            load_device,
-            strict=True, 
-            use_ema=True, 
-            target_property=target_property
+        model = load_tace(
+            model,
+            self._device,
+            strict=True,
+            use_ema=True,
+            target_property=target_property,
+            dtype=dtype,
         ) 
+        self._dtype = model.get_model_dtype()
         if hasattr(model, "flags"):
             model.flags.compute_forces = self._compute_forces
             model.flags.compute_stress = self._compute_stress
@@ -143,10 +138,6 @@ class TACETorchSimCalc(ModelInterface):
         for param in model.parameters():
             param.requires_grad = False
         self.model = model
-        if self._dtype is not None:
-            self.model = self.model.to(dtype=self._dtype)
-        if self._device is not None:
-            self.model = self.model.to(device=self._device)
         # Set model properties
         self.r_max = self.model.get_cutoff()
         atomic_nums = torch.tensor(

@@ -124,6 +124,7 @@ def main(cfg: DictConfig):
                 device="cpu",
                 strict=True,
                 use_ema=True,
+                dtype=cfg["trainer"]["precision"],
             )
         statistics = model.readout_fn.statistics
         atomic_numbers = statistics[0]["atomic_numbers"]
@@ -162,5 +163,4 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     main()
-
 

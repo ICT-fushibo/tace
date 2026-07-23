@@ -15,7 +15,6 @@ from tace.dataset.graph import from_atoms
 from tace.dataset.quantity import KEYS, KeySpecification, update_keyspec_from_kwargs
 from tace.lightning import export_tace, load_tace
 from tace.models.compile import export_aotinductor
-from tace.utils._global import DTYPE
 
 
 ALLOWED_BACKEND = ["state_dict", "full_model", "aoti"]
@@ -134,17 +133,15 @@ def _build_sample_data(
 
 def main():
     args = parse_args()
-    model = load_tace(args.model, args.device, strict=True, use_ema=True)
-    model_dtype = model.get_model_dtype()
-    args_dtype = DTYPE[args.dtype] or model_dtype
-    if args_dtype != model_dtype:
-        print(
-            "[Warning] Model dtype does not match args.dtype. "
-            f"Forcing dtype from {model_dtype} to {args_dtype}"
-        )
-    torch.set_default_dtype(args_dtype)
+    model = load_tace(
+        args.model,
+        args.device,
+        strict=True,
+        use_ema=True,
+        dtype=args.dtype,
+    )
     model.reset_fidelity_idx(args.fidelity_idx)
-    model.eval().to(dtype=args_dtype, device=args.device)
+    model.eval()
     for param in model.parameters():
         param.requires_grad = False
 

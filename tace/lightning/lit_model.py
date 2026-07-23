@@ -21,6 +21,7 @@ from omegaconf import OmegaConf
 from tace.utils.env import get_tace_apply_u_shift, get_tace_use_dens
 from tace.utils.metrics import build_metrics, update_metrics
 from tace.utils._global import DTYPE, DEVICE
+from tace.utils.utils import torch_default_dtype
 from tace.utils.loss.uncertainty import UncertaintyLoss
 from tace.dataset.quantity import get_target_property, get_embedding_property
 from tace.models.adapter import TensorModel
@@ -610,22 +611,28 @@ class LightningWrapperModel(L.LightningModule):
         map_location: str = "cpu",
         strict: Optional[bool] = True,
         use_ema: Union[int, bool] = 1,
+        dtype: Optional[torch.dtype] = None,
     ) -> Any:
 
         checkpoint = torch.load(
             ckpt_path, map_location=map_location, weights_only=False
         )
-        dtypes = [
-            v.dtype for v in checkpoint["state_dict"].values()
-            if hasattr(v, "dtype") and torch.is_floating_point(v)
-        ]
-        dominant_dtype = Counter(dtypes).most_common(1)[0][0] # original training precision
+        model_dtype = dtype or _dominant_floating_dtype(
+            value
+            for name, value in checkpoint["state_dict"].items()
+            if name.startswith("model.")
+        )
         cfg = checkpoint['hyper_parameters']['cfg']
         target_property = get_target_property(cfg)
         embedding_property = get_embedding_property(cfg)
         statistics = checkpoint['hyper_parameters']['statistics']
-        model = create_model(cfg, statistics, target_property, embedding_property)
-        model.to(dtype=dominant_dtype)
+        with torch_default_dtype(model_dtype):
+            model = create_model(
+                cfg,
+                statistics,
+                target_property,
+                embedding_property,
+            )
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
         }
@@ -646,14 +653,37 @@ class LightningWrapperModel(L.LightningModule):
         return model.to(map_location)
 
 
+def _dominant_floating_dtype(values) -> torch.dtype:
+    dtypes = [
+        value.dtype
+        for value in values
+        if isinstance(value, torch.Tensor) and torch.is_floating_point(value)
+    ]
+    if not dtypes:
+        raise ValueError("Cannot infer model dtype: no floating-point tensors found.")
+    return Counter(dtypes).most_common(1)[0][0]
+
+
+def _resolve_model_dtype(
+    dtype: Union[str, int, torch.dtype, None],
+) -> Optional[torch.dtype]:
+    try:
+        return DTYPE[dtype]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"Unsupported model dtype: {dtype!r}") from exc
+
+
 def _load_tace(
     model: Union[str, Path, torch.nn.Module],
     device: Union[str, torch.device, None] = None,
     strict: bool = True,
     use_ema: bool = True,
+    dtype: Union[str, int, torch.dtype, None] = None,
     **kwargs: Any,
 ) -> TensorModel:
     device = DEVICE[device]
+    requested_dtype = _resolve_model_dtype(dtype)
+    is_aoti = False
     if isinstance(model, (str, Path)):
         model_path = str(model)
         if model_path.endswith(".ckpt"):
@@ -662,11 +692,13 @@ def _load_tace(
                 map_location=device,
                 strict=strict,
                 use_ema=use_ema,
+                dtype=requested_dtype,
             )
         elif model_path.endswith(".pt2"):
             from tace.models.compile import load_aotinductor
 
             model = load_aotinductor(model_path, device)
+            is_aoti = True
         elif (model_path.endswith(".pt") or model_path.endswith(".pth")):
             obj = torch.load(
                 model_path,
@@ -675,10 +707,15 @@ def _load_tace(
                 **kwargs,
             )
             if isinstance(obj, dict) and "state_dict" in obj:
-                model = create_model(
-                    **{k: v for k, v in obj.items() if k != "state_dict"}
+                state_dict = obj["state_dict"]
+                model_dtype = requested_dtype or _dominant_floating_dtype(
+                    state_dict.values()
                 )
-                model.load_state_dict(obj["state_dict"], strict=strict)
+                with torch_default_dtype(model_dtype):
+                    model = create_model(
+                        **{k: v for k, v in obj.items() if k != "state_dict"}
+                    )
+                model.load_state_dict(state_dict, strict=strict)
             elif isinstance(obj, torch.nn.Module):
                 model = obj
             else:
@@ -689,11 +726,24 @@ def _load_tace(
         else:
             raise ValueError("Model path must end with .ckpt, .pt2, .pt or .pth")
     elif isinstance(model, torch.nn.Module):
-        pass
+        is_aoti = hasattr(model, "compiled_model") and hasattr(
+            model, "compile_device"
+        )
     else:
         raise TypeError("Model must be a path or torch.nn.Module")
 
-    return model.to(device)
+    model_dtype = model.get_model_dtype()
+    target_dtype = requested_dtype or model_dtype
+    if is_aoti and target_dtype != model_dtype:
+        raise ValueError(
+            f"AOTI package dtype is fixed to {model_dtype}; "
+            f"requested {target_dtype}. Re-export the package with the target dtype."
+        )
+
+    torch.set_default_dtype(target_dtype)
+    if is_aoti:
+        return model.to(device=device)
+    return model.to(device=device, dtype=target_dtype)
 
 
 def load_tace(
@@ -702,12 +752,14 @@ def load_tace(
     strict: bool = True,
     use_ema: bool = True,
     target_property: Optional[list[str]] = None,
+    dtype: Union[str, int, torch.dtype, None] = None,
     **kwargs: Any,
 ) -> TensorModel:
     
     model = _load_tace(
         model=model,
         device=device,
+        dtype=dtype,
         strict=strict,
         use_ema=use_ema,
         **kwargs,
@@ -717,6 +769,7 @@ def load_tace(
         model.reset_target_property(target_property)
 
     return model
+
 
 def export_tace(
     model: torch.nn.Module,
@@ -733,24 +786,18 @@ def export_tace(
         name if name.endswith(".pt") else name + ".pt"
     )
 
+
 def finetune(cfg: Dict) -> torch.nn.Module:
 
+    precision = cfg['trainer']['precision']
+    dtype = DTYPE.get(precision, torch.float64)
     model = load_tace(
         cfg["finetune_from_model"],
         device='cpu',
         strict=True,
         use_ema=True,
+        dtype=dtype,
     )
-
-    precision = cfg['trainer']['precision']
-    dtype = DTYPE.get(precision, torch.float64)
-
-    if dtype == torch.float16:
-        model.half()      
-    elif dtype == torch.float32:
-        model.float()   
-    else:
-        model.double()
 
     logging.info(f"Load model for Fine-tunning")
     model.train()

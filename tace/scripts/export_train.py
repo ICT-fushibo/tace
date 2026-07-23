@@ -6,10 +6,7 @@
 import argparse
 from pathlib import Path
 
-import torch
-
 from tace.lightning import export_tace, load_tace
-from tace.utils._global import DTYPE
 
 
 def parse_args():
@@ -44,17 +41,14 @@ def _default_output_path(model_path: str) -> str:
 
 def main():
     args = parse_args()
-    model = load_tace(args.model, args.device, strict=True, use_ema=True)
-    model_dtype = model.get_model_dtype()
-    args_dtype = DTYPE[args.dtype] or model_dtype
-    if args_dtype != model_dtype:
-        print(
-            "[Warning] Model dtype does not match args.dtype. "
-            f"Forcing dtype from {model_dtype} to {args_dtype}"
-        )
-    torch.set_default_dtype(args_dtype)
+    model = load_tace(
+        args.model,
+        args.device,
+        strict=True,
+        use_ema=True,
+        dtype=args.dtype,
+    )
     model.reset_fidelity_idx(args.fidelity_idx)
-    model.to(dtype=args_dtype, device=args.device)
 
     output_path = args.output or _default_output_path(args.model)
     export_tace(model, output_path)
