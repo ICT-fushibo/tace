@@ -7,7 +7,6 @@
 Based on https://github.com/TorchSim/torch-sim/blob/main/torch_sim/models
 """
 
-import os
 from typing import Union
 from collections.abc import Callable
 from pathlib import Path
@@ -26,6 +25,7 @@ except ImportError as e:
 
 from tace.lightning import load_tace
 from tace.utils._global import DEVICE
+from tace.utils.env import enable_acceleration
 
   
 class TACETorchSimCalc(ModelInterface):
@@ -66,8 +66,9 @@ class TACETorchSimCalc(ModelInterface):
         fidelity_idx: Union[int, None] = None,
         target_property: Union[list[str], None] = None,
         enable_oeq: bool = False,
-        enable_eqt: bool = False,
         enable_cue: bool = False,
+        enable_eqt: bool = False,
+        enable_compile: bool = False,
     ) -> None:
         """Initialize the TACE model for energy, force, and stress calculations within
         the TorchSim framework. The model can be initialized with atomic numbers
@@ -95,21 +96,20 @@ class TACETorchSimCalc(ModelInterface):
                 Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
                 If you want to use this parameter, you must provide all the required physical quantities.
             enable_oeq (bool): Whether to enable Oeq acceleration. Defaults to False.
-            enable_eqt (bool): Whether to enable Eqt acceleration. Defaults to False.
             enable_cue (bool): Whether to enable CuE acceleration. Defaults to False.
+            enable_eqt (bool): Whether to enable Eqt acceleration. Defaults to False.
+            enable_compile (bool): Whether to enable the torch.compile model path.
+                Defaults to False.
         """
         super().__init__()
 
         assert TORCH_SIM_AVAILABLE, "Please install package torch-sim-atomistic !"
-        if enable_oeq:
-            print("Using Oeq for acceleration")
-            os.environ['TACE_USE_OEQ'] = '1'
-        if enable_cue:
-            print("Using CuEq for acceleration")
-            os.environ['TACE_USE_CUE'] = '1'
-        if enable_eqt:
-            print("Using Eqt for acceleration")
-            os.environ['TACE_USE_EQT'] = '1'
+        enable_acceleration(
+            enable_oeq=enable_oeq,
+            enable_cue=enable_cue,
+            enable_eqt=enable_eqt,
+            enable_compile=enable_compile,
+        )
 
         self._device = DEVICE[device] or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"

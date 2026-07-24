@@ -23,6 +23,7 @@ from tace.dataset.quantity import (
     update_keyspec_from_kwargs,
 )
 from tace.utils._global import DEVICE
+from tace.utils.env import enable_acceleration
 
 
 class TACEAseCalc(Calculator):
@@ -49,6 +50,14 @@ class TACEAseCalc(Calculator):
     neighborlist_backend: str
         Support backend in one of [ase, matscipy, vesin, nvidia],
         recommend matscipy.
+    enable_oeq : bool, optional
+        Whether to enable OpenEquivariance acceleration.
+    enable_cue : bool, optional
+        Whether to enable CuEquivariance acceleration.
+    enable_eqt : bool, optional
+        Whether to enable EquiTriton acceleration.
+    enable_compile : bool, optional
+        Whether to enable the torch.compile model path.
     **kwargs
         Additional keyword arguments passed to the ASE Calculator base class.
     """
@@ -62,9 +71,19 @@ class TACEAseCalc(Calculator):
         fidelity_idx: Union[int, None] = None,
         target_property: Union[list[str], None] = None,
         neighborlist_backend: str = "matscipy",
+        enable_oeq: bool = False,
+        enable_cue: bool = False,
+        enable_eqt: bool = False,
+        enable_compile: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
+        enable_acceleration(
+            enable_oeq=enable_oeq,
+            enable_cue=enable_cue,
+            enable_eqt=enable_eqt,
+            enable_compile=enable_compile,
+        )
         self.device = DEVICE[
             device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
         ]

@@ -6,10 +6,29 @@
 import os
 from typing import Dict
 
+
 def set_env(cfg: Dict):
     env = cfg.get("misc", {}).get("env", {})
     for k, v in env.items():
         os.environ[k] = v
+
+
+def enable_acceleration(
+    *,
+    enable_oeq: bool = False,
+    enable_cue: bool = False,
+    enable_eqt: bool = False,
+    enable_compile: bool = False,
+) -> None:
+    acceleration_env = {
+        "TACE_USE_OEQ": enable_oeq,
+        "TACE_USE_CUE": enable_cue,
+        "TACE_USE_EQT": enable_eqt,
+        "TACE_USE_COMPILE": enable_compile,
+    }
+    for name, enabled in acceleration_env.items():
+        if enabled:
+            os.environ[name] = "1"
 
 
 def get_tace_use_oeq():
