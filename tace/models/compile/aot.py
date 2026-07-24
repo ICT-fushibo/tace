@@ -41,6 +41,9 @@ LAMMPS_AOTI_INPUT_KEYS = (
     "fidelity_idx",
 )
 LAMMPS_AOTI_OUTPUT_KEYS = ("energy", "node_energy", "edge_forces")
+TACE_AOTI_SYSTEM_OUTPUT_KEYS = frozenset(
+    {"energy", "virials", "stress", "direct_virials", "direct_stress"}
+)
 
 
 class AOTICompiledTensorModel(torch.nn.Module):
@@ -66,6 +69,7 @@ class AOTICompiledTensorModel(torch.nn.Module):
         self.fidelity_idx = int(metadata["tace_fidelity_idx"])
         self.model_dtype = _dtype_from_name(metadata["tace_dtype"])
         self.compile_device = torch.device(metadata.get("AOTI_DEVICE_KEY", str(device)))
+        self.export_num_graphs = int(metadata.get("tace_export_num_graphs", "1"))
         self._check_device(device)
 
     def forward(
@@ -75,9 +79,19 @@ class AOTICompiledTensorModel(torch.nn.Module):
         missing = [key for key in self.input_keys if key not in data]
         if missing:
             raise KeyError(f"missing TACE graph .pt2 inputs: {missing}")
+        padded_single_system = (
+            self.export_num_graphs > 1 and data["ptr"].numel() == 2
+        )
+        if padded_single_system:
+            data = _pad_single_system_inputs(data)
         outputs = self.compiled_model(*(data[key] for key in self.input_keys))
         if isinstance(outputs, torch.Tensor):
             outputs = (outputs,)
+        if padded_single_system:
+            outputs = tuple(
+                output[:1] if key in TACE_AOTI_SYSTEM_OUTPUT_KEYS else output
+                for key, output in zip(self.output_keys, outputs)
+            )
         result: Dict[str, Union[torch.Tensor, None]] = {
             "energy": None,
             "node_energy": None,
@@ -228,7 +242,12 @@ def export_aotinductor(
     )
 
     output_path = _normalize_pt2_path(output_path)
-    metadata = _export_metadata(compile_model, input_keys, output_keys)
+    metadata = _export_metadata(
+        compile_model,
+        input_keys,
+        output_keys,
+        export_num_graphs=sample_data["ptr"].numel() - 1,
+    )
     inductor_configs = _valid_inductor_configs(
         {
             "aot_inductor.metadata": metadata,
@@ -511,8 +530,9 @@ def _export_metadata(
     *,
     aoti_format: str = TACE_AOTI_FORMAT,
     target: str = "graph",
+    export_num_graphs: Union[int, None] = None,
 ) -> Dict[str, str]:
-    return {
+    metadata = {
         "tace_format": aoti_format,
         "tace_aoti_target": target,
         "tace_input_keys": json.dumps(list(input_keys)),
@@ -525,6 +545,9 @@ def _export_metadata(
         "tace_fidelity_idx": str(model.get_fidelity_idx()),
         "tace_dtype": str(model.get_model_dtype()).replace("torch.", ""),
     }
+    if export_num_graphs is not None:
+        metadata["tace_export_num_graphs"] = str(export_num_graphs)
+    return metadata
 
 
 def _valid_inductor_configs(configs: Dict[str, object]) -> Dict[str, object]:
@@ -581,6 +604,25 @@ def _canonicalize_inputs(
         key: value.contiguous() if torch.is_tensor(value) else value
         for key, value in data.items()
     }
+
+
+def _pad_single_system_inputs(
+    data: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    data = dict(data)
+    data["lattice"] = torch.cat(
+        (data["lattice"], data["lattice"][-1:]),
+        dim=0,
+    ).contiguous()
+    data["ptr"] = torch.cat(
+        (data["ptr"], data["ptr"][-1:]),
+        dim=0,
+    ).contiguous()
+    data["fidelity_idx"] = torch.cat(
+        (data["fidelity_idx"], data["fidelity_idx"][-1:]),
+        dim=0,
+    ).contiguous()
+    return data
 
 
 def _as_tensor_dict(data) -> Dict[str, torch.Tensor]:
