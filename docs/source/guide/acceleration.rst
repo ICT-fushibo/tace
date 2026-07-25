@@ -172,8 +172,8 @@ Both formats are loaded through the same API:
    model = load_tace("model.ckpt-state_dict.pt", device="cuda")
    model.eval()
 
-Export AOTI for ASE and TorchSim
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Export Eager or AOTI for ASE and TorchSim
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Set external-kernel variables before export, then select the ``aoti`` backend:
 
@@ -204,8 +204,8 @@ PyTorch consumers, including the ASE and TorchSim integrations:
    model = load_tace("model.pt2", device="cuda")
    outputs = model(batch)
 
-Export for LAMMPS
-~~~~~~~~~~~~~~~~~
+Export Eager or AOTI for LAMMPS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The regular ML-IAP backend serializes the eager model:
 
@@ -241,4 +241,7 @@ contains the package bytes and loads the compiled model without recompilation:
    pair_coeff * * H C N
 
 Use ``--aoti-package`` to choose the package path and ``-o`` to choose the
-ML-IAP loader path. Detailed LAMMPS setup is covered in :doc:`lammps`.
+ML-IAP loader path. TACE ML-IAP currently requires the CUDA Kokkos backend,
+and multi-rank runs require CUDA-aware MPI. Native CPU inference remains
+available through the ASE and TorchSim interfaces. Detailed LAMMPS setup is
+covered in :doc:`lammps`.

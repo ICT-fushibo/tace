@@ -5,20 +5,22 @@
 
 import logging
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from typing import Dict, Sequence, Tuple, Union
-
 
 import torch
 from ase.data import chemical_symbols
 
 from tace.models.lammps import use_lammps_mliap_data
+
 try:
     from lammps.mliap.mliap_unified_abc import MLIAPUnified
+
     LAMMPS_ML_IAP_AVAILABLE = True
 except ImportError:
     LAMMPS_ML_IAP_AVAILABLE = False
+
 
 class EdgeForcesWrapper(torch.nn.Module):
     def __init__(self, model: torch.nn.Module, **kwargs):
@@ -28,7 +30,7 @@ class EdgeForcesWrapper(torch.nn.Module):
         model.flags.compute_stress = False
         model.flags.compute_virials = False
         model.flags.compute_edge_forces = True
-        
+
         self.model = model
         self.register_buffer("cutoff", model.readout_fn.cutoff)
         self.register_buffer("atomic_numbers", model.readout_fn.atomic_numbers)
@@ -51,30 +53,45 @@ class EdgeForcesWrapper(torch.nn.Module):
 
 
 class TACELammpsCalc(MLIAPUnified):
-    '''Not test for cpu running, only cuda devices are tested'''
+    """LAMMPS ML-IAP interface for eager TACE models."""
+
     def __init__(self, model, **kwargs):
         super().__init__()
-        
+
         self.model = EdgeForcesWrapper(model, **kwargs)
-        self.element_types = [chemical_symbols[s] for s in model.readout_fn.atomic_numbers]
+        self.element_types = [
+            chemical_symbols[s] for s in model.readout_fn.atomic_numbers
+        ]
         self.num_species = len(self.element_types)
         self.rcutfac = 0.5 * float(model.readout_fn.cutoff)
         self.nparams = 1
         self.ndescriptors = 1
 
         self.dtype = model.readout_fn.cutoff.dtype
-        self.device = "cpu"
+        self.device = torch.device("cpu")
         self.initialized = False
 
     def _initialize_device(self, data):
         device = torch.as_tensor(data.elems).device
+        self._validate_lammps_data(data, device)
         self.device = device
-        # self.device = (
-        #     "cuda" if "kokkos" in data.__class__.__module__.lower() else "cpu"
-        # )
         self.model = self.model.to(device)
         logging.info(f"TACE model initialized on device: {device}")
         self.initialized = True
+
+    @staticmethod
+    def _validate_lammps_data(data, device):
+        exchange_methods = ("forward_exchange", "reverse_exchange")
+        if not all(hasattr(data, method) for method in exchange_methods):
+            raise RuntimeError(
+                "TACE requires the KOKKOS ML-IAP interface for ghost exchange. "
+                "Run LAMMPS with '-k on g <Ng> -sf kk'."
+            )
+        if device.type != "cuda":
+            raise RuntimeError(
+                "TACE LAMMPS ML-IAP currently requires a CUDA KOKKOS backend. "
+                "LAMMPS host-side ML-IAP ghost exchange is not supported."
+            )
 
     def compute_forces(self, data):
         nlocal = data.nlocal
@@ -88,12 +105,12 @@ class TACELammpsCalc(MLIAPUnified):
 
         if nlocal == 0 or npairs <= 1:
             return
-            
+
         batch = self._prepare_batch(data, nlocal, nghosts, species)
 
         _, node_energy, pair_forces = self.model(batch)
-        if self.device.type != "cpu":
-            torch.cuda.synchronize()
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
 
         self._update_lammps_data(data, node_energy, pair_forces, nlocal)
 
@@ -118,15 +135,14 @@ class TACELammpsCalc(MLIAPUnified):
             "natoms": (nlocal, nghosts),
         }
 
-
-    def _update_lammps_data(self, data, node_energy, pair_forces, nlocal):
-        if self.dtype == torch.float32:
-            pair_forces = pair_forces.double()
-            node_energy = node_energy.double()
+    @staticmethod
+    def _update_lammps_data(data, node_energy, pair_forces, nlocal):
+        pair_forces = pair_forces.to(dtype=torch.float64).contiguous()
+        node_energy = node_energy.to(dtype=torch.float64).contiguous()
         eatoms = torch.as_tensor(data.eatoms)
         eatoms.copy_(node_energy[:nlocal])
-        data.energy = torch.sum(node_energy[:nlocal]).detach()
-        data.update_pair_forces_gpu(pair_forces)
+        data.energy = node_energy[:nlocal].sum().item()
+        data.update_pair_forces(pair_forces)
 
     def compute_descriptors(self, data):
         pass
@@ -153,14 +169,14 @@ class TACEAOTILammpsCalc(TACELammpsCalc):
         self.nparams = 1
         self.ndescriptors = 1
         self.dtype = dtype
-        self.device = "cpu"
+        self.device = torch.device("cpu")
         self.model = None
         self.initialized = False
 
     def __getstate__(self):
         state = dict(self.__dict__)
         state["model"] = None
-        state["device"] = "cpu"
+        state["device"] = torch.device("cpu")
         state["initialized"] = False
         return state
 
@@ -168,6 +184,7 @@ class TACEAOTILammpsCalc(TACELammpsCalc):
         from tace.models.compile import load_lammps_aotinductor
 
         device = torch.as_tensor(data.elems).device
+        self._validate_lammps_data(data, device)
         self.device = device
         with tempfile.TemporaryDirectory(prefix="tace-lammps-aoti-") as tmpdir:
             package_path = os.path.join(tmpdir, self.package_filename)
@@ -189,13 +206,13 @@ class TACEAOTILammpsCalc(TACELammpsCalc):
 
         if nlocal == 0 or npairs <= 1:
             return
-        if self.device.type != "cpu":
-            torch.cuda.synchronize()
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
 
         batch = self._prepare_batch(data, nlocal, nghosts, species)
         with use_lammps_mliap_data(data):
             _, node_energy, pair_forces = self.model(batch)
-        if self.device.type != "cpu":
-            torch.cuda.synchronize()
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
 
         self._update_lammps_data(data, node_energy, pair_forces, nlocal)
