@@ -229,7 +229,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Dict
+from typing import Dict, List, Optional
 
 
 import torch
@@ -250,13 +250,20 @@ def format_list(obj, ndigits=4):
   
   
 class OneHotToAtomicEnergy(torch.nn.Module):
-    def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
+    def __init__(
+        self,
+        atomic_energies: List[Dict[int, float]],
+        atomic_numbers: List[int],
+    ) -> None:
         super().__init__()
         assert atomic_energies is not None
         atomic_energy_list = []
         for atomic_energy in atomic_energies:
+            atomic_energy = {
+                int(z): float(value) for z, value in atomic_energy.items()
+            }
             atomic_energy_list.append(
-                [float(v) for _, v in atomic_energy.items()]
+                [atomic_energy.get(int(z), 0.0) for z in atomic_numbers]
             )
         self.register_buffer(
             "atomic_energy",
@@ -286,14 +293,16 @@ class OneHotToAtomicEnergy(torch.nn.Module):
 class ScaleShift(torch.nn.Module):
     def __init__(
         self,
-        scale_dicts: List[Dict[int, float]] = [],
-        shift_dicts: List[Dict[int, float]] = [],
+        scale_dicts: Optional[List[Dict[int, float]]] = None,
+        shift_dicts: Optional[List[Dict[int, float]]] = None,
         scale_trainable: bool = False,
         shift_trainable: bool = False,
         all_atoms: bool = False,
     ):
         super().__init__()
 
+        scale_dicts = [] if scale_dicts is None else scale_dicts
+        shift_dicts = [] if shift_dicts is None else shift_dicts
         self.all_atoms = all_atoms
         self.has_scale = len(scale_dicts) > 0
         self.has_shift = len(shift_dicts) > 0

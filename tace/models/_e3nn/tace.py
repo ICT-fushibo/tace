@@ -139,7 +139,9 @@ class e3nnTACE(torch.nn.Module):
         # === Energy ===
         if "energy" in self.target_property:
             self.energy_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-            self.atomic_energy_layer = OneHotToAtomicEnergy(cfg['atomic_energies'])
+            self.atomic_energy_layer = OneHotToAtomicEnergy(
+                cfg["atomic_energies"], cfg["atomic_numbers"]
+            )
             if cfg['scale_shift']['enable']:
                 self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
             # uie base
@@ -614,4 +616,3 @@ class e3nnTACE(torch.nn.Module):
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)
         return self.readout_fn(data, graph, rep) | rep
-
