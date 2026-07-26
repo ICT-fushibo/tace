@@ -7,7 +7,6 @@ import logging
 from typing import List, Dict, Union
 from pathlib import Path
 import multiprocessing
-from concurrent.futures import as_completed
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -246,7 +245,7 @@ def read_all_files(
 
     all_structures = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        futures = { # TODO, as_completed => train sequence not identical
+        futures = [
             executor.submit(
                 read_single_file,
                 str(f),
@@ -254,10 +253,10 @@ def read_all_files(
                 keyspec,
                 embedding_property,
                 backend,
-            ): f
+            )
             for f in all_files
-        }
-        for future in as_completed(futures):
+        ]
+        for future in futures:
             all_structures.extend(future.result())
 
     logging.info(
