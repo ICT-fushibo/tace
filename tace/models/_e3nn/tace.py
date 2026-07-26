@@ -143,7 +143,11 @@ class e3nnTACE(torch.nn.Module):
                 cfg["atomic_energies"], cfg["atomic_numbers"]
             )
             if cfg['scale_shift']['enable']:
-                self.scale_shift = ScaleShift.build_from_config(cfg['statistics'], cfg['scale_shift'])
+                self.scale_shift = ScaleShift.build_from_config(
+                    cfg["statistics"],
+                    cfg["scale_shift"],
+                    atomic_numbers=cfg["atomic_numbers"],
+                )
             # uie base
             if cfg['readout_emlp']['use_uie'] and len(cfg['invariant_property']) > 0:
                 self.uie_readout = e3nnLinear(

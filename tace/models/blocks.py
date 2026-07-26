@@ -293,6 +293,7 @@ class OneHotToAtomicEnergy(torch.nn.Module):
 class ScaleShift(torch.nn.Module):
     def __init__(
         self,
+        atomic_numbers: List[int],
         scale_dicts: Optional[List[Dict[int, float]]] = None,
         shift_dicts: Optional[List[Dict[int, float]]] = None,
         scale_trainable: bool = False,
@@ -307,10 +308,7 @@ class ScaleShift(torch.nn.Module):
         self.has_scale = len(scale_dicts) > 0
         self.has_shift = len(shift_dicts) > 0
         self.num_fidelities = max(len(scale_dicts), len(shift_dicts))
-        atomic_numbers = sorted(
-            set().union(*[d.keys() for d in scale_dicts] if scale_dicts else [])
-            | set().union(*[d.keys() for d in shift_dicts] if shift_dicts else [])
-        )
+        atomic_numbers = [int(z) for z in atomic_numbers]
         self.register_buffer(
             "atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64)
         )
@@ -405,7 +403,12 @@ class ScaleShift(torch.nn.Module):
         return s
     
     @classmethod
-    def build_from_config(cls, statistics, cfg: Dict):
+    def build_from_config(
+        cls,
+        statistics,
+        cfg: Dict,
+        atomic_numbers: List[int],
+    ):
         required_keys = [
             "scale_type",
             "shift_type",
@@ -426,13 +429,14 @@ class ScaleShift(torch.nn.Module):
             scale_stat = {z: 1.0 for z in stats["atomic_numbers"]}
             shift_stat = {z: 0.0 for z in stats["atomic_numbers"]}
 
-            if scale_key is not None:
-                assert scale_key in stats, f"{scale_key} not found in statistics"
-                scale_stat = stats[scale_key]
+            if stats.get("available", True):
+                if scale_key is not None:
+                    assert scale_key in stats, f"{scale_key} not found in statistics"
+                    scale_stat = stats[scale_key]
 
-            if shift_key is not None:
-                assert shift_key in stats, f"{shift_key} not found in statistics"
-                shift_stat = stats[shift_key]
+                if shift_key is not None:
+                    assert shift_key in stats, f"{shift_key} not found in statistics"
+                    shift_stat = stats[shift_key]
 
             scale_dict = {int(k): float(v) for k, v in scale_stat.items()}
             shift_dict = {int(k): float(v) for k, v in shift_stat.items()}
@@ -444,7 +448,8 @@ class ScaleShift(torch.nn.Module):
             shift_dicts=shift_dicts,
             scale_trainable=cfg["scale_trainable"],
             shift_trainable=cfg["shift_trainable"],
-            all_atoms=cfg['all_atoms']
+            all_atoms=cfg["all_atoms"],
+            atomic_numbers=atomic_numbers,
         )
 
 
