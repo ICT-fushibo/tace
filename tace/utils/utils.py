@@ -132,15 +132,13 @@ def to_serializable(obj):
 
 
 def log_statistics_to_yaml(obj) -> None:
-    # def float_representer(dumper, value):
-    #     return dumper.represent_scalar('tag:yaml.org,2002:float', f'{value:.15f}')
-    # yaml.add_representer(float, float_representer)
     if obj is not None:
         for idx, stat in enumerate(obj):
             filename = Path(".") / f"statistics_{idx}.yaml"
-            with open(filename, "w") as f:
-                # yaml.safe_dump(obj, f, sort_keys=False, allow_unicode=True)
+            temp_filename = filename.with_suffix(".yaml.tmp")
+            with open(temp_filename, "w") as f:
                 yaml.dump(stat, f, sort_keys=False, allow_unicode=True)
+            temp_filename.replace(filename)
 
 
 @contextlib.contextmanager
@@ -227,5 +225,3 @@ def calculate_cps(
     )
     return cps
 
-
-# print(calculate_cps(0.928, 0.11, 0.059))
