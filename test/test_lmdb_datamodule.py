@@ -98,3 +98,43 @@ def test_existing_lmdb_cache_does_not_add_distributed_barrier(
     )
     cached = create_graphs(atoms_list=None, **common)
     assert len(cached) == 1
+
+
+def test_memory_graphs_reuse_existing_dataset_during_broadcast(monkeypatch):
+    common = {
+        "element": build_element_lookup([1]),
+        "for_dataset": _dataset_config(),
+        "stage": "train",
+        "shard_dirs": [],
+        "storage_mode": "memory",
+    }
+    original = create_graphs(atoms_list=[_atoms(0.0), _atoms(0.1)], **common)
+    broadcasts = []
+
+    monkeypatch.setattr(
+        "tace.dataset.datamodule.dist.is_initialized", lambda: True
+    )
+    monkeypatch.setattr(
+        "tace.dataset.datamodule.dist.get_rank", lambda: 0
+    )
+    monkeypatch.setattr(
+        "tace.dataset.datamodule.dist.get_world_size", lambda: 2
+    )
+    monkeypatch.setattr(
+        "tace.dataset.datamodule.dist.broadcast_object_list",
+        lambda objects, src: broadcasts.append(list(objects)),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Existing graphs were rebuilt")
+
+    monkeypatch.setattr("tace.dataset.datamodule.from_atoms", fail_if_called)
+    reused = create_graphs(
+        atoms_list=None,
+        existing_dataset=original,
+        **common,
+    )
+
+    assert reused is original
+    assert broadcasts[0] == [2]
+    assert broadcasts[1] == original.data_list

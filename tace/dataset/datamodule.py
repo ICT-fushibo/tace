@@ -177,6 +177,7 @@ def create_graphs(
     lmdb_wait_timeout: int = 86400,
     avg_graph_size_in_KB: int = 75,
     cache_size: int = 1024,
+    existing_dataset: Optional[GraphDatasetLMDB] = None,
 ):
     """
     Create graphs in memory (memory mode) or write/read LMDB shards (lmdb mode).
@@ -196,10 +197,17 @@ def create_graphs(
     # === MEMORY MODE ===
     if storage_mode == "memory":
         if rank == 0:
-            graphs = [
-                from_atoms(element, atoms, **for_dataset)
-                for atoms in (atoms_list or [])
-            ]
+            if existing_dataset is not None:
+                if not existing_dataset.in_memory:
+                    raise ValueError(
+                        "existing_dataset must be an in-memory dataset"
+                    )
+                graphs = existing_dataset.data_list
+            else:
+                graphs = [
+                    from_atoms(element, atoms, **for_dataset)
+                    for atoms in (atoms_list or [])
+                ]
         else:
             graphs = []
 
@@ -224,6 +232,9 @@ def create_graphs(
                 dist.broadcast_object_list(batch, src=0)
                 if rank != 0:
                     graphs[i:j] = batch
+
+        if rank == 0 and existing_dataset is not None:
+            return existing_dataset
 
         dataset = GraphDatasetLMDB(
             lmdb_paths=[], in_memory=True, cache_size=cache_size
@@ -473,6 +484,11 @@ class GraphDataModule(LightningDataModule):
         """
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         rank = dist.get_rank() if dist.is_initialized() else 0
+        sync_memory_datasets = (
+            self.storage_mode == "memory"
+            and world_size > 1
+            and dist.is_initialized()
+        )
 
         # === memory mode ===
         if self.storage_mode != "lmdb" and world_size > 1 and dist.is_initialized():
@@ -489,7 +505,7 @@ class GraphDataModule(LightningDataModule):
         if stage in (None, "fit"):
             # TRAIN
             atoms_for_train = (self.threeAtomsList[0] if (self.threeAtomsList and self.threeAtomsList[0] is not None) else None)
-            if self.train_dataset is None:
+            if self.train_dataset is None or sync_memory_datasets:
                 self.train_dataset = create_graphs(
                     atoms_for_train,
                     self.element,
@@ -501,6 +517,7 @@ class GraphDataModule(LightningDataModule):
                     lmdb_wait_timeout=self.lmdb_wait_timeout,
                     avg_graph_size_in_KB=self.avg_graph_size_in_KB,
                     cache_size=self.cache_size,
+                    existing_dataset=self.train_dataset,
                 )
 
             logging.info(f"Rank {rank}: Number of configs in train: {len(self.train_dataset)}")
@@ -511,7 +528,7 @@ class GraphDataModule(LightningDataModule):
             # VALID
             if not self.no_valid_set:
                 atoms_for_valid = (self.threeAtomsList[1] if (self.threeAtomsList and self.threeAtomsList[1] is not None) else None)
-                if self.val_dataset is None:
+                if self.val_dataset is None or sync_memory_datasets:
                     self.val_dataset = create_graphs(
                         atoms_for_valid,
                         self.element,
@@ -523,6 +540,7 @@ class GraphDataModule(LightningDataModule):
                         lmdb_wait_timeout=self.lmdb_wait_timeout,
                         avg_graph_size_in_KB=self.avg_graph_size_in_KB,
                         cache_size=self.cache_size,
+                        existing_dataset=self.val_dataset,
                     )
                 logging.info(f"Rank {rank}: Number of configs in valid: {len(self.val_dataset)}")
                 if rank == 0 and self.threeAtomsList and self.threeAtomsList[1] is not None:
@@ -533,7 +551,49 @@ class GraphDataModule(LightningDataModule):
 
             # TEST
             atoms_for_test_container = (self.threeAtomsList[2] if (self.threeAtomsList and self.threeAtomsList[2] is not None) else None)
-            if self.test_datasets is None:
+            if sync_memory_datasets:
+                if rank == 0:
+                    existing_test_datasets = self.test_datasets
+                    num_test_sets = len(existing_test_datasets or [])
+                    if (
+                        existing_test_datasets is None
+                        and atoms_for_test_container is not None
+                    ):
+                        num_test_sets = len(atoms_for_test_container)
+                    num_test_sets_obj = [num_test_sets]
+                else:
+                    existing_test_datasets = None
+                    num_test_sets_obj = [None]
+                dist.broadcast_object_list(num_test_sets_obj, src=0)
+
+                self.test_datasets = []
+                for idx in range(int(num_test_sets_obj[0])):
+                    test_atoms_list = (
+                        atoms_for_test_container[idx]
+                        if atoms_for_test_container is not None
+                        else None
+                    )
+                    existing_test_dataset = (
+                        existing_test_datasets[idx]
+                        if existing_test_datasets is not None
+                        else None
+                    )
+                    self.test_datasets.append(
+                        create_graphs(
+                            test_atoms_list,
+                            self.element,
+                            self._for_dataset_config,
+                            f"test{idx}",
+                            self.shard_dirs,
+                            storage_mode=self.storage_mode,
+                            shard_size=self.shard_size,
+                            lmdb_wait_timeout=self.lmdb_wait_timeout,
+                            avg_graph_size_in_KB=self.avg_graph_size_in_KB,
+                            cache_size=self.cache_size,
+                            existing_dataset=existing_test_dataset,
+                        )
+                    )
+            elif self.test_datasets is None:
                 self.test_datasets = []
                 if not self.presave_test_sets:
                     if atoms_for_test_container is not None:
