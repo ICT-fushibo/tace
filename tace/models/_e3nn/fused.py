@@ -182,7 +182,6 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,
-                instructions=self.instructions,
             )
 
     def forward(
