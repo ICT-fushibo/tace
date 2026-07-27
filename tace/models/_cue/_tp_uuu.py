@@ -9,8 +9,8 @@ from typing import Union
 import torch
 from e3nn import o3
 
-# Hardcode to avoid retaining every uniform_1d candidate kernel for large ACE products.
-os.environ.setdefault("CUEQUIVARIANCE_OPS_U1D_ALGOS", "0")
+# # Hardcode to avoid retaining every uniform_1d candidate kernel for large ACE products.
+# os.environ.setdefault("CUEQUIVARIANCE_OPS_U1D_ALGOS", "0")
 
 try:
     import cuequivariance as cue

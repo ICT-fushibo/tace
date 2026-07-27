@@ -11,10 +11,10 @@ from e3nn import o3
 
 
 from tace.utils.torch_scatter import scatter_sum
+from ..linear import e3nnLinear
 from ..mlp import FFN, ScaledSigmoid, ScaledSiLU
 from ..layout import LayoutTransform
 from .base import Interaction
-from ..linear import e3nnLinear
 from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct
 from .nonlinear import get_nonlinear_layer
 from .residual import get_resnet_layer
@@ -649,191 +649,17 @@ class uvSO2Interaction(Interaction):
         return m_i, self.truncate_ghosts(sc, nlocal)
     
     
-# class UVSO2Interaction(Interaction):
-#     def _setup(self) -> None:
+# def _cgtp_interaction(*args, **kwargs):
+#     import os
 
-#         assert self.parity == False, "uvSO2Interaction not support O(3) group"
-#         assert self.irreps_in.lmax > 0, (
-#             "uvSO2Interaction's irreps_in.lmax must > 0, "
-#             "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
-#         )
-#         self.scatter_norm = None 
+#     if os.environ.get("TACE_USE_Sobek", "0") == "1":
+#         from .._sobek import SobekCgtpInteraction
 
-#         self.linear_up = e3nnLinear(
-#             self.irreps_in,
-#             self.irreps_in,
-#             bias=self.use_bias,
-#         )    
-#         self.rejector = UVSO2TensorProduct(
-#             mmax=self.mmax,
-#             lmax=self.lmax,
-#             num_channel=self.num_channel,
-#             num_radial_basis=self.num_radial_basis,
-#             num_head=self.num_head,
-#             use_temperature=self.use_temperature,
-#             edge_ace_hidden=self.edge_ace_hidden,
-#             edge_wise_hidden=self.edge_wise_hidden,
-#             so2_linear_type=self.so2_linear_type,
-#             use_so2_edge_ace=self.use_so2_edge_ace,
-#             use_graph_softmax=self.use_graph_softmax,
-#             reshape_in=LayoutTransform(self.irreps_in),
-#             reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
-#             use_radial_phase=self.use_radial_phase,
-#         )
-
-#         (
-#             self.nonlinearity,
-#             self.linear_nonlinearity,
-#             linear_down_irreps_out,
-#         ) = get_nonlinear_layer(
-#             self.nonlinear_type,
-#             o3.Irreps([(self.node_wise_hidden, ir) for _, ir in self.irreps_out]),
-#             self.irreps_out,
-#             gate_m0=self.gate_m0,
-#             scalar_act=self.scalar_act,
-#             tensor_act=self.tensor_act,
-#         )
-
-#         self.linear_down = e3nnLinear(
-#             o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out]),
-#             linear_down_irreps_out,
-#             bias=self.use_bias,
-#         )
-
-#         self.edge_info = FFN[self.edge_info_type](
-#             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
-#             bias=self.radial_bias,
-#             layer_norm=self.radial_layer_norm,
-#             act=self.radial_act,
-#         )
-        
-#         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
-#             self.resnetBB = get_resnet_layer(
-#                 self.irreps_in, 
-#                 self.irreps_sc,
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#                 resnet_type=self.resnet_linear_type,
-#             )
-
-#         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
-#             self.resnetBA = get_resnet_layer(
-#                 self.irreps_in, 
-#                 self.irreps_out,
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#                 resnet_type=self.resnet_linear_type,
-#             )
-#             if (
-#                 self.layer > 0 or self.use_first_dropout
-#             ) and self.stochastic_depth_p > 0.0:
-#                 from .dropout import GraphDropPath
-#                 self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
-
-#         if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
-#             self.resnetAB = get_resnet_layer(
-#                 self.irreps_out, 
-#                 self.irreps_sc,
-#                 bias=self.use_bias,
-#                 num_elements=self.num_elements,
-#                 resnet_type=self.resnet_linear_type,
-#             )
-
-#         if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-#             if self.resnet_type in ['BB', "BAB"]:
-#                 self.norm1 = get_normalization_layer(
-#                     self.pre_norm_type,
-#                     ls=self.irreps_in.lmax,
-#                     num_channels=self.num_channel,
-#                 )
-#                 self.reshape1 = LayoutTransform(self.irreps_in)
-#             if self.resnet_type in ['AB', "BAB"]:
-#                 self.norm2 = get_normalization_layer(
-#                     self.pre_norm_type,
-#                     ls=self.irreps_out.lmax,
-#                     num_channels=self.num_channel,
-#                 )
-#                 self.reshape2 = LayoutTransform(self.irreps_out)
-
-#     def forward(
-#         self,
-#         node_feats: torch.Tensor,
-#         node_attrs_total: torch.Tensor,
-#         node_attrs_slice: torch.Tensor,
-#         radial_basis,
-#         edge_feats: torch.Tensor,
-#         edge_attrs: torch.Tensor,
-#         edge_index: torch.Tensor,
-#         cutoff: Union[torch.Tensor, None],
-#         graph,
-#         wigner: Union[torch.Tensor, None],
-#         wigner_inv: Union[torch.Tensor, None],
-#         batch,
-#     ):
+#         return SobekCgtpInteraction(*args, **kwargs)
     
-#         lmp_data = graph.lmp_data
-#         lmp_natoms = graph.lmp_natoms
-#         nlocal = lmp_natoms[0] if lmp_data is not None else None
+#     return CgtpInteraction(*args, **kwargs)
 
-#         resBB = None
-#         resBA = None
-#         resAB = None
 
-#         if hasattr(self, 'resnetBB'):
-#             if self.resnet_linear_type == 'aware':
-#                 resBB = self.resnetBB(node_feats, node_attrs_slice)
-#             else:
-#                 resBB = self.resnetBB(node_feats) 
-
-#         if hasattr(self, 'resnetBA'):
-#             if self.resnet_linear_type == 'aware':
-#                 resBA = self.resnetBA(node_feats, node_attrs_slice)
-#             else:
-#                 resBA = self.resnetBA(node_feats)
-
-#         if hasattr(self, 'norm1'):
-#             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
-
-#         node_feats = self.linear_up(node_feats)
-#         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
-#         m_i = self.truncate_ghosts(
-#             self.rejector(
-#                 node_feats, 
-#                 self.edge_info(edge_feats), 
-#                 edge_index, 
-#                 cutoff,
-#                 wigner,
-#                 wigner_inv,
-#                 radial_basis,
-#             ), 
-#             nlocal
-#         )
-#         m_i = self.linear_down(m_i)
-#         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
-
-#         if resBA is not None:
-#             if hasattr(self, "stochastic_depth"):
-#                 m_i = self.stochastic_depth(m_i, batch)
-#             m_i = m_i + resBA
-
-#         if hasattr(self, 'resnetAB'):
-#             if self.resnet_linear_type == 'aware':
-#                 resAB = self.resnetAB(m_i, node_attrs_slice)
-#             else:
-#                 resAB = self.resnetAB(m_i)
-
-#         if hasattr(self, 'norm2'):
-#             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
-
-#         if resBB is not None:
-#             sc = resBB
-#         elif resAB is not None:
-#             sc = resAB
-#         else:
-#             sc = None
-
-#         return m_i, self.truncate_ghosts(sc, nlocal)
-    
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
@@ -844,8 +670,6 @@ INTERACTION: Dict[str, Interaction] = {
     "so2": uvSO2Interaction,
     "uv_so2": uvSO2Interaction,
     "attn": uvSO2Interaction,
-
-    # "UV_SO2": UVSO2Interaction,
 
     # "w6j": Wigner6jInteraction,
     # "wigner6j": Wigner6jInteraction,
