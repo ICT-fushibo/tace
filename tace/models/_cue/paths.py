@@ -99,6 +99,7 @@ def generate_cueq_uuu_paths(
     l1l2: Union[str, None] = None,
     l2l3: Union[str, None] = None,
     l3l1: Union[str, None] = None,
+    trainable: bool = False,
 ):
     """
     Cuequivariance descriptor for e3nn ``uuu`` tensor products.
@@ -111,12 +112,19 @@ def generate_cueq_uuu_paths(
     irreps_out: cue.Irreps = cue.Irreps(O3_e3nn, irreps_out)
     G = irreps_in1.irrep_class
 
-    d = cue.SegmentedTensorProduct.from_subscripts("u,iu,ju,ku+ijk")
+    if trainable:
+        d = cue.SegmentedTensorProduct.from_subscripts("u,iu,ju,ku+ijk")
+        in1_operand = 1
+        in2_operand = 2
+    else:
+        d = cue.SegmentedTensorProduct.from_subscripts("iu,ju,ku+ijk")
+        in1_operand = 0
+        in2_operand = 1
 
     for mul1, ir1 in irreps_in1:
-        d.add_segment(1, (ir1.dim, mul1))
+        d.add_segment(in1_operand, (ir1.dim, mul1))
     for mul2, ir2 in irreps_in2:
-        d.add_segment(2, (ir2.dim, mul2))
+        d.add_segment(in2_operand, (ir2.dim, mul2))
 
     irreps_out_list = []
     for _, ir_out in irreps_out:
@@ -137,17 +145,28 @@ def generate_cueq_uuu_paths(
                             f"multiplicities, got {mul1} and {mul2}"
                         )
                     for cg in cue.clebsch_gordan(ir1, ir2, ir_out):
-                        d.add_path(None, i, j, None, c=cg, dims={"u": mul1})
+                        if trainable:
+                            d.add_path(None, i, j, None, c=cg, dims={"u": mul1})
+                        else:
+                            d.add_path(i, j, None, c=cg, dims={"u": mul1})
                         irreps_out_list.append((mul1, ir_out))
 
     actual_irreps_out = cue.Irreps(G, irreps_out_list)
     d = d.normalize_paths_for_operand(-1)
+    inputs = [
+        cue.IrrepsAndLayout(irreps_in1, cue.ir_mul),
+        cue.IrrepsAndLayout(irreps_in2, cue.ir_mul),
+    ]
+    if trainable:
+        inputs.insert(
+            0,
+            cue.IrrepsAndLayout(
+                irreps_in1.new_scalars(d.operands[0].size),
+                cue.ir_mul,
+            ),
+        )
     descriptor = cue.EquivariantPolynomial(
-        [
-            cue.IrrepsAndLayout(irreps_in1.new_scalars(d.operands[0].size), cue.ir_mul),
-            cue.IrrepsAndLayout(irreps_in1, cue.ir_mul),
-            cue.IrrepsAndLayout(irreps_in2, cue.ir_mul),
-        ],
+        inputs,
         [cue.IrrepsAndLayout(actual_irreps_out, cue.ir_mul)],
         cue.SegmentedPolynomial.eval_last_operand(d),
     )

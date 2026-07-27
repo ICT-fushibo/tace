@@ -3,10 +3,14 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import os
 from typing import Union
 
 import torch
 from e3nn import o3
+
+# Hardcode to avoid retaining every uniform_1d candidate kernel for large ACE products.
+os.environ.setdefault("CUEQUIVARIANCE_OPS_U1D_ALGOS", "0")
 
 try:
     import cuequivariance as cue
@@ -43,12 +47,14 @@ class e3nnCueTensorProduct(torch.nn.Module):
             l1l2=l1l2,
             l2l3=l2l3,
             l3l1=l3l1,
+            trainable=trainable,
         )
         self.irreps_out = actual_irreps_out
-        self._cue_weight_numel = descriptor.inputs[0].dim
+        self._cue_weight_numel = descriptor.inputs[0].dim if trainable else 0
         self.weight_numel = self._cue_weight_numel if trainable else 0
         self.cueq_tp = cuet.SegmentedPolynomial(
             descriptor.flatten_coefficient_modes().squeeze_modes().polynomial,
+            # method="naive" if trainable else "uniform_1d",
             method="uniform_1d",
             math_dtype=torch.get_default_dtype(),
         )
@@ -74,12 +80,9 @@ class e3nnCueTensorProduct(torch.nn.Module):
         y: torch.Tensor,
         ws: Union[torch.Tensor, None] = None,
     ) -> torch.Tensor:
+        inputs = [self.reshape1(x), self.reshape2(y)]
         if self.trainable:
             if ws is None:
                 raise ValueError("cueq trainable uuu tensor product requires weights")
-            weights = ws
-        else:
-            weights = x.new_ones(x.shape[0], self._cue_weight_numel)
-        return self.reshape3(
-            self.cueq_tp([weights, self.reshape1(x), self.reshape2(y)])[0]
-        )
+            inputs.insert(0, ws)
+        return self.reshape3(self.cueq_tp(inputs)[0])

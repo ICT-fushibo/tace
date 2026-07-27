@@ -70,8 +70,8 @@ class uuuTensorProduct(torch.nn.Module):
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
         self.use_eqt = get_tace_use_eqt() == '1'
+        self.use_cue = get_tace_use_cue() == '1'
         # self.use_oeq = get_tace_use_oeq() == '1'
-        # self.use_cue = get_tace_use_cue() == '1'
 
         if self.use_eqt:
             from .._eqt import e3nnEqtTensorProduct
@@ -83,7 +83,7 @@ class uuuTensorProduct(torch.nn.Module):
                 path=instructions,
                 trainable=trainable,
             )
-        # elif self.use_cue:
+        # elif self.use_cue and not trainable:
         #     from .._cue import e3nnCueTensorProduct
         #     self.fused_tp = e3nnCueTensorProduct(
         #         irreps_in1=irreps_in1,
@@ -93,7 +93,7 @@ class uuuTensorProduct(torch.nn.Module):
         #         l2l3=l2l3,
         #         l3l1=l3l1,
         #         trainable=trainable,
-        #     ) # large memory
+        #     )
         elif warning:
             logging.warning(
                 "Correlation >= 3 is running without Equitorch. "
