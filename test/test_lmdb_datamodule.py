@@ -1,4 +1,3 @@
-import json
 import pickle
 
 import numpy as np
@@ -35,8 +34,7 @@ def _atoms(shift):
     return atoms
 
 
-def test_lmdb_cache_is_complete_reusable_and_worker_safe(tmp_path):
-    signature = "a" * 64
+def test_lmdb_cache_is_reusable_and_worker_safe(tmp_path):
     kwargs = {
         "element": build_element_lookup([1]),
         "for_dataset": _dataset_config(),
@@ -46,12 +44,11 @@ def test_lmdb_cache_is_complete_reusable_and_worker_safe(tmp_path):
         "shard_size": 1,
         "avg_graph_size_in_KB": 1,
         "cache_size": 2,
-        "cache_signature": signature,
     }
     dataset = create_graphs(atoms_list=[_atoms(0.0), _atoms(0.1)], **kwargs)
     assert len(dataset) == 2
     assert dataset[0].energy.item() == -1.0
-    assert (tmp_path / f".train_{signature[:16]}.complete.json").is_file()
+    assert len(list(tmp_path.glob("train_shard*.lmdb"))) == 2
 
     restored = pickle.loads(pickle.dumps(dataset))
     assert restored[1].energy.item() == pytest.approx(-0.9)
@@ -70,60 +67,15 @@ def test_lmdb_cache_is_complete_reusable_and_worker_safe(tmp_path):
     assert len(batches) == 2
 
 
-def test_lmdb_signature_does_not_reuse_other_cache(tmp_path):
-    common = {
-        "element": build_element_lookup([1]),
-        "for_dataset": _dataset_config(),
-        "stage": "train",
-        "shard_dirs": [tmp_path],
-        "storage_mode": "lmdb",
-        "shard_size": 1,
-    }
-    first = create_graphs(
-        atoms_list=[_atoms(0.0)], cache_signature="a" * 64, **common
-    )
-    second = create_graphs(
-        atoms_list=[_atoms(0.2)], cache_signature="b" * 64, **common
-    )
-    assert first[0].energy.item() == -1.0
-    assert second[0].energy.item() == pytest.approx(-0.8)
-
-
-def test_lmdb_invalid_completion_marker_is_rebuilt(tmp_path):
-    signature = "c" * 64
-    common = {
-        "element": build_element_lookup([1]),
-        "for_dataset": _dataset_config(),
-        "stage": "train",
-        "shard_dirs": [tmp_path],
-        "storage_mode": "lmdb",
-        "shard_size": 1,
-        "cache_signature": signature,
-    }
-    original = create_graphs(atoms_list=[_atoms(0.0)], **common)
-    original.close()
-
-    marker_path = tmp_path / f".train_{signature[:16]}.complete.json"
-    marker = json.loads(marker_path.read_text())
-    marker["shard_lengths"] = [999]
-    marker_path.write_text(json.dumps(marker))
-
-    rebuilt = create_graphs(atoms_list=[_atoms(0.3)], **common)
-    assert len(rebuilt) == 1
-    assert rebuilt[0].energy.item() == pytest.approx(-0.7)
-
-
-def test_complete_lmdb_cache_does_not_add_distributed_barrier(
+def test_existing_lmdb_cache_does_not_add_distributed_barrier(
     tmp_path, monkeypatch
 ):
-    signature = "d" * 64
     common = {
         "element": build_element_lookup([1]),
         "for_dataset": _dataset_config(),
         "stage": "train",
         "shard_dirs": [tmp_path],
         "storage_mode": "lmdb",
-        "cache_signature": signature,
     }
     original = create_graphs(atoms_list=[_atoms(0.0)], **common)
     original.close()

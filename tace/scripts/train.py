@@ -19,10 +19,6 @@ from tace.lightning.lit_model import finetune, load_tace
 from tace.lightning.torch_model import create_model
 from tace.dataset.dataloader import build_atomsList, compute_statistics
 from tace.dataset.datamodule import build_datamodule
-from tace.dataset.statistics import (
-    STATISTICS_SCHEMA_VERSION,
-    build_statistics_signature,
-)
 from tace.utils.hydra_resolver import register_resolvers
 from tace.utils.logger import set_logger
 from tace.utils.utils import (
@@ -122,9 +118,6 @@ def build(cfg: DictConfig):
     keyspec = KeySpecification()
     update_keyspec_from_kwargs(keyspec, userKeys)
     fidelity = _prepare_data_fidelity(cfg)
-    cache_signature = build_statistics_signature(
-        cfg, target_property, embedding_property
-    )
         
     # train from scratch, calculate statistics
     statistics = None
@@ -133,34 +126,19 @@ def build(cfg: DictConfig):
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
         statistics_yaml = [Path('.') / f'statistics_{idx}.yaml' for idx in range(len(fidelity))]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
-            loaded_statistics = []
+            statistics = []
             for yaml_file in statistics_yaml:
                 with open(yaml_file, "r") as f:
                     statistics_data = yaml.safe_load(f)
-                    loaded_statistics.append(statistics_data)
-            cache_is_valid = all(
-                isinstance(stats, dict)
-                and stats.get("_statistics_schema_version")
-                == STATISTICS_SCHEMA_VERSION
-                and stats.get("_cache_signature") == cache_signature
-                and stats.get("fidelity_idx") == idx
-                for idx, stats in enumerate(loaded_statistics)
-            )
-            if cache_is_valid:
-                statistics = loaded_statistics
-                for idx, yaml_file in enumerate(statistics_yaml):
-                    logging.info(
-                        "Using '%s' for fidelity %s",
-                        yaml_file,
-                        fidelity[idx]["name"],
-                    )
-                atomic_numbers = statistics[0]["atomic_numbers"]
-            else:
+                    statistics.append(statistics_data)
+            for idx, yaml_file in enumerate(statistics_yaml):
                 logging.info(
-                    "Stored statistics do not match the current data/configuration; "
-                    "recomputing them"
+                    "Using '%s' for fidelity %s",
+                    yaml_file,
+                    fidelity[idx]["name"],
                 )
-        if statistics is None:
+            atomic_numbers = statistics[0]["atomic_numbers"]
+        else:
             logging.info(f"Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
                 cfg, target_property, embedding_property, keyspec
@@ -173,7 +151,6 @@ def build(cfg: DictConfig):
                 embedding_property,
                 keyspec,
                 threeAtomsList,
-                cache_signature=cache_signature,
             )
             datamodule.setup("fit")
             statistics = compute_statistics(
@@ -186,7 +163,6 @@ def build(cfg: DictConfig):
                 fidelity,
                 atomic_energies,
                 dataloader_train=datamodule.statistics_dataloader(),
-                cache_signature=cache_signature,
             )
     # finetune or reusme, statistics is no need to recalculate
     if cfg.get("finetune_from_model", None):
@@ -231,7 +207,6 @@ def build(cfg: DictConfig):
             embedding_property,
             keyspec,
             threeAtomsList,
-            cache_signature=cache_signature,
         )
     _remove_data_fidelity(cfg)
 

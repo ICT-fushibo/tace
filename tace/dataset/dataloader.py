@@ -136,7 +136,6 @@ def compute_statistics(
     fidelity,
     atomic_energies: List[Dict[int, float]],
     dataloader_train = None,
-    cache_signature = None,
 ):
   
     if dataloader_train is None:
@@ -163,7 +162,6 @@ def compute_statistics(
         target_property=target_property,
         device=cfg.get("misc", {}).get("device", "cpu"),
         num_fidelities=len(fidelity),
-        cache_signature=cache_signature,
     )
 
     del dataloader_train

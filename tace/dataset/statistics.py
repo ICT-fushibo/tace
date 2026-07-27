@@ -3,11 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import hashlib
-import json
 import logging
 import math
-from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 import ase
@@ -19,9 +16,6 @@ from .element import TorchElement
 from .quantity import KeySpecification
 from ..utils.utils import log_statistics_to_yaml
 from ..utils.torch_scatter import scatter
-
-
-STATISTICS_SCHEMA_VERSION = 2
 
 
 def _canonical_atomic_energy(
@@ -109,71 +103,6 @@ class _RunningMoments:
         return torch.sqrt(torch.clamp(mean_square, min=0.0))
 
 
-def _path_metadata(value):
-    if isinstance(value, dict):
-        return {str(key): _path_metadata(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_path_metadata(item) for item in value]
-    if isinstance(value, Path):
-        value = str(value)
-    if not isinstance(value, str):
-        return value
-
-    path = Path(value).expanduser()
-    if not path.exists():
-        return value
-    if path.is_file():
-        stat = path.stat()
-        return {
-            "path": str(path.resolve()),
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-        }
-    return {"path": str(path.resolve()), "directory": True}
-
-
-def build_statistics_signature(
-    cfg: Dict,
-    target_property: Sequence[str],
-    embedding_property: Sequence[str],
-) -> str:
-    """Fingerprint inputs that affect graph construction or statistics."""
-
-    dataset_cfg = cfg.get("dataset", {})
-    model_cfg = cfg.get("model", {}).get("config", {})
-    dataset_keys = (
-        "type",
-        "train_file",
-        "valid_file",
-        "valid_ratio",
-        "valid_from_index",
-        "split_seed",
-        "no_valid_set",
-        "force_dtype",
-        "keys",
-        "neighborlist_backend",
-    )
-    payload = {
-        "schema_version": STATISTICS_SCHEMA_VERSION,
-        "dataset": {
-            key: _path_metadata(dataset_cfg.get(key))
-            for key in dataset_keys
-            if key in dataset_cfg
-        },
-        "model": {
-            "cutoff": model_cfg.get("cutoff"),
-            "max_neighbors": model_cfg.get("max_neighbors"),
-            "atomic_numbers": model_cfg.get("atomic_numbers"),
-            "fidelity": model_cfg.get("fidelity"),
-            "universal_embedding": model_cfg.get("universal_embedding"),
-        },
-        "target_property": list(target_property),
-        "embedding_property": list(embedding_property),
-    }
-    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-
 def _compute_atomic_energy(
     points: Sequence[ase.Atoms],
     element: TorchElement,
@@ -245,7 +174,6 @@ def _compute_statistics(
     target_property: List[str],
     device: str = "cpu",
     num_fidelities: int = 1,
-    cache_signature: Optional[str] = None,
 ) -> List[Dict]:
     if num_fidelities < 1:
         raise ValueError("At least one fidelity must be configured")
@@ -400,8 +328,6 @@ def _compute_statistics(
     for level in range(num_fidelities):
         has_data = int(graph_counts[level]) > 0
         stats = {
-            "_statistics_schema_version": STATISTICS_SCHEMA_VERSION,
-            "_cache_signature": cache_signature,
             "fidelity_idx": level,
             "available": has_data,
             "num_graphs": int(graph_counts[level]),
