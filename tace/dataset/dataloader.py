@@ -8,9 +8,9 @@ import logging
 from typing import Dict, List, Union
 
 
-from tqdm import tqdm
 from hydra.utils import instantiate
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
+
 
 from .element import build_element_lookup, TorchElement
 from .read import tace_read_all_files
@@ -59,9 +59,9 @@ def build_atomsList(
         )
         atomic_numbers_from_dataset = atomic_numbers_from_cfg
 
+    # === multi-fidelity atomic_energy ===
     fidelity = cfg['model']['config']['fidelity']
     num_fidelities = len(fidelity)
-    # === multi-fidelity atomic_energy ===
     if "energy" in target_property:
 
         atomic_energies_cfg: List[Union[Dict[int, float], None]] = []
@@ -74,6 +74,11 @@ def build_atomsList(
                 "If you want to use multi-fidelity or multi-head training, "
                 "you must provide each fidelity's atomic_energy or set to null"
             )
+            if this_atomic_energy is not None:
+                this_atomic_energy = {
+                    int(z): float(value)
+                    for z, value in this_atomic_energy.items()
+                }
             atomic_energies_cfg.append(this_atomic_energy)
         atomic_numbers_from_energy = set()
         for this_atomic_energy in atomic_energies_cfg:
@@ -100,10 +105,11 @@ def build_atomsList(
                     )
                 )
             else:
-                atomic_energy = {int(k): float(v) for k, v in this_energy_cfg.items()}
+                atomic_energy = {
+                    z: float(this_energy_cfg.get(z, 0.0)) for z in element.zs
+                }
                 for z in element.zs:
-                    if z not in atomic_energy:
-                        atomic_energy[z] = 0.0
+                    if z not in this_energy_cfg:
                         logging.warning(
                             f"Fidelity {fidelity[idx]['name']}: No isolated atomic energy "
                             f"provided for Z={z}, using 0.0 as default."
@@ -130,6 +136,7 @@ def compute_statistics(
     fidelity,
     atomic_energies: List[Dict[int, float]],
     dataloader_train = None,
+    cache_signature = None,
 ):
   
     if dataloader_train is None:
@@ -156,6 +163,7 @@ def compute_statistics(
         target_property=target_property,
         device=cfg.get("misc", {}).get("device", "cpu"),
         num_fidelities=len(fidelity),
+        cache_signature=cache_signature,
     )
 
     del dataloader_train

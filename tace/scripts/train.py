@@ -19,6 +19,10 @@ from tace.lightning.lit_model import finetune, load_tace
 from tace.lightning.torch_model import create_model
 from tace.dataset.dataloader import build_atomsList, compute_statistics
 from tace.dataset.datamodule import build_datamodule
+from tace.dataset.statistics import (
+    STATISTICS_SCHEMA_VERSION,
+    build_statistics_signature,
+)
 from tace.utils.hydra_resolver import register_resolvers
 from tace.utils.logger import set_logger
 from tace.utils.utils import (
@@ -113,32 +117,65 @@ def build(cfg: DictConfig):
     cfg = initialize(OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
     target_property = get_target_property(cfg)
     embedding_property = get_embedding_property(cfg)
-    userKeys = KEYS
+    userKeys = copy.deepcopy(KEYS)
     userKeys.update(cfg['dataset'].get('keys', {}))
     keyspec = KeySpecification()
     update_keyspec_from_kwargs(keyspec, userKeys)
     fidelity = _prepare_data_fidelity(cfg)
+    cache_signature = build_statistics_signature(
+        cfg, target_property, embedding_property
+    )
         
     # train from scratch, calculate statistics
     statistics = None
     threeAtomsList = None
+    datamodule = None
     if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
         statistics_yaml = [Path('.') / f'statistics_{idx}.yaml' for idx in range(len(fidelity))]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
-            statistics = []
+            loaded_statistics = []
             for yaml_file in statistics_yaml:
                 with open(yaml_file, "r") as f:
                     statistics_data = yaml.safe_load(f)
-                    statistics.append(statistics_data)
-            for idx, yaml_file in enumerate(statistics_yaml):
-                logging.info(f"Using '{str(yaml_file)}' for fidelity {fidelity[idx]['name']}")
-            atomic_numbers = statistics[0]["atomic_numbers"]
-        else:
+                    loaded_statistics.append(statistics_data)
+            cache_is_valid = all(
+                isinstance(stats, dict)
+                and stats.get("_statistics_schema_version")
+                == STATISTICS_SCHEMA_VERSION
+                and stats.get("_cache_signature") == cache_signature
+                and stats.get("fidelity_idx") == idx
+                for idx, stats in enumerate(loaded_statistics)
+            )
+            if cache_is_valid:
+                statistics = loaded_statistics
+                for idx, yaml_file in enumerate(statistics_yaml):
+                    logging.info(
+                        "Using '%s' for fidelity %s",
+                        yaml_file,
+                        fidelity[idx]["name"],
+                    )
+                atomic_numbers = statistics[0]["atomic_numbers"]
+            else:
+                logging.info(
+                    "Stored statistics do not match the current data/configuration; "
+                    "recomputing them"
+                )
+        if statistics is None:
             logging.info(f"Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
                 cfg, target_property, embedding_property, keyspec
             )
             atomic_numbers = element.zs
+            datamodule = build_datamodule(
+                cfg,
+                atomic_numbers,
+                target_property,
+                embedding_property,
+                keyspec,
+                threeAtomsList,
+                cache_signature=cache_signature,
+            )
+            datamodule.setup("fit")
             statistics = compute_statistics(
                 cfg, 
                 target_property, 
@@ -148,7 +185,8 @@ def build(cfg: DictConfig):
                 threeAtomsList,
                 fidelity,
                 atomic_energies,
-                dataloader_train=None,
+                dataloader_train=datamodule.statistics_dataloader(),
+                cache_signature=cache_signature,
             )
     # finetune or reusme, statistics is no need to recalculate
     if cfg.get("finetune_from_model", None):
@@ -185,14 +223,16 @@ def build(cfg: DictConfig):
     else: # From scratch
         model = _create_model(cfg, statistics, target_property, embedding_property)
 
-    datamodule = build_datamodule(
-        cfg, 
-        atomic_numbers, #
-        target_property, 
-        embedding_property, 
-        keyspec, 
-        threeAtomsList,
-    )
+    if datamodule is None:
+        datamodule = build_datamodule(
+            cfg,
+            atomic_numbers,
+            target_property,
+            embedding_property,
+            keyspec,
+            threeAtomsList,
+            cache_signature=cache_signature,
+        )
     _remove_data_fidelity(cfg)
 
     return cfg, statistics, target_property, embedding_property, model, datamodule

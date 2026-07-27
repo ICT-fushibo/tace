@@ -3,37 +3,45 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import re
-import math
-import lmdb
-import pickle
-import logging
 import gc
+import json
+import lmdb
+import logging
+import os
+import pickle
+import re
+import shutil
 import time
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 import torch
-from torch.utils.data import Dataset, Subset, SubsetRandomSampler
+from torch.utils.data import Dataset
 from lightning.pytorch import LightningDataModule
-from lightning.pytorch.utilities.rank_zero import rank_zero_only, rank_zero_info
+from lightning.pytorch.utilities.rank_zero import rank_zero_info, rank_zero_only
 import torch.distributed as dist
 from hydra.utils import instantiate
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Data
 
 from .graph import from_atoms
 from .element import build_element_lookup, TorchElement
 from .read import tace_read_all_files
 from .quantity import KeySpecification
 
-    
+
 class GraphDatasetLMDB(Dataset):
     """
     Lazy-loading LMDB dataset; each LMDB shard contains local keys 0..(n-1).
     Graphs accessed by global index are mapped to (shard_idx, local_idx).
     """
-    def __init__(self, lmdb_paths: List[Path], in_memory: bool = False, cache_size: int = 1024):
+
+    def __init__(
+        self,
+        lmdb_paths: List[Path],
+        in_memory: bool = False,
+        cache_size: int = 1024,
+        shard_lengths: Optional[List[int]] = None,
+    ):
         self.lmdb_paths = list(lmdb_paths)
         self.in_memory = in_memory
         self.cache_size = cache_size
@@ -47,7 +55,14 @@ class GraphDatasetLMDB(Dataset):
             self.length = 0
         else:
             self.length = 0
-            self.lengths = [None] * len(self.lmdb_paths)
+            if shard_lengths is None:
+                self.lengths = [None] * len(self.lmdb_paths)
+            elif len(shard_lengths) != len(self.lmdb_paths):
+                raise ValueError(
+                    "shard_lengths must match the number of LMDB paths"
+                )
+            else:
+                self.lengths = list(shard_lengths)
 
     def __len__(self):
         if self.in_memory:
@@ -55,7 +70,13 @@ class GraphDatasetLMDB(Dataset):
 
         for i, l in enumerate(self.lengths):
             if l is None:
-                env = lmdb.open(str(self.lmdb_paths[i]), readonly=True, lock=False, readahead=False, max_readers=64)
+                env = lmdb.open(
+                    str(self.lmdb_paths[i]),
+                    readonly=True,
+                    lock=False,
+                    readahead=False,
+                    max_readers=64,
+                )
                 with env.begin(write=False) as txn:
                     self.lengths[i] = txn.stat()["entries"]
                 env.close()
@@ -65,18 +86,22 @@ class GraphDatasetLMDB(Dataset):
         if self.in_memory:
             return self.data_list[idx]
 
-        if not self.lengths:
-            # safety: ensure lengths computed in not memory mode
-            _ = len(self)
+        if idx < 0:
+            idx += len(self)
+        total_length = len(self)
+        if idx < 0 or idx >= total_length:
+            raise IndexError(
+                f"Index {idx} out of range for dataset of length {total_length}"
+            )
 
         # map global idx -> shard_idx, local_idx
         shard_idx = 0
-        while idx >= self.lengths[shard_idx] and shard_idx < len(self.lengths):
+        while (
+            shard_idx < len(self.lengths)
+            and idx >= self.lengths[shard_idx]
+        ):
             idx -= self.lengths[shard_idx]
             shard_idx += 1
-
-        if shard_idx >= len(self.lmdb_paths):
-            raise IndexError(f"Index {idx} out of range for dataset with lengths {self.lengths}")
 
         # lazy open env and txn
         if self.envs[shard_idx] is None:
@@ -84,31 +109,62 @@ class GraphDatasetLMDB(Dataset):
             for attempt in range(max_retries):
                 try:
                     self.envs[shard_idx] = lmdb.open(
-                        str(self.lmdb_paths[shard_idx]), readonly=True, lock=False,
-                        readahead=False, max_readers=64
+                        str(self.lmdb_paths[shard_idx]),
+                        readonly=True,
+                        lock=False,
+                        readahead=False,
+                        max_readers=64,
                     )
                     self.txns[shard_idx] = self.envs[shard_idx].begin(write=False)
                     break
-                except lmdb.Error as e:
+                except lmdb.Error:
                     if attempt == max_retries - 1:
                         raise
                     time.sleep(1)
 
         key_tuple = (shard_idx, idx)
-        if key_tuple in self.cache:
+        if self.cache_size > 0 and key_tuple in self.cache:
             return self.cache[key_tuple]
 
         key = f"{idx:09d}".encode("ascii")
         value = self.txns[shard_idx].get(key)
         if value is None:
-            raise IndexError(f"Index {idx} not found in LMDB shard {self.lmdb_paths[shard_idx]} (shard_idx {shard_idx})")
+            raise IndexError(
+                f"Index {idx} not found in LMDB shard "
+                f"{self.lmdb_paths[shard_idx]} (shard_idx {shard_idx})"
+            )
 
         graph = pickle.loads(value)
 
-        if len(self.cache) >= self.cache_size:
-            self.cache.pop(next(iter(self.cache)))
-        self.cache[key_tuple] = graph
+        if self.cache_size > 0:
+            if len(self.cache) >= self.cache_size:
+                self.cache.pop(next(iter(self.cache)))
+            self.cache[key_tuple] = graph
         return graph
+
+    def close(self):
+        for txn in self.txns:
+            if txn is not None:
+                txn.abort()
+        for env in self.envs:
+            if env is not None:
+                env.close()
+        self.envs = [None] * len(self.lmdb_paths)
+        self.txns = [None] * len(self.lmdb_paths)
+
+    def __getstate__(self):
+        self.close()
+        state = dict(self.__dict__)
+        state["envs"] = [None] * len(self.lmdb_paths)
+        state["txns"] = [None] * len(self.lmdb_paths)
+        state["cache"] = {}
+        return state
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 def create_graphs(
@@ -119,8 +175,10 @@ def create_graphs(
     shard_dirs: List[Path],
     storage_mode: str = "lmdb",
     shard_size: int = 1000,
-    lmdb_wait_timeout: int = 86400,  # seconds for non-rank0 to wait for lmdb files, 1 day
-    avg_graph_size_in_KB: int = 75
+    lmdb_wait_timeout: int = 86400,
+    avg_graph_size_in_KB: int = 75,
+    cache_size: int = 1024,
+    cache_signature: str = "legacy",
 ):
     """
     Create graphs in memory (memory mode) or write/read LMDB shards (lmdb mode).
@@ -140,7 +198,10 @@ def create_graphs(
     # === MEMORY MODE ===
     if storage_mode == "memory":
         if rank == 0:
-            graphs = [from_atoms(element, atoms, **for_dataset) for atoms in (atoms_list or [])]
+            graphs = [
+                from_atoms(element, atoms, **for_dataset)
+                for atoms in (atoms_list or [])
+            ]
         else:
             graphs = []
 
@@ -166,34 +227,64 @@ def create_graphs(
                 if rank != 0:
                     graphs[i:j] = batch
 
-        dataset = GraphDatasetLMDB(lmdb_paths=[], in_memory=True)
+        dataset = GraphDatasetLMDB(
+            lmdb_paths=[], in_memory=True, cache_size=cache_size
+        )
         dataset.data_list = graphs
         dataset.length = len(graphs)
         return dataset
 
-
     # === LMDB MODE ===
-    def _collect_lmdb_paths():
-        out = []
-        for d in shard_dirs:
-            out.extend(sorted(d.glob(f"{stage}_shard*.lmdb")))
-        return out
+    cache_token = cache_signature[:16]
+    marker_path = shard_dirs[0] / f".{stage}_{cache_token}.complete.json"
 
-    lmdb_paths = _collect_lmdb_paths()
-    
+    def _collect_lmdb_metadata():
+        if not marker_path.is_file():
+            return None
+        try:
+            marker = json.loads(marker_path.read_text())
+            if marker.get("cache_signature") != cache_signature:
+                return None
+            paths = [Path(path) for path in marker["shards"]]
+            lengths = [int(length) for length in marker["shard_lengths"]]
+            if (
+                len(paths) != len(lengths)
+                or sum(lengths) != int(marker["length"])
+            ):
+                return None
+        except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError):
+            return None
+        if not paths or not all(path.is_dir() for path in paths):
+            return None
+        return paths, lengths
+
+    cache_metadata = _collect_lmdb_metadata()
+
     # if shards already exist, load them
-    if lmdb_paths:
-        rank_zero_info(f"Found existing LMDB files for {stage}: {len(lmdb_paths)} shards")
-        if world_size > 1 and dist.is_initialized():
-            dist.barrier()
-        return GraphDatasetLMDB(lmdb_paths, in_memory=False)
+    if cache_metadata is not None:
+        lmdb_paths, shard_lengths = cache_metadata
+        rank_zero_info(
+            f"Found existing LMDB files for {stage}: "
+            f"{len(lmdb_paths)} shards"
+        )
+        return GraphDatasetLMDB(
+            lmdb_paths,
+            in_memory=False,
+            cache_size=cache_size,
+            shard_lengths=shard_lengths,
+        )
 
     # Only rank 0 will create LMDB shards (if atoms_list provided)
     if rank == 0 and atoms_list:
-        rank_zero_info(f"Rank 0 building and saving {len(atoms_list)} graphs for stage={stage} (stream LMDB mode)")
+        rank_zero_info(
+            f"Rank 0 building and saving {len(atoms_list)} graphs "
+            f"for stage={stage} (stream LMDB mode)"
+        )
         buffer = []
         shard_idx = 0
         n_atoms = len(atoms_list)
+        written_paths = []
+        written_lengths = []
         # choose directory as round-robin across provided shard_dirs for distribution
         n_dirs = max(1, len(shard_dirs))
         for d in shard_dirs:
@@ -201,19 +292,37 @@ def create_graphs(
 
         for idx, atoms in enumerate(atoms_list):
             graph = from_atoms(element, atoms, **for_dataset)
-            buffer.append(graph)
+            buffer.append(
+                pickle.dumps(graph, protocol=pickle.HIGHEST_PROTOCOL)
+            )
 
             if len(buffer) >= shard_size or idx == n_atoms - 1:
                 dir_path = shard_dirs[shard_idx % n_dirs]
-                lmdb_path = dir_path / f"{stage}_shard{shard_idx:04d}.lmdb"
+                lmdb_path = (
+                    dir_path
+                    / f"{stage}_{cache_token}_shard{shard_idx:04d}.lmdb"
+                )
+                temp_path = Path(f"{lmdb_path}.tmp-{os.getpid()}")
+                if temp_path.exists():
+                    shutil.rmtree(temp_path)
+                if lmdb_path.exists():
+                    shutil.rmtree(lmdb_path)
+
+                serialized_graphs = buffer
                 avg_graph_size = avg_graph_size_in_KB * 1024
-                map_size = int(len(buffer) * avg_graph_size * 1.1)
+                estimated_size = int(len(buffer) * avg_graph_size * 1.1)
+                serialized_size = sum(len(value) for value in serialized_graphs)
+                map_size = max(
+                    estimated_size,
+                    int(serialized_size * 1.25) + 16 * 1024 * 1024,
+                )
 
                 max_retries = 3
                 for attempt in range(max_retries):
+                    env = None
                     try:
                         env = lmdb.open(
-                            str(lmdb_path),
+                            str(temp_path),
                             map_size=map_size,
                             subdir=True,
                             writemap=True,
@@ -223,28 +332,47 @@ def create_graphs(
                         )
                         with env.begin(write=True) as txn:
                             # local keys start from 0 for each shard
-                            for i_local, graph_obj in enumerate(buffer):
+                            for i_local, value in enumerate(serialized_graphs):
                                 key = f"{i_local:09d}".encode("ascii")
-                                txn.put(key, pickle.dumps(graph_obj))
+                                txn.put(key, value)
                         env.close()
+                        os.replace(temp_path, lmdb_path)
                         break
-                    except lmdb.Error as e:
+                    except lmdb.MapFullError:
+                        if env is not None:
+                            env.close()
+                        if temp_path.exists():
+                            shutil.rmtree(temp_path)
+                        map_size *= 2
                         if attempt == max_retries - 1:
-                            # on persistent failure, clean and re-raise
-                            if lmdb_path.exists():
-                                import shutil
-                                try:
-                                    shutil.rmtree(lmdb_path)
-                                except Exception:
-                                    pass
+                            raise
+                    except lmdb.Error:
+                        if env is not None:
+                            env.close()
+                        if temp_path.exists():
+                            shutil.rmtree(temp_path)
+                        if attempt == max_retries - 1:
                             raise
                         time.sleep(1)
 
                 rank_zero_info(f"Saved shard {lmdb_path} with {len(buffer)} graphs")
+                written_paths.append(str(lmdb_path.resolve()))
+                written_lengths.append(len(buffer))
                 buffer.clear()
                 shard_idx += 1
                 gc.collect()
 
+        marker = {
+            "cache_signature": cache_signature,
+            "stage": stage,
+            "length": n_atoms,
+            "shards": written_paths,
+            "shard_lengths": written_lengths,
+        }
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_marker = marker_path.with_suffix(f".tmp-{os.getpid()}")
+        temp_marker.write_text(json.dumps(marker, indent=2, sort_keys=True))
+        os.replace(temp_marker, marker_path)
         rank_zero_info(f"All {n_atoms} graphs saved successfully for stage={stage}")
         gc.collect()
 
@@ -255,24 +383,30 @@ def create_graphs(
             waited = 0
             poll_interval = 1.0
             while waited < lmdb_wait_timeout:
-                lmdb_paths = _collect_lmdb_paths()
-                if lmdb_paths:
+                cache_metadata = _collect_lmdb_metadata()
+                if cache_metadata is not None:
                     break
                 time.sleep(poll_interval)
                 waited += poll_interval
-            if not lmdb_paths:
+            if cache_metadata is None:
                 # after timeout, still no files -> error to avoid silent hang
                 raise RuntimeError(f"Timeout: no LMDB files for stage={stage} found after {lmdb_wait_timeout}s")
         # ensure all processes reach here after files exist or after rank0 created them
         dist.barrier()
 
-    lmdb_paths = _collect_lmdb_paths()
-    if not lmdb_paths:
+    cache_metadata = _collect_lmdb_metadata()
+    if cache_metadata is None:
         logging.error(f"No LMDB files found for {stage} after creation")
         raise RuntimeError(f"No LMDB files found for {stage} after creation")
+    lmdb_paths, shard_lengths = cache_metadata
 
     rank_zero_info(f"Loaded {len(lmdb_paths)} LMDB shards for {stage}")
-    dataset = GraphDatasetLMDB(lmdb_paths, in_memory=False)
+    dataset = GraphDatasetLMDB(
+        lmdb_paths,
+        in_memory=False,
+        cache_size=cache_size,
+        shard_lengths=shard_lengths,
+    )
     return dataset
 
 
@@ -286,6 +420,7 @@ class GraphDataModule(LightningDataModule):
         keyspec: KeySpecification,
         embedding_property: List[str],
         threeAtomsList = None,
+        cache_signature: str = "legacy",
     ):
         super().__init__()
         self.cfg = cfg
@@ -298,25 +433,26 @@ class GraphDataModule(LightningDataModule):
         self.val_dataset = None
         self.test_datasets = None
         self.threeAtomsList = threeAtomsList
+        self.cache_signature = cache_signature
+        self.cache_token = cache_signature[:16]
 
         self.storage_mode = cfg.get("dataset", {}).get("storage_mode", "memory")
         self.shard_dirs = [Path(p) for p in cfg.get("dataset", {}).get("shard_dirs", ["graphCache"])]
-        self.presave_test_sets = any(
-            any(subdir.is_dir() and subdir.name.startswith("test") for subdir in shard_dir.iterdir())
-            for shard_dir in self.shard_dirs if shard_dir.exists()
+        marker_pattern = re.compile(
+            rf"^\.test(\d+)_{self.cache_token}\.complete\.json$"
         )
-        lmdb_test_setspattern = re.compile(r"^test(\d+)_shard\d+\.lmdb$")
         test_ids = set()
         for shard_dir in self.shard_dirs:
             if not shard_dir.exists():
                 continue
             for f in shard_dir.iterdir():
-                if f.is_dir():
-                    m = lmdb_test_setspattern.match(f.name)
-                    if m:
-                        test_ids.add(int(m.group(1)))
+                m = marker_pattern.match(f.name)
+                if m:
+                    test_ids.add(int(m.group(1)))
+        self.presave_test_sets = bool(test_ids)
         self.num_test_sets = len(test_ids)
         self.shard_size = cfg.get("dataset", {}).get("shard_size", 1_000_000)
+        self.cache_size = cfg.get("dataset", {}).get("cache_size", 1024)
         self.avg_graph_size_in_KB = cfg.get("dataset", {}).get("avg_graph_size_in_KB", 200)
         self.lmdb_wait_timeout = cfg.get("dataset", {}).get("lmdb_wait_timeout", 86400)
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
@@ -332,15 +468,59 @@ class GraphDataModule(LightningDataModule):
         }
         logging.info(f"Neighborlist backend is {self.neighborlist_backend}")
 
+    def _stage_cache_exists(self, stage: str) -> bool:
+        marker = (
+            self.shard_dirs[0]
+            / f".{stage}_{self.cache_token}.complete.json"
+        )
+        if not marker.is_file():
+            return False
+        try:
+            metadata = json.loads(marker.read_text())
+            paths = [Path(path) for path in metadata["shards"]]
+            lengths = [
+                int(length) for length in metadata["shard_lengths"]
+            ]
+            total_length = int(metadata["length"])
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            OSError,
+            json.JSONDecodeError,
+        ):
+            return False
+        return (
+            metadata.get("cache_signature") == self.cache_signature
+            and bool(paths)
+            and len(paths) == len(lengths)
+            and sum(lengths) == total_length
+            and all(path.is_dir() for path in paths)
+        )
+
+    def _all_required_caches_exist(self) -> bool:
+        required_stages = ["train"]
+        if not self.no_valid_set:
+            required_stages.append("valid")
+        test_files = self.cfg.get("dataset", {}).get("test_files")
+        if test_files:
+            num_test_sets = len(test_files) if isinstance(test_files, list) else 1
+            required_stages.extend(
+                f"test{idx}" for idx in range(num_test_sets)
+            )
+        return all(self._stage_cache_exists(stage) for stage in required_stages)
+
 
     @rank_zero_only
     def prepare_data(self):
         if self.storage_mode == 'lmdb':
             for d in self.shard_dirs:
                 d.mkdir(parents=True, exist_ok=True)
-            lmdb_exists = any(list(d.rglob("*.lmdb")) for d in self.shard_dirs)
-            if lmdb_exists:
-                logging.info("[prepare_data] LMDB directories already exist — skipping raw data reading.")
+            if self._all_required_caches_exist():
+                logging.info(
+                    "[prepare_data] Complete matching LMDB cache found; "
+                    "skipping raw data reading."
+                )
                 self.threeAtomsList = None
                 return
 
@@ -380,17 +560,20 @@ class GraphDataModule(LightningDataModule):
         if stage in (None, "fit"):
             # TRAIN
             atoms_for_train = (self.threeAtomsList[0] if (self.threeAtomsList and self.threeAtomsList[0] is not None) else None)
-            self.train_dataset = create_graphs(
-                atoms_for_train,
-                self.element,
-                self._for_dataset_config,
-                "train",
-                self.shard_dirs,
-                storage_mode=self.storage_mode,
-                shard_size=self.shard_size,
-                lmdb_wait_timeout=self.lmdb_wait_timeout,
-                avg_graph_size_in_KB=self.avg_graph_size_in_KB,
-            )
+            if self.train_dataset is None:
+                self.train_dataset = create_graphs(
+                    atoms_for_train,
+                    self.element,
+                    self._for_dataset_config,
+                    "train",
+                    self.shard_dirs,
+                    storage_mode=self.storage_mode,
+                    shard_size=self.shard_size,
+                    lmdb_wait_timeout=self.lmdb_wait_timeout,
+                    avg_graph_size_in_KB=self.avg_graph_size_in_KB,
+                    cache_size=self.cache_size,
+                    cache_signature=self.cache_signature,
+                )
 
             logging.info(f"Rank {rank}: Number of configs in train: {len(self.train_dataset)}")
             if rank == 0 and self.threeAtomsList and self.threeAtomsList[0] is not None:
@@ -400,17 +583,20 @@ class GraphDataModule(LightningDataModule):
             # VALID
             if not self.no_valid_set:
                 atoms_for_valid = (self.threeAtomsList[1] if (self.threeAtomsList and self.threeAtomsList[1] is not None) else None)
-                self.val_dataset = create_graphs(
-                    atoms_for_valid,
-                    self.element,
-                    self._for_dataset_config,
-                    "valid",
-                    self.shard_dirs,
-                    storage_mode=self.storage_mode,
-                    shard_size=self.shard_size,
-                    lmdb_wait_timeout=self.lmdb_wait_timeout,
-                    avg_graph_size_in_KB=self.avg_graph_size_in_KB,
-                )
+                if self.val_dataset is None:
+                    self.val_dataset = create_graphs(
+                        atoms_for_valid,
+                        self.element,
+                        self._for_dataset_config,
+                        "valid",
+                        self.shard_dirs,
+                        storage_mode=self.storage_mode,
+                        shard_size=self.shard_size,
+                        lmdb_wait_timeout=self.lmdb_wait_timeout,
+                        avg_graph_size_in_KB=self.avg_graph_size_in_KB,
+                        cache_size=self.cache_size,
+                        cache_signature=self.cache_signature,
+                    )
                 logging.info(f"Rank {rank}: Number of configs in valid: {len(self.val_dataset)}")
                 if rank == 0 and self.threeAtomsList and self.threeAtomsList[1] is not None:
                     self.threeAtomsList[1] = None
@@ -420,12 +606,30 @@ class GraphDataModule(LightningDataModule):
 
             # TEST
             atoms_for_test_container = (self.threeAtomsList[2] if (self.threeAtomsList and self.threeAtomsList[2] is not None) else None)
-            self.test_datasets = []
-            if not self.presave_test_sets:
-                if atoms_for_test_container is not None:
-                    for idx, test_atoms_list in enumerate(atoms_for_test_container):
+            if self.test_datasets is None:
+                self.test_datasets = []
+                if not self.presave_test_sets:
+                    if atoms_for_test_container is not None:
+                        for idx, test_atoms_list in enumerate(atoms_for_test_container):
+                            test_dataset = create_graphs(
+                                test_atoms_list,
+                                self.element,
+                                self._for_dataset_config,
+                                f"test{idx}",
+                                self.shard_dirs,
+                                storage_mode=self.storage_mode,
+                                shard_size=self.shard_size,
+                                lmdb_wait_timeout=self.lmdb_wait_timeout,
+                                avg_graph_size_in_KB=self.avg_graph_size_in_KB,
+                                cache_size=self.cache_size,
+                                cache_signature=self.cache_signature,
+                            )
+                            self.test_datasets.append(test_dataset)
+                        self.presave_test_sets = True
+                else:
+                    for idx in range(self.num_test_sets):
                         test_dataset = create_graphs(
-                            test_atoms_list,
+                            None,
                             self.element,
                             self._for_dataset_config,
                             f"test{idx}",
@@ -434,23 +638,10 @@ class GraphDataModule(LightningDataModule):
                             shard_size=self.shard_size,
                             lmdb_wait_timeout=self.lmdb_wait_timeout,
                             avg_graph_size_in_KB=self.avg_graph_size_in_KB,
+                            cache_size=self.cache_size,
+                            cache_signature=self.cache_signature,
                         )
                         self.test_datasets.append(test_dataset)
-                    self.presave_test_sets = True
-            else:
-                for idx in range(self.num_test_sets):
-                    test_dataset = create_graphs(
-                        None,
-                        self.element,
-                        self._for_dataset_config,
-                        f"test{idx}",
-                        self.shard_dirs,
-                        storage_mode=self.storage_mode,
-                        shard_size=self.shard_size,
-                        lmdb_wait_timeout=self.lmdb_wait_timeout,
-                        avg_graph_size_in_KB=self.avg_graph_size_in_KB,
-                    )
-                    self.test_datasets.append(test_dataset)
             if rank == 0 and self.threeAtomsList and self.threeAtomsList[2] is not None:
                 self.threeAtomsList[2] = None
                 gc.collect()
@@ -458,6 +649,16 @@ class GraphDataModule(LightningDataModule):
                 
     def train_dataloader(self):
         return instantiate(self.cfg["dataset"]["train_dataloader"], dataset=self.train_dataset)
+
+    def statistics_dataloader(self):
+        config = {
+            key: value
+            for key, value in self.cfg["dataset"]["train_dataloader"].items()
+            if key != "extra"
+        }
+        config["shuffle"] = False
+        config["drop_last"] = False
+        return instantiate(config, dataset=self.train_dataset)
 
     # def train_dataloader(self):
     #     config = self.cfg["dataset"]["train_dataloader"]
@@ -523,6 +724,7 @@ def build_datamodule(
     embedding_property: List[str],
     keyspec: KeySpecification,
     threeAtomsList,
+    cache_signature: str = "legacy",
 ):
     element = build_element_lookup(atomic_numbers)
     datamodule = GraphDataModule(
@@ -532,5 +734,6 @@ def build_datamodule(
         keyspec,
         embedding_property,
         threeAtomsList,
+        cache_signature,
     )
     return datamodule
