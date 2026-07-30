@@ -36,6 +36,14 @@ class CgtpACE(Product):
 
     def _setup(self):
 
+        if self.parity and self.correlation > 2:
+            raise ValueError(
+                "CgtpACE with parity=True currently requires correlation < 3. "
+                "Invalid paths for correlation >= 3 have not yet been filtered "
+                "and may cause redundant computation, so higher-order full O(3) "
+                "products are temporarily disabled."
+            )
+
         self.scale = 1.0 / math.sqrt(2.0)
 
         for_coefs = {
