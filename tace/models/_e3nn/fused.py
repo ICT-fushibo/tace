@@ -234,10 +234,10 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         if acceleration_enabled("triton"):
             from ..triton_ops import UUSO2Scatter
 
-            self.triton_op = UUSO2Scatter(self.linear_up)
+            self.fused_tp = UUSO2Scatter(self.linear_up)
         else:
             logging.warning(
-                "You are not using fused uuSO2Interaction, set TACE_USE_TRITON=1, "
+                "You are not using fused uuSO2Interaction, please export TACE_USE_TRITON=1. "
                 "For acceleration options, see "
                 "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
             )
@@ -254,9 +254,9 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         num_nodes = x.size(0)
         x = self.reshape_in(x)
 
-        if hasattr(self, "triton_op"):
+        if hasattr(self, "fused_tp"):
             return self.reshape_out.inverse(
-                self.triton_op(
+                self.fused_tp(
                     x,
                     w,
                     edge_index,

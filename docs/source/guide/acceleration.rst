@@ -3,10 +3,12 @@
 Acceleration Tutorial
 =====================
 
-TACE supports two complementary forms of acceleration:
+TACE supports three complementary forms of acceleration:
 
 * external equivariant kernels, such as OpenEquivariance and
   cuEquivariance, accelerate the most expensive edge-level operations;
+* TACE Triton operators fuse selected SO2 operations and reduce intermediate
+  memory use;
 * PyTorch compilation accelerates a larger part of the model and can either
   run inside the current Python process or produce an AOTInductor package for
   later deployment.
@@ -15,10 +17,10 @@ The acceleration backend must be selected before the model is constructed.
 The same settings can be used during training, validation, testing, and model
 export, subject to the backend limitations described below.
 
-External Kernels
-----------------
+Kernel Backends
+---------------
 
-The following external kernels are available:
+The following kernel backends are available:
 
 .. list-table::
    :header-rows: 1
@@ -36,6 +38,9 @@ The following external kernels are available:
    * - cuEquivariance
      - Yes
      - ``TACE_USE_CUE=1``
+   * - TACE Triton uuSO2 scatter
+     - Yes
+     - ``TACE_USE_TRITON=1``
 
 For example:
 
@@ -46,6 +51,33 @@ For example:
 Only enable one equivariant kernel backend at a time. OpenEquivariance is the
 recommended default for supported NVIDIA GPUs. Equitorch is mainly useful for
 models with ``correlation > 2`` and is not normally required.
+
+The acceleration environment can also be configured through one Python
+interface before constructing or loading the model:
+
+.. code-block:: python
+
+   from tace.utils.env import enable_acceleration
+
+   enable_acceleration(enable_oeq=True, enable_triton=True)
+
+By default, this interface only enables the requested backends and preserves
+existing environment settings. Pass ``force=True`` to explicitly write every
+backend setting and disable unselected backends.
+
+The ASE and TorchSim calculators expose the same backends as constructor
+options. For example:
+
+.. code-block:: python
+
+   from tace.interface.ase import TACEAseCalc
+
+   calc = TACEAseCalc(
+       model="model.pt",
+       device="cuda",
+       enable_oeq=True,
+       enable_triton=True,
+   )
 
 .. note::
 
@@ -184,15 +216,21 @@ Set external-kernel variables before export, then select the ``aoti`` backend:
    tace-export-eval \
      -m model.ckpt \
      --backend aoti \
-     --device cuda \
-     --sample structures.xyz \
-     --sample-index ":10" \
-     --batch-size 2
+     --device cuda
 
-``--sample`` is optional. When supplied, TACE uses ASE-readable structures to
-trace realistic graph shapes; otherwise it builds a synthetic dynamic sample.
+No sample structure is required. TACE automatically builds a synthetic
+two-graph input and exports dynamic node, edge, and graph dimensions, so the
+resulting package can be used with different structures and batch sizes.
+``--sample`` remains available as an optional advanced override, but is not
+needed for normal ASE or TorchSim deployment.
+
 The default output is ``model.pt2``. ``tace-compile`` is an alias for
-``tace-export-eval`` and accepts the same options.
+``tace-export-eval`` and accepts the same options. The equivalent short command
+is:
+
+.. code-block:: bash
+
+   tace-compile -m model.ckpt --backend aoti --device cuda
 
 The graph ``.pt2`` package can be loaded with ``load_tace`` and shared by native
 PyTorch consumers, including the ASE and TorchSim integrations:
