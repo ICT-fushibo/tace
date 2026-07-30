@@ -19,12 +19,14 @@ def enable_acceleration(
     enable_cue: bool = False,
     enable_eqt: bool = False,
     enable_compile: bool = False,
+    enable_triton: bool = False,
 ) -> None:
     acceleration_env = {
         "TACE_USE_OEQ": enable_oeq,
         "TACE_USE_CUE": enable_cue,
         "TACE_USE_EQT": enable_eqt,
         "TACE_USE_COMPILE": enable_compile,
+        "TACE_USE_TRITON": enable_triton,
     }
     for name, enabled in acceleration_env.items():
         if enabled:
@@ -45,6 +47,10 @@ def get_tace_use_eqt():
 
 def get_tace_use_compile():
     return os.environ.get("TACE_USE_COMPILE", "0")
+
+
+def get_tace_use_triton():
+    return os.environ.get("TACE_USE_TRITON", "0")
 
 
 def get_tace_apply_u_shift():

@@ -17,6 +17,7 @@ from tace.utils.env import (
     get_tace_use_cue, 
     get_tace_use_eqt, 
     get_tace_use_compile,
+    get_tace_use_triton,
 )
 from ..layout import LayoutTransform
 from ..so2 import (
@@ -235,6 +236,10 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
             l1l3=self.l1l3,
         )
         self.weight_numel = self.linear_up.weight_numel
+        if get_tace_use_triton() == "1":
+            from ..triton_ops import UUSO2Scatter
+
+            self.triton_op = UUSO2Scatter(self.linear_up)
 
     def forward(
             self, 
@@ -247,6 +252,17 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
         
         num_nodes = x.size(0)
         x = self.reshape_in(x)
+
+        if hasattr(self, "triton_op"):
+            return self.reshape_out.inverse(
+                self.triton_op(
+                    x,
+                    w,
+                    edge_index,
+                    wigner,
+                    wigner_inv,
+                )
+            )
 
         m_ij = x[edge_index[0]]
         m_ij = torch.bmm(wigner, m_ij)
