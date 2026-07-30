@@ -95,6 +95,7 @@ class CgtpACE(Product):
                 l1l2=self.l1l2,
                 trainable=self.use_bilinear_ace,
                 warning=warn_without_eqt and nu == 2,
+                identical_inputs=nu == 2 and not self.use_bilinear_ace,
             )
             self.aces.append(this_ace)
             self.coefs.append(coefs_cls(

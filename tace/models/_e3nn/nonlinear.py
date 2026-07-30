@@ -42,8 +42,13 @@ def get_nonlinear_layer(
             linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
         else:
             from e3nn.nn import Gate
-            irreps_scalars = o3.Irreps([(mul, ir) for mul, ir in irreps_in if ir.l == 0])
-            irreps_gated = o3.Irreps([(mul, ir) for mul, ir in irreps_in if ir.l > 0])
+            even_scalar = o3.Irrep("0e")
+            irreps_scalars = o3.Irreps(
+                [(mul, ir) for mul, ir in irreps_in if ir == even_scalar]
+            )
+            irreps_gated = o3.Irreps(
+                [(mul, ir) for mul, ir in irreps_in if ir != even_scalar]
+            )
             irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
             scalar_act = scalar_act or 'silu'
             tensor_act = tensor_act or 'sigmoid'
@@ -57,7 +62,11 @@ def get_nonlinear_layer(
                 irreps_gated=irreps_gated,
             )
             linear_down_irreps_out = nonlinearity.irreps_in.simplify()
-            linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
+            linear_nonlinearity = e3nnLinear(
+                nonlinearity.irreps_out,
+                irreps_out,
+                bias=bias,
+            )
     # elif nonlinear_type == 'norm': 
     #     scalar_act = scalar_act or 'sigmoid'
     #     tensor_act = tensor_act or 'sigmoid'
@@ -273,4 +282,3 @@ class O3Gate(torch.nn.Module):
 #             f"{self.__class__.__name__}("
 #             f"{self.irreps_in} -> {self.irreps_out})"
 #         )
-    

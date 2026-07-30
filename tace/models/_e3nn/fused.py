@@ -41,6 +41,7 @@ class uuuTensorProduct(torch.nn.Module):
         l3l1: Union[str, None] = None,
         trainable: bool = False,
         warning: bool = False,
+        identical_inputs: bool = False,
     ) -> None:
         super().__init__()
 
@@ -53,6 +54,7 @@ class uuuTensorProduct(torch.nn.Module):
             l3l1=l3l1,
             e3nn_mode='uuu',
             trainable=trainable,
+            identical_inputs=identical_inputs,
         )
 
         self.tp = o3.TensorProduct(

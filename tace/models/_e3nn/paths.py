@@ -38,11 +38,14 @@ def generate_paths(
     l3l1: Union[str, None] = None,
     e3nn_mode = 'uvu',
     trainable: bool = False,
+    identical_inputs: bool = False,
 ):
 
     e3nn_paths: list[tuple[int, int, int, str, bool]] = []
     e3nn_out_irreps: list[tuple[int, o3.Irrep]] = [] 
 
+    if identical_inputs and irreps_in1 != irreps_in2:
+        raise ValueError("identical_inputs requires matching input irreps")
 
     for _, (_, ir_out) in enumerate(irreps_out):
         for i, (mul, ir1) in enumerate(irreps_in1):
@@ -58,10 +61,15 @@ def generate_paths(
                     and satisfy(l2, l3, l2l3)
                     and satisfy(l3, l1, l3l1)
                 ):
+                    if (
+                        identical_inputs
+                        and i == j
+                        and (l1 + l2 - l3) % 2 == 1
+                    ):
+                        continue
 
                     k = len(e3nn_out_irreps)
                     e3nn_out_irreps.append((mul, (ir_out.l, ir_out.p)))
                     e3nn_paths.append((i, j, k, e3nn_mode, e3nn_mode =='uvu' or trainable))
                     
     return e3nn_paths, o3.Irreps(e3nn_out_irreps)
-
