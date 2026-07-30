@@ -13,7 +13,7 @@ import logging
 import torch
 
 
-from tace.utils.env import get_tace_use_compile
+from tace.utils.env import acceleration_enabled
 from tace.utils.utils import deep_convert
 
 
@@ -60,7 +60,7 @@ def create_model(
 
     wrapper_path = model_config.get("wrapper", {}).get("_target_", "tace.models.TensorModel")
 
-    use_aoti = get_tace_use_compile() == "1" and model_path in {
+    use_aoti = acceleration_enabled("compile") and model_path in {
         "tace.models.e3nnTACE",
         "tace.models._e3nn.e3nnTACE",
     }

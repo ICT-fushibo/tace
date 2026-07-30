@@ -10,7 +10,7 @@ from typing import Dict, Union
 import torch
 from e3nn import o3
 
-from tace.utils.env import get_tace_use_eqt
+from tace.utils.env import acceleration_enabled
 
 from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
 
@@ -92,7 +92,7 @@ class CgtpACE(Product):
 
         product_in1 = self.irreps_hidden
         warn_without_eqt = (
-            self.correlation >= 3 and get_tace_use_eqt() != "1"
+            self.correlation >= 3 and not acceleration_enabled("eqt")
         )
 
         for nu in range(2, self.correlation+1):
@@ -376,9 +376,9 @@ class CgtpACE(Product):
 
 #         self.reshape = LayoutTransform2(self.irreps_hidden if self.num_channel != self.num_hidden_channel else self.irreps_in)
 
-#         from tace.utils.env import get_tace_use_cue
+#         from tace.utils.env import acceleration_enabled
 #         from .symmetric_contraction import SymmetricContractionWrapper
-#         self.use_cueq = get_tace_use_cue == '1'
+#         self.use_cueq = acceleration_enabled("cue")
 #         self.symmetric_contractions = SymmetricContractionWrapper(
 #             irreps_in=self.irreps_hidden,
 #             irreps_out=self.irreps_coefs_out,

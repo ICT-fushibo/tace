@@ -13,11 +13,7 @@ from e3nn import o3
 
 
 from tace.utils.env import (
-    get_tace_use_oeq, 
-    get_tace_use_cue, 
-    get_tace_use_eqt, 
-    get_tace_use_compile,
-    get_tace_use_triton,
+    acceleration_enabled,
 )
 from ..layout import LayoutTransform
 from ..so2 import (
@@ -72,9 +68,8 @@ class uuuTensorProduct(torch.nn.Module):
         self.irreps_out = actual_irreps_out
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
-        self.use_eqt = get_tace_use_eqt() == '1'
-        self.use_cue = get_tace_use_cue() == '1'
-        # self.use_oeq = get_tace_use_oeq() == '1'
+        self.use_eqt = acceleration_enabled("eqt")
+        self.use_cue = acceleration_enabled("cue")
 
         if self.use_eqt:
             from .._eqt import e3nnEqtTensorProduct
@@ -153,9 +148,9 @@ class O3ScatterTensorProduct(torch.nn.Module):
         self.instructions = instructions
         self.weight_numel = self.tp.weight_numel
 
-        self.use_oeq = get_tace_use_oeq() == '1'
-        self.use_cue = get_tace_use_cue() == '1'
-        self.use_aoti = get_tace_use_compile() == '1'
+        self.use_oeq = acceleration_enabled("oeq")
+        self.use_cue = acceleration_enabled("cue")
+        self.use_aoti = acceleration_enabled("compile")
 
         if self.use_aoti and self.use_cue:
             logging.warning(
@@ -236,10 +231,16 @@ class uuSO2ScatterTensorProduct(torch.nn.Module):
             l1l3=self.l1l3,
         )
         self.weight_numel = self.linear_up.weight_numel
-        if get_tace_use_triton() == "1":
+        if acceleration_enabled("triton"):
             from ..triton_ops import UUSO2Scatter
 
             self.triton_op = UUSO2Scatter(self.linear_up)
+        else:
+            logging.warning(
+                "You are not using fused uuSO2Interaction, set TACE_USE_TRITON=1, "
+                "For acceleration options, see "
+                "https://tace.readthedocs.io/en/latest/guide/acceleration.html"
+            )
 
     def forward(
             self, 

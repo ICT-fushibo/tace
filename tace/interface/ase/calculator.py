@@ -58,6 +58,8 @@ class TACEAseCalc(Calculator):
         Whether to enable EquiTriton acceleration.
     enable_compile : bool, optional
         Whether to enable the torch.compile model path.
+    enable_triton : bool, optional
+        Whether to enable the Triton uuSO2 scatter operator.
     **kwargs
         Additional keyword arguments passed to the ASE Calculator base class.
     """
@@ -75,6 +77,7 @@ class TACEAseCalc(Calculator):
         enable_cue: bool = False,
         enable_eqt: bool = False,
         enable_compile: bool = False,
+        enable_triton: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -83,6 +86,7 @@ class TACEAseCalc(Calculator):
             enable_cue=enable_cue,
             enable_eqt=enable_eqt,
             enable_compile=enable_compile,
+            enable_triton=enable_triton,
         )
         self.device = DEVICE[
             device or torch.device("cuda" if torch.cuda.is_available() else "cpu")

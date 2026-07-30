@@ -7,6 +7,15 @@ import os
 from typing import Dict
 
 
+ACCELERATION_ENV = {
+    "oeq": "TACE_USE_OEQ",
+    "cue": "TACE_USE_CUE",
+    "eqt": "TACE_USE_EQT",
+    "compile": "TACE_USE_COMPILE",
+    "triton": "TACE_USE_TRITON",
+}
+
+
 def set_env(cfg: Dict):
     env = cfg.get("misc", {}).get("env", {})
     for k, v in env.items():
@@ -20,37 +29,30 @@ def enable_acceleration(
     enable_eqt: bool = False,
     enable_compile: bool = False,
     enable_triton: bool = False,
+    force: bool = False,
 ) -> None:
-    acceleration_env = {
-        "TACE_USE_OEQ": enable_oeq,
-        "TACE_USE_CUE": enable_cue,
-        "TACE_USE_EQT": enable_eqt,
-        "TACE_USE_COMPILE": enable_compile,
-        "TACE_USE_TRITON": enable_triton,
+    """Enable accelerations, preserving existing settings unless forced."""
+    enabled_accelerations = {
+        "oeq": enable_oeq,
+        "cue": enable_cue,
+        "eqt": enable_eqt,
+        "compile": enable_compile,
+        "triton": enable_triton,
     }
-    for name, enabled in acceleration_env.items():
-        if enabled:
-            os.environ[name] = "1"
+    for name, enabled in enabled_accelerations.items():
+        if enabled or force:
+            os.environ[ACCELERATION_ENV[name]] = "1" if enabled else "0"
 
 
-def get_tace_use_oeq():
-    return os.environ.get("TACE_USE_OEQ", "0")
-
-
-def get_tace_use_cue():
-    return os.environ.get("TACE_USE_CUE", "0")
-
-
-def get_tace_use_eqt():
-    return os.environ.get("TACE_USE_EQT", "0")
-
-
-def get_tace_use_compile():
-    return os.environ.get("TACE_USE_COMPILE", "0")
-
-
-def get_tace_use_triton():
-    return os.environ.get("TACE_USE_TRITON", "0")
+def acceleration_enabled(name: str) -> bool:
+    try:
+        env_name = ACCELERATION_ENV[name.lower()]
+    except KeyError as e:
+        options = ", ".join(ACCELERATION_ENV)
+        raise ValueError(
+            f"Unknown TACE acceleration {name!r}; expected one of: {options}"
+        ) from e
+    return os.environ.get(env_name, "0") == "1"
 
 
 def get_tace_apply_u_shift():

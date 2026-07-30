@@ -69,6 +69,7 @@ class TACETorchSimCalc(ModelInterface):
         enable_cue: bool = False,
         enable_eqt: bool = False,
         enable_compile: bool = False,
+        enable_triton: bool = False,
     ) -> None:
         """Initialize the TACE model for energy, force, and stress calculations within
         the TorchSim framework. The model can be initialized with atomic numbers
@@ -100,6 +101,8 @@ class TACETorchSimCalc(ModelInterface):
             enable_eqt (bool): Whether to enable Eqt acceleration. Defaults to False.
             enable_compile (bool): Whether to enable the torch.compile model path.
                 Defaults to False.
+            enable_triton (bool): Whether to enable the Triton uuSO2 scatter
+                operator. Defaults to False.
         """
         super().__init__()
 
@@ -109,6 +112,7 @@ class TACETorchSimCalc(ModelInterface):
             enable_cue=enable_cue,
             enable_eqt=enable_eqt,
             enable_compile=enable_compile,
+            enable_triton=enable_triton,
         )
 
         self._device = DEVICE[device] or torch.device(
