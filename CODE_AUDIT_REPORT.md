@@ -1,0 +1,709 @@
+# TACE Code Audit Report
+
+## 1. Audit scope
+
+- Repository: `/home/xuzemin/tace_opt/tace`
+- Audited commit: `3b476d6`
+- Audit date: 2026-08-02
+- Source changes made during this audit: none
+- Scope: dataset loading and caching, model construction, derivative outputs,
+  acceleration backends, AOTI export/loading, ASE and TorchSim interfaces,
+  command-line scripts, metrics, and the existing test suite
+
+This report separates confirmed defects from runtime risks that still require a
+CUDA-capable integration test. Line numbers refer to commit `3b476d6` and may
+move after subsequent edits.
+
+## 2. Executive summary
+
+The audit found five high-priority correctness or data-integrity issues:
+
+1. The default `matscipy` neighbor-list path can override explicit PBC settings
+   and fails for cell-less nonperiodic structures.
+2. Several external-field derivative targets are not wired end to end; in
+   particular, conservative dipoles, polarizability, and Born effective charges
+   can fail during training or evaluation.
+3. An interrupted LMDB conversion can be mistaken for a complete cache, causing
+   later training to silently use only part of the dataset.
+4. Hessian training is exposed in configuration but does not have a complete
+   loss, metric, batching, and evaluation path.
+5. Dataset readers catch broad exceptions and return an empty list, which can
+   silently drop entire input files. The `fair_aselmdb` reader also mishandles
+   scalar metadata.
+
+The acceleration architecture is generally coherent, but AOTI has graph-size
+boundary conditions that are not fully handled, the CUE+AOTI metadata can
+describe a different backend from the one actually used, and TorchSim's optional
+dependency handling currently prevents importing its adapter when `torch_sim`
+is absent.
+
+## 3. Validation performed
+
+The following checks were performed without editing source code:
+
+- `python -m compileall -q tace test`: passed.
+- Installed dependency consistency check with `pip check`: passed.
+- Import scan over 164 TACE modules: 163 passed; one failed because two scripts
+  register the same Hydra resolver in one Python process.
+- Pytest collection found 14 test functions.
+- Targeted acceleration-environment, AOTI-wrapper, and parity tests passed when
+  acceleration environment variables were explicitly reset: 7 passed.
+- Global SO(2)/SO(3) tests: 3 failed and 1 passed. The failures use an older
+  `ComplexProductBasis` constructor and are test/API drift rather than a newly
+  observed production regression.
+- Isolated reproductions were run for the neighbor-list failure, missing
+  derivative-output keys, environment-variable type handling, optional
+  TorchSim import, and `tace-download --list`.
+
+Limitations:
+
+- A complete CUDA/Triton/AOTI compilation and execution matrix was not run in
+  this audit because GPU access was unavailable inside the sandbox.
+- A multiprocessing LMDB integration test could not run because the sandbox
+  denied creation of the required process synchronization socket. The LMDB
+  findings below are based on deterministic control-flow analysis.
+- Multi-node and LAMMPS runtime behavior was not retested in this audit.
+
+## 4. Severity convention
+
+- **P1 / High**: can produce incorrect physical behavior, silently lose data,
+  or break an advertised training/evaluation workflow.
+- **P2 / Medium**: affects boundary cases, optional interfaces, acceleration
+  selection, reproducibility, or developer validation.
+- **P3 / Low**: localized CLI, state-mutation, or maintenance issue with limited
+  immediate impact.
+
+## 5. Findings
+
+### TACE-001: Default neighbor-list construction changes PBC semantics and fails without a cell
+
+**Severity:** P1 / High  
+**Status:** Confirmed by isolated reproduction
+
+Relevant code:
+
+- `tace/dataset/neighbour_list.py:183-206`
+- `tace/dataset/neighbour_list.py:214-221`
+- `tace/interface/ase/calculator.py:75`
+
+The `matscipy` neighbor-list path treats any nontrivial lattice as fully
+periodic, replacing the caller's explicit PBC vector with `(True, True, True)`.
+This changes the meaning of nonperiodic structures with a simulation box and of
+partially periodic systems such as slabs and chains.
+
+For a nonperiodic structure without a cell, the same path eventually passes
+`cell=None` into the matscipy neighbor-list calculation. A one-atom ASE
+structure reproduced a singular-matrix failure. Because the ASE calculator
+defaults to the matscipy backend, this affects an ordinary calculator call and
+not only an explicitly selected advanced backend.
+
+Potential consequences:
+
+- A molecule in a finite box can acquire periodic image interactions.
+- A slab with PBC `[True, True, False]` can be treated as periodic in all three
+  directions.
+- A cell-less molecule can fail before model inference.
+
+Recommended correction:
+
+1. Preserve the input PBC vector exactly.
+2. Keep cell and PBC handling independent; a nonzero cell must not imply PBC.
+3. For nonperiodic structures without a cell, use a backend path that does not
+   require inversion of a cell matrix, or construct a temporary nonperiodic
+   bounding cell without changing the physical PBC flags.
+4. Add tests for no cell/no PBC, finite cell/no PBC, partial PBC, and full PBC.
+
+### TACE-002: External-field derivative outputs are not connected end to end
+
+**Severity:** P1 / High  
+**Status:** Multiple confirmed defects
+
+#### TACE-002A: `conservative_dipole` is computed under another name
+
+Relevant code:
+
+- `tace/models/derivative/adapter.py:79`
+- `tace/models/derivative/adapter.py:116`
+- `tace/models/derivative/adapter.py:145-150`
+- `tace/models/_e3nn/tace.py:599-617`
+- `tace/utils/loss/mse_fn.py:167` and following
+
+The derivative adapter computes the polarization derivative when either
+`polarization` or `conservative_dipole` is requested. It then returns the value
+only under the `polarization` key. The model readout also does not emit a
+`conservative_dipole` key, while the corresponding loss reads
+`pred["conservative_dipole"]`.
+
+The result is a `KeyError` when conservative-dipole supervision is enabled.
+
+Recommended correction:
+
+- Define one canonical internal tensor and explicitly publish every requested
+  public property name.
+- Add a training-step test that enables only `conservative_dipole`.
+- Add a consistency test when both aliases are requested.
+
+#### TACE-002B: Polarizability and BEC evaluation access nonexistent flags
+
+Relevant code:
+
+- `tace/models/derivative/adapter.py:186-200`
+- `tace/utils/quantity.py:915-919`
+
+During evaluation, the nested derivative loop reads
+`self.flags.compute_hessians`, but the generated flag is singular:
+`compute_hessian`. A later branch also references `compute_magnetization`, which
+is not generated by the current property registry.
+
+Training can hide the first error because the `self.training` branch
+short-circuits it. Evaluation reaches the missing attribute and raises
+`AttributeError`.
+
+Recommended correction:
+
+- Generate and consume flags from a single typed definition rather than spelling
+  property names independently.
+- Add train-mode and eval-mode tests for polarizability and Born effective
+  charges.
+- Ensure optional or disabled properties have explicit false-valued flags.
+
+#### TACE-002C: Polarization has inconsistent scope and shape
+
+Relevant code:
+
+- `tace/utils/quantity.py:319-337`
+- polarization metric and derivative handling in `tace/utils/metrics.py`
+- derivative output handling in `tace/models/derivative/adapter.py`
+
+Polarization is declared with per-atom scope while its shape and derivative
+implementation are per-system. This makes key specification and dataset loading
+look for an atom array even though the model produces one vector per graph.
+Multiatom and multigraph batches can therefore be reshaped or indexed
+incorrectly.
+
+Recommended correction:
+
+- Declare polarization as a per-system property if that is the intended public
+  contract.
+- Add a two-structure batch test with different atom counts.
+- Verify that dataset keys, loss shapes, metrics, and exported model outputs all
+  use the same scope.
+
+#### TACE-002D: Derived-property prerequisites are not validated
+
+Some derivative targets require energy, electric field, polarization, or a
+specific differentiable input. The current `must_be_with` metadata primarily
+affects data reading and does not guarantee that model targets and readouts
+contain the required upstream quantity.
+
+Recommended correction:
+
+- Validate the complete requested-property dependency graph during model/config
+  construction and fail with a targeted message before training starts.
+
+### TACE-003: Partial LMDB caches can be accepted as complete datasets
+
+**Severity:** P1 / High  
+**Status:** Confirmed by control-flow analysis
+
+Relevant code:
+
+- `tace/dataset/datamodule.py:435-451`
+- `tace/dataset/datamodule.py:454-465`
+- `tace/dataset/datamodule.py:247-264`
+- `tace/dataset/datamodule.py:286-344`
+
+The cache-existence check treats a stage as available when at least one shard is
+present. `create_graphs()` then returns those existing shards immediately.
+Because shards are finalized independently, interruption after the first shard
+leaves a directory that looks valid on the next run.
+
+The next training run can therefore skip raw-data conversion and silently train
+on only the structures contained in the completed shards.
+
+Potential consequences:
+
+- Silent dataset truncation after job preemption, OOM, node failure, or manual
+  interruption.
+- Different data volume between otherwise identical reruns.
+- Incorrect statistics if they were computed from a different/full source set.
+
+Recommended correction:
+
+1. Write shards into a temporary stage directory.
+2. Record expected shard count, structure count, source files, and conversion
+   parameters in a completion manifest.
+3. Publish the completed cache atomically only after every shard is closed and
+   validated.
+4. Treat a cache without a valid completion marker as incomplete and rebuild or
+   report it explicitly.
+5. Add an interruption test that creates only the first shard and verifies that
+   the next run does not accept it.
+
+Related ordering issue:
+
+When several LMDB directories are supplied, path collection groups shards by
+directory, while creation distributes records round-robin across shards. This
+can produce an order such as shard `0, 2, 1, 3` instead of the original global
+sequence. If deterministic ordering matters for reproducibility, shard metadata
+should include and restore the global shard index.
+
+### TACE-004: Hessian training and evaluation are incomplete
+
+**Severity:** P1 / High  
+**Status:** Confirmed by code and registry inspection
+
+Relevant code:
+
+- `tace/models/derivative/adapter.py:247-262`
+- `tace/utils/loss/registry.py:14-21`
+- `tace/scripts/eval.py:139-160`
+- `example/train/tace.yaml:437-438`
+
+The training adapter does not return a full Hessian. It returns sampled
+Jacobians and sample metadata while setting the public Hessian output to `None`.
+No registered loss consumes that sampled representation, and the available loss
+registry does not expose a complete Hessian loss under the expected target name.
+
+Evaluation also splits predictions using ordinary per-graph indexing. A batched
+Hessian is a block matrix whose graph blocks depend on atom counts, so
+`pred[p][i]` is not a valid general graph split.
+
+The example training configuration advertises Hessian sampling parameters,
+making this an exposed workflow rather than unused internal code.
+
+Recommended correction:
+
+1. Decide on one training contract: full Hessian tensors or sampled Hessian-vector
+   entries.
+2. Implement and register the matching loss.
+3. Define batch layout and graph offsets explicitly.
+4. Implement evaluation serialization per structure using atom-count block
+   boundaries.
+5. Add one-graph and two-graph tests with unequal atom counts.
+6. Until complete, reject Hessian training early instead of failing later or
+   training without the requested target.
+
+### TACE-005: Reader failures can silently remove input data
+
+**Severity:** P1 / High  
+**Status:** Confirmed
+
+Relevant code:
+
+- `tace/dataset/read.py:95-105`
+- `tace/dataset/read.py:108-122`
+- `tace/dataset/read.py:125-144`
+- `tace/dataset/read.py:168-174`
+
+Several reader backends catch broad exceptions, log an error, and return an
+empty list. In a multi-file dataset, successful files are then concatenated and
+training continues. A corrupted file, unsupported metadata value, or parsing
+bug can therefore remove an entire file without failing the run.
+
+The `fair_aselmdb` path also writes every `row.data` item to both `atoms.info`
+and `atoms.arrays`. Scalar metadata is not a valid atom array; a reproduced
+scalar value later caused `Atoms.copy()` to call `.copy()` on a float.
+
+Recommended correction:
+
+- Make strict/fail-fast behavior the default for training input.
+- If tolerant reading is needed, require an explicit option and emit a final
+  failed-file summary with nonzero failure status unless the user accepts it.
+- Map per-system scalar/tensor metadata to `atoms.info` and per-atom arrays to
+  `atoms.arrays` based on known property scope and leading dimension.
+- Include source path and record index in raised exceptions.
+- Add tests for a corrupt file, scalar metadata, per-atom metadata, and a mixed
+  multi-file input.
+
+### TACE-006: AOTI dynamic-shape constraints exclude valid small graphs
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed by export-contract inspection; full CUDA reproduction pending
+
+Relevant code:
+
+- `tace/models/compile/aot.py:484-509`
+- `tace/models/compile/aot.py:609-625`
+- `tace/models/compile/aot.py:145-153`
+- `tace/lightning/lit_model.py:684`
+
+The exported dynamic dimensions require at least two nodes and two edges. The
+sample-free export path pads graph-related entries but does not guarantee at
+least two actual nodes and edges at inference.
+
+Valid inputs such as a one-atom structure or a graph with no neighbors can
+violate the generated PT2 guards. This is the same class of failure as symbolic
+shape assertions that pass during export but fail for a later structure.
+
+A second boundary issue occurs when `load_tace()` passes its default device
+through to AOTI. The device lookup can leave it as `None`, after which the AOTI
+device checker calls `torch.device(None)` and raises `TypeError`.
+
+Recommended correction:
+
+- Either export dimensions with minima matching the actual graph contract or
+  pad nodes and edges as well as graph indices, then remove dummy contributions
+  from outputs.
+- Resolve `device=None` to the package/device default before entering AOTI
+  validation.
+- Add CPU and CUDA tests for one atom, two atoms outside the cutoff, one normal
+  molecule, and differently sized structures loaded from the same sample-free
+  PT2 package.
+
+### TACE-007: TorchSim adapter is not safely optional and can retain tensors on the wrong device
+
+**Severity:** P2 / Medium  
+**Status:** Optional-import failure confirmed; device issue confirmed by inspection
+
+Relevant code:
+
+- `tace/interface/torchsim.py:16-31`
+- `tace/interface/torchsim.py:61`
+- `tace/interface/torchsim.py:158-164`
+- `tace/interface/torchsim.py:187-196`
+- TorchSim optional dependency declaration in `pyproject.toml`
+
+The module catches `ImportError` when `torch_sim` is absent, but class creation
+immediately references undefined TorchSim symbols in its base class, defaults,
+and annotations. Importing the adapter in a base TACE installation therefore
+warns and then fails with `NameError`.
+
+When TorchSim is installed, constructor-provided `atomic_numbers` and
+`system_idx` are retained on their original device. A CUDA model can therefore
+combine CPU node metadata with CUDA positions and model parameters.
+
+Recommended correction:
+
+- Define the adapter only when TorchSim imports successfully, or expose a small
+  placeholder that raises a clear installation error on construction.
+- Move all retained tensors to `self.device` and normalize dtypes during setup.
+- Test import without the optional extra and inference with CPU-created metadata
+  on a CUDA model.
+
+### TACE-008: CUE+AOTI export metadata can disagree with the backend actually used
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed code inconsistency; package-loading impact needs CUDA test
+
+Relevant code:
+
+- `tace/models/_e3nn/fused.py:151-173`
+- `tace/models/compile/aot.py:645-651`
+
+When CUE and AOTI are requested together, fused-layer setup can internally fall
+back to OpenEquivariance. AOTI packaging later determines required custom
+imports from environment variables, which can still indicate CUE and not OEQ.
+
+The PT2 package can therefore record/import a different custom-op provider from
+the one present in the traced graph.
+
+Recommended correction:
+
+- Track the backend selected by each constructed operation and build package
+  metadata from the actual graph dependencies, not only from requested
+  environment variables.
+- Add an export/load test for every supported backend combination in a fresh
+  Python process.
+
+### TACE-009: Acceleration environment setup does not normalize values to strings
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed by reproduction
+
+Relevant code:
+
+- `tace/utils/env.py:19-22`
+
+`os.environ` accepts only strings, but configuration values are assigned
+directly. A YAML integer or boolean raises `TypeError: str expected, not int`
+instead of enabling/disabling the requested feature.
+
+Recommended correction:
+
+- Normalize accepted values to an explicit string representation, preferably
+  `"0"` and `"1"` for booleans.
+- Reject ambiguous values with a configuration-path-aware message.
+- Test boolean, integer, string, missing, and `force=False` behavior.
+
+### TACE-010: Polarization metrics ignore missing-label weights
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed by inspection
+
+Relevant code:
+
+- `tace/utils/metrics.py:93-150`
+- metric construction/update logic at `tace/utils/metrics.py:362-374`
+- metric update logic at `tace/utils/metrics.py:433-437`
+
+The polarization metric does not consistently apply `polarization_weight`.
+Samples for which the target is absent or masked can still contribute to the
+reported metric. In multi-fidelity or partially labeled data, this can distort
+validation output and any checkpoint selection based on it.
+
+The metric also inverts lattice matrices, so zero or singular cells require a
+defined nonperiodic behavior.
+
+Recommended correction:
+
+- Apply target weights/masks before accumulation and normalize by the weighted
+  count.
+- Define how molecular/nonperiodic samples are treated.
+- Add a mixed labeled/unlabeled batch test and a nonperiodic-cell test.
+
+### TACE-011: `allow_unused=True` does not protect disconnected derivatives
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed with a disconnected-output reproduction
+
+Relevant code:
+
+- `tace/models/derivative/adapter.py:94-131`
+- `tace/models/compile/wrapper.py:247-267`
+
+Autograd calls allow unused inputs, but the result is negated or otherwise
+operated on before checking whether it is `None`. If an energy/readout is
+independent of positions, displacement, or a field, the wrapper raises a type
+error rather than returning the mathematically correct zero derivative.
+
+Ordinary OAM inference remained connected in the isolated test, so this is most
+likely to appear with specialized outputs, frozen/constant heads, isolated
+graphs, or future architectures.
+
+Recommended correction:
+
+- Replace a `None` gradient with a correctly shaped zero tensor before applying
+  signs or reshaping.
+- Keep eager and compile wrappers behaviorally identical.
+- Test a constant-energy dummy model in training and evaluation modes.
+
+### TACE-012: Acceleration options are silently ineffective for fully serialized modules
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed behavior/design gap
+
+Relevant code:
+
+- acceleration selection in `tace/lightning/torch_model.py:63-70`
+- full-module and already-loaded-model paths in the loading code
+
+Backend selection is applied while constructing a model from configuration. A
+fully serialized `torch.nn.Module`, or a module object already instantiated by
+the caller, bypasses that construction path. Requesting OEQ, CUE, EQT, or other
+construction-time acceleration can therefore have no effect without a clear
+warning.
+
+Recommended correction:
+
+- Document which export formats permit backend reconstruction.
+- Detect incompatible acceleration requests and fail or warn explicitly.
+- Prefer state-dict/config artifacts when backend substitution is expected.
+
+### TACE-013: Test isolation and coverage do not reliably validate acceleration behavior
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed
+
+Acceleration tests remove variables with `monkeypatch`, then call code that
+writes directly to `os.environ`. Those assignments are not owned by the
+monkeypatch fixture and leak into later tests in the same process. A subsequent
+parity test then attempted to initialize EQT and failed because `torch-scatter`
+was unavailable.
+
+When all acceleration variables were explicitly initialized to `0`, the seven
+targeted environment/AOTI/parity tests passed.
+
+Additional test gaps:
+
+- Existing AOTI tests use a fake compiled model and do not export and reload a
+  real PT2 package.
+- There are no direct Triton fused forward/backward tests.
+- There is no acceleration-combination matrix covering OEQ, CUE, EQT, Triton,
+  eager, compile, and AOTI interactions.
+- There is no cross-structure test proving that one sample-free AOTI artifact
+  accepts varied graph sizes in ASE and TorchSim.
+
+Recommended correction:
+
+- Make environment mutation go through `monkeypatch.setenv`, or restore a saved
+  environment after each test.
+- Add a minimal real export/load smoke test, guarded by version and hardware
+  markers.
+- Add numerical forward/force-gradient parity and peak-memory assertions for
+  fused backends.
+
+### TACE-014: Global SO(2)/SO(3) tests have drifted from the production API
+
+**Severity:** P2 / Medium  
+**Status:** Confirmed by pytest
+
+Relevant code:
+
+- `test/test_global_so2.py:155-162`
+- `test/test_global_so3.py:184-191`
+- production constructor in
+  `tace/models/_e3nn/asymmetric_contraction.py:683-690`
+- commented SO(3) recursive-product test section at
+  `test/test_global_so3.py:197-212`
+
+Three global tests fail because they instantiate `ComplexProductBasis` using a
+removed constructor signature. A substantial SO(3) assertion block is also
+commented out. These tests therefore do not currently protect the product-basis
+and parity code that they appear to cover.
+
+Recommended correction:
+
+- Update tests to the current constructor through the same public model path
+  used in production.
+- Restore equivalent SO(3) numerical checks rather than leaving the core block
+  commented.
+- Add explicit O(3) inversion and magnetic/pseudovector transformation tests.
+
+### TACE-015: Duplicate Hydra resolver registration prevents importing scripts together
+
+**Severity:** P3 / Low  
+**Status:** Confirmed by module import scan
+
+Relevant code:
+
+- resolver registration in `tace/scripts/train.py:40`
+- resolver registration in `tace/scripts/graph.py:39`
+- helper implementation in `tace/utils/hydra_resolver.py:30-41`
+
+Both scripts register the same resolver at import time. Importing them in one
+Python process raises a duplicate-registration `ValueError`. This affects module
+discovery, documentation tooling, test collection patterns, and applications
+that embed more than one TACE command.
+
+Recommended correction:
+
+- Make resolver registration idempotent by checking whether it already exists,
+  or centralize one registration call.
+- Add an import-order test for all script modules.
+
+### TACE-016: `tace-download --list` fails during logging setup
+
+**Severity:** P3 / Low  
+**Status:** Confirmed by direct CLI reproduction
+
+Relevant code:
+
+- `tace/scripts/download.py:46-49`
+
+The script calls logging configuration with `fidelity_idx=logging.INFO` instead
+of the supported `level=logging.INFO` keyword. Running
+`python -m tace.scripts.download --list` raises a `ValueError` before listing
+models.
+
+Recommended correction:
+
+- Use the standard logging keyword and add a CLI smoke test for `--list`.
+
+### TACE-017: Dataset split index arguments are declared but unused
+
+**Severity:** P3 / Low  
+**Status:** Confirmed by inspection
+
+Relevant code:
+
+- argument declarations in `tace/scripts/split.py:35-37`
+- command implementation after `tace/scripts/split.py:41`
+
+The CLI declares three index-related options, but the implementation does not
+consume them. Users can provide apparently valid arguments that do not affect
+the generated split.
+
+Recommended correction:
+
+- Implement the documented behavior or remove the options until supported.
+- Add an assertion that custom indices change the output split.
+
+### TACE-018: Optimizer configuration mutates the stored configuration
+
+**Severity:** P3 / Low  
+**Status:** Confirmed by inspection
+
+Relevant code:
+
+- `tace/lightning/lit_model.py:482-490`
+- `tace/lightning/lit_model.py:567-572`
+
+Optimizer and scheduler setup removes fields such as `_target_` with `pop()`
+from the model's stored configuration. A repeated call to
+`configure_optimizers()` can therefore behave differently or fail, and the
+configuration retained for logging/checkpoint metadata is no longer the
+configuration originally supplied.
+
+Recommended correction:
+
+- Copy the relevant configuration nodes before destructive extraction.
+- Add a test that calls optimizer configuration twice and verifies that the
+  stored config remains unchanged.
+
+## 6. Suggested remediation order
+
+### Phase 1: Protect physical correctness and data integrity
+
+1. Fix neighbor-list cell/PBC handling.
+2. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
+3. Add an atomic LMDB completion protocol.
+4. Either complete Hessian support or reject it early.
+5. Repair and validate the external-field derivative property graph.
+
+### Phase 2: Stabilize deployment interfaces
+
+1. Fix AOTI small-graph constraints and default-device handling.
+2. Make TorchSim optional import and device movement robust.
+3. Record actual custom-op dependencies during AOTI packaging.
+4. Define behavior for acceleration requests on full-model serialization.
+
+### Phase 3: Restore validation confidence
+
+1. Isolate acceleration environment tests.
+2. Update SO(2)/SO(3) product tests to the current API.
+3. Add real PT2 export/reload tests across structure sizes.
+4. Add force-gradient and memory-regression tests for every fused backend.
+5. Add multigraph tests for polarization, Hessians, and partially labeled
+   multi-fidelity data.
+
+### Phase 4: CLI and maintenance fixes
+
+1. Make Hydra resolver registration idempotent.
+2. Repair `tace-download --list`.
+3. Resolve unused split arguments.
+4. Stop optimizer setup from mutating stored configuration.
+
+## 7. Minimum regression matrix
+
+The following matrix would cover the highest-risk behavior without requiring a
+full scientific benchmark for every commit:
+
+| Area | Minimum cases |
+| --- | --- |
+| Neighbor list | no cell/no PBC; cell/no PBC; partial PBC; full PBC |
+| Dataset readers | one valid file; one corrupt file; scalar metadata; per-atom metadata |
+| LMDB | complete cache; interrupted cache; two cache directories; two local ranks |
+| Derivatives | energy/forces/stress/virials; dipole; polarizability; BEC; disconnected output |
+| Multi-fidelity | one head missing labels; finite default scale/shift/atomic energies |
+| Parity | SO(3) rotations; inversion; polar vectors; axial vectors/magnetic forces |
+| AOTI | 1 atom; 0 edges; different structures from one PT2; CPU; CUDA |
+| Acceleration | eager; OEQ; CUE; EQT; Triton; compile; supported combinations |
+| Interfaces | native model; ASE; TorchSim; state dict; full module; PT2 |
+
+Numerical tests should compare energy, forces, stress/virials, and available
+field derivatives against the eager e3nn reference using dtype-appropriate
+tolerances. Fused training tests should include backward gradients and peak CUDA
+memory, not only forward outputs.
+
+## 8. Conclusion
+
+The most urgent risks are not performance regressions but silent changes in
+physical boundary conditions and silent loss of training data. Those should be
+resolved before extending acceleration coverage. The derivative and Hessian
+interfaces should then be made internally consistent so every advertised target
+has a complete path from dataset specification through model output, loss,
+metric, evaluation, and export.
+
+No source code, configuration, or test file was modified as part of producing
+this report.
