@@ -53,7 +53,7 @@ The following checks were performed without editing source code:
   observed production regression.
 - Isolated reproductions were run for the neighbor-list failure, missing
   derivative-output keys, environment-variable type handling, optional
-  TorchSim import, and `tace-download --list`.
+  TorchSim import.
 
 Limitations:
 
@@ -582,25 +582,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-016: `tace-download --list` fails during logging setup
-
-**Severity:** P3 / Low  
-**Status:** Confirmed by direct CLI reproduction
-
-Relevant code:
-
-- `tace/scripts/download.py:46-49`
-
-The script calls logging configuration with `fidelity_idx=logging.INFO` instead
-of the supported `level=logging.INFO` keyword. Running
-`python -m tace.scripts.download --list` raises a `ValueError` before listing
-models.
-
-Recommended correction:
-
-- Use the standard logging keyword and add a CLI smoke test for `--list`.
-
-### TACE-017: Dataset split index arguments are declared but unused
+### TACE-016: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -619,7 +601,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-018: Optimizer configuration mutates the stored configuration
+### TACE-017: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -670,9 +652,8 @@ Recommended correction:
 ### Phase 4: CLI and maintenance fixes
 
 1. Make Hydra resolver registration idempotent.
-2. Repair `tace-download --list`.
-3. Resolve unused split arguments.
-4. Stop optimizer setup from mutating stored configuration.
+2. Resolve unused split arguments.
+3. Stop optimizer setup from mutating stored configuration.
 
 ## 7. Minimum regression matrix
 

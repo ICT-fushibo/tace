@@ -61,8 +61,6 @@ Script Overview
      - Copy shape-compatible parameters between two models
    * - ``tace-modify``
      - Inspect or override model properties in memory
-   * - ``tace-download``
-     - List or download pretrained TACE models
    * - ``tace-clean``
      - Remove standard training outputs from the current directory
 
@@ -262,19 +260,6 @@ Load a model and override its requested inference properties in memory:
 This command currently validates and prints the resulting property selection;
 it does not save a new model. Atomic-number reduction is reserved by the CLI
 but is not implemented yet.
-
-``tace-download``
-~~~~~~~~~~~~~~~~~
-
-List registered pretrained models or download one into the TACE cache:
-
-.. code-block:: bash
-
-   tace-download --list
-   tace-download -m TACE-OAM-L
-
-Omitting ``-m`` requests all registered models. Manual download may be more
-reliable on machines with restricted network access.
 
 ``tace-clean``
 ~~~~~~~~~~~~~~
