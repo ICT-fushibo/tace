@@ -3,15 +3,18 @@
 Acceleration Tutorial
 =====================
 
-TACE supports three complementary forms of acceleration:
+TACE provides several composable acceleration layers:
 
-* external equivariant kernels, such as OpenEquivariance and
-  cuEquivariance, accelerate the most expensive edge-level operations;
-* TACE Triton operators fuse selected SO2 operations and reduce intermediate
-  memory use;
+* OpenEquivariance (OEQ) and cuEquivariance (CUEQ) provide alternative
+  implementations of the same edge-level equivariant operations and are
+  mutually exclusive;
+* EquiTorch (EQT) independently accelerates supported product-basis tensor
+  products and can be combined with either OEQ or CUEQ;
+* the TACE Triton operator independently accelerates only the scatter
+  calculation in ``uuSO2Interaction``;
 * PyTorch compilation accelerates a larger part of the model and can either
   run inside the current Python process or produce an AOTInductor package for
-  later deployment.
+  later deployment. AOTI is independent of the kernel-backend selection.
 
 The acceleration backend must be selected before the model is constructed.
 The same settings can be used during training, validation, testing, and model
@@ -26,22 +29,22 @@ The following kernel backends are available:
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 20 40
+   :widths: 28 42 30
 
    * - Backend
-     - Supported
+     - Scope
      - Environment variable
-   * - Equitorch
-     - Yes
-     - ``TACE_USE_EQT=1``
    * - OpenEquivariance
-     - Yes
+     - Alternative edge-level backend; choose OEQ or CUEQ
      - ``TACE_USE_OEQ=1``
    * - cuEquivariance
-     - Yes
+     - Alternative edge-level backend; choose OEQ or CUEQ
      - ``TACE_USE_CUE=1``
+   * - EquiTorch
+     - Independent product-basis acceleration
+     - ``TACE_USE_EQT=1``
    * - TACE Triton uuSO2 scatter
-     - Yes
+     - Independent ``uuSO2Interaction`` scatter acceleration
      - ``TACE_USE_TRITON=1``
 
 For example:
@@ -50,9 +53,11 @@ For example:
 
    export TACE_USE_OEQ=1
 
-Only enable one equivariant kernel backend at a time. OpenEquivariance is the
-recommended default for supported NVIDIA GPUs. Equitorch is mainly useful for
-models with ``correlation > 2`` and is not normally required.
+Do not enable OEQ and CUEQ at the same time. EQT is independent and may be
+enabled together with either one when the model contains a supported product
+basis. Triton is also independent, but currently affects only the scatter
+calculation in ``uuSO2Interaction``. OpenEquivariance is the recommended
+edge-level backend for supported NVIDIA GPUs.
 
 The acceleration environment can also be configured through one Python
 interface before constructing or loading the model:
@@ -119,10 +124,17 @@ deployment artifact:
 AOTI produces a ``.pt2`` package containing compiled native code. Loading the
 package does not call ``torch.compile`` again.
 
+AOTI is an independent compilation and deployment layer. It does not replace
+OEQ, CUEQ, EQT, or Triton. Configure the desired compatible acceleration
+backends before export; the resulting package captures the model constructed
+with those selections.
+
 .. important::
 
    TACE AOTInductor compilation and export require **PyTorch 2.11 or newer**.
    Earlier PyTorch versions are not supported for AOTI export.
+   When OpenEquivariance is enabled for AOTI export, OEQ 0.6.4 or newer is
+   required.
 
 Compilation currently supports energy and its force, stress, and virial
 derivatives, together with their direct prediction variants. Models using

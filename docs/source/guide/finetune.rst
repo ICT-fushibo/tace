@@ -102,7 +102,7 @@ Example commands are shown below:
 
 .. code-block:: bash
 
-   tace-finetune -m TACE-OAM-RRA.pt
+   tace-finetune -m TACE-OMat24-7M.pt
 
    # Start finetuning (configuration file specified as needed)
    tace-train -cn tace

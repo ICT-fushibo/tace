@@ -14,8 +14,14 @@ Install TACE with TorchSim support:
 
     pip install "tace[torchsim]"
 
-TACE requires ``torch-sim-atomistic>=0.6.1``. No upper version is pinned;
-compatibility with newer versions follows the upstream TorchSim API.
+TACE requires ``torch-sim-atomistic>=0.6.1``. Version ``0.6.1`` is the safest
+and currently recommended version. TorchSim is under active development, so
+compatibility with versions newer than ``0.6.1`` is not guaranteed. To use the
+tested version explicitly:
+
+.. code-block:: bash
+
+    pip install "torch-sim-atomistic==0.6.1"
 
 For optimization, molecular dynamics, and batched examples, see the
 `TACE TorchSim examples <https://github.com/xvzemin/tace/tree/main/example/torchSim>`_.

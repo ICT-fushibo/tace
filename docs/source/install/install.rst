@@ -46,14 +46,25 @@ OEQ provides optimized CUDA or HIP equivariant kernels:
 
    pip install "tace[oeq]"
 
+.. important::
+
+   When OEQ is used together with AOTInductor export or deployment, TACE
+   requires ``openequivariance>=0.6.4``. Upgrade OEQ before exporting the AOTI
+   package:
+
+   .. code-block:: bash
+
+      # OEQ used together with AOTI
+      pip install "openequivariance>=0.6.4"
+
 Enable it before constructing or loading a configurable model:
 
 .. code-block:: bash
 
    export TACE_USE_OEQ=1
 
-cuEquivariance (CUE)
---------------------
+cuEquivariance (CUEQ)
+---------------------
 
 Install the package matching the CUDA major version used by PyTorch. CUDA 12
 and CUDA 13 use different kernel packages:
@@ -107,6 +118,9 @@ compatible CUDA-enabled PyTorch build; no additional TACE extra is required:
 
    export TACE_USE_TRITON=1
 
+Triton acceleration is independent of OEQ, CUEQ, and EQT. It currently applies
+only to the scatter calculation in ``uuSO2Interaction``.
+
 TorchSim
 --------
 
@@ -116,15 +130,27 @@ Install the optional TorchSim interface with:
 
    pip install "tace[torchsim]"
 
-TACE requires ``torch-sim-atomistic>=0.6.1`` and does not impose an upper
-version bound. Compatibility with newer releases follows the upstream TorchSim
-API; when that API changes, use mutually compatible TACE and TorchSim releases.
+.. important::
+
+   TACE requires ``torch-sim-atomistic>=0.6.1``. Version ``0.6.1`` is the
+   safest and currently recommended version:
+
+   .. code-block:: bash
+
+      pip install "torch-sim-atomistic==0.6.1"
+
+   TorchSim is under active development, so compatibility with versions newer
+   than ``0.6.1`` is not guaranteed.
+
 See the :doc:`../guide/torchSim` tutorial for calculator usage.
 
 Acceleration Selection
 ----------------------
 
-OEQ, CUE, and EQT are alternative equivariant kernel backends; enable only one
-of them at a time. The TACE Triton operators and PyTorch compilation are
-separate acceleration layers. See the :ref:`acceleration-tutorial` for backend
-selection, Python interfaces, compilation, and AOTI export.
+OEQ and CUEQ are alternative implementations of the same edge-level
+operations; enable only one of them. EQT is an independent product-basis
+acceleration and may be combined with either OEQ or CUEQ. The TACE Triton
+operator is also independent and currently accelerates only the
+``uuSO2Interaction`` scatter calculation. AOTI is a separate compilation and
+deployment layer. See the :ref:`acceleration-tutorial` for backend selection,
+Python interfaces, compilation, and AOTI export.

@@ -234,9 +234,7 @@ class uuSO2Interaction(Interaction):
     An interaction module based on uuSO2Linear.
 
     It achieves the same accuracy and extrapolation capability as CGTP. 
-    Moreover, if an operator fusion library becomes available in the future, 
-    it could significantly improve memory efficiency and outperform CGTP even 
-    when CGTP is accelerated by oeq and cueq.
+    Set `export TACE_USE_TRITON=1` to reduce memory.
 
     This interaction block does not directly add nonlinearity to the message.
     """
@@ -457,6 +455,14 @@ class uuSO2Interaction(Interaction):
 
 # A little BUG
 class uvSO2Interaction(Interaction):
+    """
+    An interaction module based on uvSO2Linear, 
+    Edge Cluster Expansion and Radial Rotary Attention.
+
+    It achieves highest accuracy at the expanse of computational efficiency.
+
+    This interaction block add nonlinearity to the message.
+    """
     def _setup(self) -> None:
 
         assert self.parity == False, "uvSO2Interaction not support O(3) group"
