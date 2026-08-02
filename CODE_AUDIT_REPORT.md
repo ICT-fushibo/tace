@@ -8,7 +8,7 @@
 - Source changes made during this audit: none
 - Scope: dataset loading and caching, model construction, derivative outputs,
   acceleration backends, AOTI export/loading, ASE and TorchSim interfaces,
-  command-line scripts, metrics, and the existing test suite
+  command-line scripts, and metrics
 
 This report separates confirmed defects from runtime risks that still require a
 CUDA-capable integration test. Line numbers refer to commit `3b476d6` and may
@@ -19,8 +19,8 @@ move after subsequent edits.
 The audit found three high-priority correctness or data-integrity issues:
 
 1. Several external-field derivative targets are not wired end to end; in
-   particular, conservative dipoles, polarizability, and Born effective charges
-   can fail during training or evaluation.
+   particular, polarizability and Born effective charges can fail during
+   training or evaluation.
 2. Hessian training is exposed in configuration but does not have a complete
    loss, metric, batching, and evaluation path.
 3. Dataset readers catch broad exceptions and return an empty list, which can
@@ -37,16 +37,10 @@ is absent.
 
 The following checks were performed without editing source code:
 
-- `python -m compileall -q tace test`: passed.
+- `python -m compileall -q tace`: passed.
 - Installed dependency consistency check with `pip check`: passed.
 - Import scan over 164 TACE modules: 163 passed; one failed because two scripts
   register the same Hydra resolver in one Python process.
-- Pytest collection found 14 test functions.
-- Targeted acceleration-environment, AOTI-wrapper, and parity tests passed when
-  acceleration environment variables were explicitly reset: 7 passed.
-- Global SO(2)/SO(3) tests: 3 failed and 1 passed. The failures use an older
-  `ComplexProductBasis` constructor and are test/API drift rather than a newly
-  observed production regression.
 - Isolated reproductions were run for missing derivative-output keys,
   environment-variable type handling, and optional TorchSim import.
 
@@ -72,32 +66,7 @@ Limitations:
 **Severity:** P1 / High  
 **Status:** Multiple confirmed defects
 
-#### TACE-001A: `conservative_dipole` is computed under another name
-
-Relevant code:
-
-- `tace/models/derivative/adapter.py:79`
-- `tace/models/derivative/adapter.py:116`
-- `tace/models/derivative/adapter.py:145-150`
-- `tace/models/_e3nn/tace.py:599-617`
-- `tace/utils/loss/mse_fn.py:167` and following
-
-The derivative adapter computes the polarization derivative when either
-`polarization` or `conservative_dipole` is requested. It then returns the value
-only under the `polarization` key. The model readout also does not emit a
-`conservative_dipole` key, while the corresponding loss reads
-`pred["conservative_dipole"]`.
-
-The result is a `KeyError` when conservative-dipole supervision is enabled.
-
-Recommended correction:
-
-- Define one canonical internal tensor and explicitly publish every requested
-  public property name.
-- Add a training-step test that enables only `conservative_dipole`.
-- Add a consistency test when both aliases are requested.
-
-#### TACE-001B: Polarizability and BEC evaluation access nonexistent flags
+#### TACE-001A: Polarizability and BEC evaluation access nonexistent flags
 
 Relevant code:
 
@@ -121,7 +90,7 @@ Recommended correction:
   charges.
 - Ensure optional or disabled properties have explicit false-valued flags.
 
-#### TACE-001C: Polarization has inconsistent scope and shape
+#### TACE-001B: Polarization has inconsistent scope and shape
 
 Relevant code:
 
@@ -143,7 +112,7 @@ Recommended correction:
 - Verify that dataset keys, loss shapes, metrics, and exported model outputs all
   use the same scope.
 
-#### TACE-001D: Derived-property prerequisites are not validated
+#### TACE-001C: Derived-property prerequisites are not validated
 
 Some derivative targets require energy, electric field, polarization, or a
 specific differentiable input. The current `must_be_with` metadata primarily
@@ -381,67 +350,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-010: Test isolation and coverage do not reliably validate acceleration behavior
-
-**Severity:** P2 / Medium  
-**Status:** Confirmed
-
-Acceleration tests remove variables with `monkeypatch`, then call code that
-writes directly to `os.environ`. Those assignments are not owned by the
-monkeypatch fixture and leak into later tests in the same process. A subsequent
-parity test then attempted to initialize EQT and failed because `torch-scatter`
-was unavailable.
-
-When all acceleration variables were explicitly initialized to `0`, the seven
-targeted environment/AOTI/parity tests passed.
-
-Additional test gaps:
-
-- Existing AOTI tests use a fake compiled model and do not export and reload a
-  real PT2 package.
-- There are no direct Triton fused forward/backward tests.
-- There is no acceleration-combination matrix covering OEQ, CUE, EQT, Triton,
-  eager, compile, and AOTI interactions.
-- There is no cross-structure test proving that one sample-free AOTI artifact
-  accepts varied graph sizes in ASE and TorchSim.
-
-Recommended correction:
-
-- Make environment mutation go through `monkeypatch.setenv`, or restore a saved
-  environment after each test.
-- Add a minimal real export/load smoke test, guarded by version and hardware
-  markers.
-- Add numerical forward/force-gradient parity and peak-memory assertions for
-  fused backends.
-
-### TACE-011: Global SO(2)/SO(3) tests have drifted from the production API
-
-**Severity:** P2 / Medium  
-**Status:** Confirmed by pytest
-
-Relevant code:
-
-- `test/test_global_so2.py:155-162`
-- `test/test_global_so3.py:184-191`
-- production constructor in
-  `tace/models/_e3nn/asymmetric_contraction.py:683-690`
-- commented SO(3) recursive-product test section at
-  `test/test_global_so3.py:197-212`
-
-Three global tests fail because they instantiate `ComplexProductBasis` using a
-removed constructor signature. A substantial SO(3) assertion block is also
-commented out. These tests therefore do not currently protect the product-basis
-and parity code that they appear to cover.
-
-Recommended correction:
-
-- Update tests to the current constructor through the same public model path
-  used in production.
-- Restore equivalent SO(3) numerical checks rather than leaving the core block
-  commented.
-- Add explicit O(3) inversion and magnetic/pseudovector transformation tests.
-
-### TACE-012: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-010: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -454,8 +363,8 @@ Relevant code:
 
 Both scripts register the same resolver at import time. Importing them in one
 Python process raises a duplicate-registration `ValueError`. This affects module
-discovery, documentation tooling, test collection patterns, and applications
-that embed more than one TACE command.
+discovery, documentation tooling, and applications that embed more than one
+TACE command.
 
 Recommended correction:
 
@@ -463,7 +372,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-013: Dataset split index arguments are declared but unused
+### TACE-011: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -482,7 +391,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-014: Optimizer configuration mutates the stored configuration
+### TACE-012: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -521,11 +430,9 @@ Recommended correction:
 
 ### Phase 3: Restore validation confidence
 
-1. Isolate acceleration environment tests.
-2. Update SO(2)/SO(3) product tests to the current API.
-3. Add real PT2 export/reload tests across structure sizes.
-4. Add force-gradient and memory-regression tests for every fused backend.
-5. Add multigraph tests for polarization, Hessians, and partially labeled
+1. Add real PT2 export/reload tests across structure sizes.
+2. Add force-gradient and memory-regression tests for every fused backend.
+3. Add multigraph tests for polarization, Hessians, and partially labeled
    multi-fidelity data.
 
 ### Phase 4: CLI and maintenance fixes

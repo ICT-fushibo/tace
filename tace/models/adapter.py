@@ -147,6 +147,7 @@ class TensorModel(torch.nn.Module):
             "virials": V,
             "stress": S,
             "polarization": P,
+            "conservative_dipole": P,
             "magnetization": M,
             "collinear_magnetic_forces": C_MAG_F,
             "noncollinear_magnetic_forces": NC_MAG_F,
