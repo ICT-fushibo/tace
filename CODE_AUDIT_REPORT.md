@@ -333,33 +333,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-008: Polarization metrics ignore missing-label weights
-
-**Severity:** P2 / Medium  
-**Status:** Confirmed by inspection
-
-Relevant code:
-
-- `tace/utils/metrics.py:93-150`
-- metric construction/update logic at `tace/utils/metrics.py:362-374`
-- metric update logic at `tace/utils/metrics.py:433-437`
-
-The polarization metric does not consistently apply `polarization_weight`.
-Samples for which the target is absent or masked can still contribute to the
-reported metric. In multi-fidelity or partially labeled data, this can distort
-validation output and any checkpoint selection based on it.
-
-The metric also inverts lattice matrices, so zero or singular cells require a
-defined nonperiodic behavior.
-
-Recommended correction:
-
-- Apply target weights/masks before accumulation and normalize by the weighted
-  count.
-- Define how molecular/nonperiodic samples are treated.
-- Add a mixed labeled/unlabeled batch test and a nonperiodic-cell test.
-
-### TACE-009: `allow_unused=True` does not protect disconnected derivatives
+### TACE-008: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -385,7 +359,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-010: Acceleration options are silently ineffective for fully serialized modules
+### TACE-009: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -407,7 +381,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-011: Test isolation and coverage do not reliably validate acceleration behavior
+### TACE-010: Test isolation and coverage do not reliably validate acceleration behavior
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed
@@ -440,7 +414,7 @@ Recommended correction:
 - Add numerical forward/force-gradient parity and peak-memory assertions for
   fused backends.
 
-### TACE-012: Global SO(2)/SO(3) tests have drifted from the production API
+### TACE-011: Global SO(2)/SO(3) tests have drifted from the production API
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by pytest
@@ -467,7 +441,7 @@ Recommended correction:
   commented.
 - Add explicit O(3) inversion and magnetic/pseudovector transformation tests.
 
-### TACE-013: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-012: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -489,7 +463,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-014: Dataset split index arguments are declared but unused
+### TACE-013: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -508,7 +482,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-015: Optimizer configuration mutates the stored configuration
+### TACE-014: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection

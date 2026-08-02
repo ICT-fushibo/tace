@@ -12,6 +12,7 @@ cell, nonperiodic with a cell, 1D periodic, 2D periodic, and 3D periodic.
 Backend-specific handling:
 
 * Matscipy requires a complete, nonsingular cell.
+* AlchemiOps may add batch processing, in a future update.
 
 Missing cell vectors are completed only for backend computation; the physical
 lattice returned to the model is unchanged. Shift components along nonperiodic

@@ -2,10 +2,7 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-'''
-LMDB caches are assumed to be created without interruption; partial caches
-are unsupported.
-'''
+
 import gc
 import lmdb
 import logging
