@@ -3,7 +3,22 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import os
+"""Neighbor-list construction and backend behavior.
+
+``test/test_neighbour_list.py`` covers five system
+classes for each of ASE, Matscipy, Vesin, and AlchemiOps: nonperiodic without a
+cell, nonperiodic with a cell, 1D periodic, 2D periodic, and 3D periodic.
+
+Backend-specific handling:
+
+* Matscipy requires a complete, nonsingular cell.
+
+Missing cell vectors are completed only for backend computation; the physical
+lattice returned to the model is unchanged. Shift components along nonperiodic
+directions are always normalized to zero, and only zero-shift self edges are
+removed.
+"""
+
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -19,15 +34,14 @@ except ImportError:
     pass
 
 
-# self-interaction: ase
-# 1D, 2D: ase, matscipy
 NL_BACKEND = ["ase", "matscipy", "vesin", "alchemiops"]
 
+# For alchemiops
 NV_CELL_LIST_THRESHOLD = 1024
 NV_NONPERIODIC_CELL_LIST_THRESHOLD = 4096
 NV_CPU_CELL_LIST_THRESHOLD = 128
 
-
+# # Disable max_neighbors
 # def filter_max_neighbors(source, target, shifts, distances, max_neighbors="inf"):
 
 #     if max_neighbors is None or max_neighbors == "inf":
@@ -98,7 +112,11 @@ def _build_alchemiops_edges(
 
     pos = torch.as_tensor(positions, dtype=dtype, device=device)
     if periodic:
-        cell = torch.as_tensor(lattice, dtype=dtype, device=device).reshape(1, 3, 3)
+        cell = (
+            torch.as_tensor(lattice, dtype=dtype, device=device)
+            .reshape(1, 3, 3)
+            .contiguous()
+        )
         pbc_tensor = torch.tensor([pbc], dtype=torch.bool, device=device)
     else:
         cell = None
@@ -272,6 +290,7 @@ def get_neighborhood(
     target = target[keep_edge]
 
     edge_shifts = shifts[keep_edge]
+    # Matscipy can report temporary-cell offsets along nonperiodic directions.
     edge_shifts[:, np.logical_not(pbc)] = 0
     edge_index = np.stack((source, target))
 

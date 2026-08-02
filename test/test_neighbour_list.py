@@ -1,4 +1,5 @@
 import importlib.util
+from itertools import product
 
 import numpy as np
 import pytest
@@ -7,122 +8,130 @@ from tace.dataset.neighbour_list import get_neighborhood
 from tace.models._e3nn.default import check_model_config
 
 
+BACKENDS = ["ase", "matscipy", "vesin", "alchemiops"]
 CPU_BACKENDS = ["ase", "matscipy"]
 if importlib.util.find_spec("vesin") is not None:
     CPU_BACKENDS.append("vesin")
 
+NEIGHBOR_CASES = [
+    pytest.param(
+        np.array([[0.0, 0.0, 0.0], [0.4, 0.1, 0.0], [2.0, 0.0, 0.0]]),
+        0.75,
+        False,
+        None,
+        id="nonperiodic-no-cell",
+    ),
+    pytest.param(
+        np.array(
+            [[0.1, 1.9, 2.9], [0.4, 2.1, 3.1], [3.9, 1.9, 2.9]]
+        ),
+        0.5,
+        False,
+        np.diag([4.0, 4.0, 4.0]),
+        id="nonperiodic-with-cell",
+    ),
+    pytest.param(
+        np.array([[0.1, 0.9, 1.9], [3.9, 1.1, 2.1]]),
+        0.5,
+        (True, False, False),
+        np.diag([4.0, 0.0, 0.0]),
+        id="1d-periodic",
+    ),
+    pytest.param(
+        np.array(
+            [[0.1, 0.1, 0.9], [3.9, 0.1, 1.1], [0.1, 3.9, 1.0]]
+        ),
+        0.5,
+        (True, True, False),
+        np.diag([4.0, 4.0, 0.0]),
+        id="2d-periodic",
+    ),
+    pytest.param(
+        np.array(
+            [
+                [0.1, 0.1, 0.1],
+                [3.9, 0.1, 0.1],
+                [0.1, 3.9, 0.1],
+                [0.1, 0.1, 3.9],
+            ]
+        ),
+        0.5,
+        (True, True, True),
+        np.diag([4.0, 4.0, 4.0]),
+        id="3d-periodic",
+    ),
+]
 
-def test_model_config_rejects_max_neighbors():
-    with pytest.raises(ValueError, match="does not truncate neighbor lists"):
-        check_model_config({"max_neighbors": 64})
+
+@pytest.fixture(scope="session")
+def alchemiops_backend(tmp_path_factory):
+    warp = pytest.importorskip("warp")
+    warp.config.kernel_cache_dir = str(tmp_path_factory.mktemp("warp-cache"))
+    pytest.importorskip("nvalchemiops")
 
 
-def _edge_set(edge_index):
-    return set(zip(edge_index[0].tolist(), edge_index[1].tolist()))
-
-
-def _shifted_edge_set(edge_index, shifts):
+def _canonical_edges(edge_index, shifts):
     return {
         (int(source), int(target), tuple(int(value) for value in shift))
         for source, target, shift in zip(edge_index[0], edge_index[1], shifts)
     }
 
 
-@pytest.mark.parametrize("backend", CPU_BACKENDS)
-def test_nonperiodic_cell_is_preserved(backend):
-    positions = np.array([[0.0, 0.0, 0.0], [0.75, 0.0, 0.0]])
-    lattice = np.eye(3) * 10.0
-
-    edge_index, _, pbc, returned_lattice = get_neighborhood(
-        positions,
-        cutoff=2.0,
-        pbc=(False, False, False),
-        lattice=lattice,
-        backend=backend,
+def _reference_edges(positions, cutoff, pbc, lattice):
+    if isinstance(pbc, bool):
+        pbc = (pbc,) * 3
+    physical_lattice = (
+        np.zeros((3, 3), dtype=positions.dtype) if lattice is None else lattice
     )
+    shift_ranges = [(-1, 0, 1) if periodic else (0,) for periodic in pbc]
+    expected = set()
 
-    assert pbc == (False, False, False)
-    np.testing.assert_array_equal(returned_lattice, lattice)
-    assert _edge_set(edge_index) == {(0, 1), (1, 0)}
+    for source, target in product(range(len(positions)), repeat=2):
+        for shift in product(*shift_ranges):
+            if source == target and shift == (0, 0, 0):
+                continue
+            displacement = (
+                positions[target]
+                - positions[source]
+                + np.asarray(shift) @ physical_lattice
+            )
+            if np.linalg.norm(displacement) < cutoff:
+                expected.add((source, target, shift))
 
-
-@pytest.mark.parametrize("backend", CPU_BACKENDS)
-def test_cellless_nonperiodic_structure(backend):
-    positions = np.array([[0.0, 0.0, 0.0], [0.75, 0.0, 0.0]])
-
-    edge_index, _, pbc, lattice = get_neighborhood(
-        positions,
-        cutoff=2.0,
-        pbc=False,
-        lattice=None,
-        backend=backend,
-    )
-
-    assert pbc == (False, False, False)
-    np.testing.assert_array_equal(lattice, np.zeros((3, 3)))
-    assert _edge_set(edge_index) == {(0, 1), (1, 0)}
+    return expected
 
 
-@pytest.mark.parametrize("backend", CPU_BACKENDS)
-def test_partial_pbc_is_preserved(backend):
-    positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    lattice = np.diag([3.0, 3.0, 0.0])
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize(("positions", "cutoff", "pbc", "lattice"), NEIGHBOR_CASES)
+def test_backend_geometry_matrix(backend, positions, cutoff, pbc, lattice, request):
+    if backend == "vesin":
+        pytest.importorskip("vesin")
+    elif backend == "alchemiops":
+        request.getfixturevalue("alchemiops_backend")
 
-    _, _, pbc, returned_lattice = get_neighborhood(
-        positions,
-        cutoff=1.5,
-        pbc=(True, True, False),
-        lattice=lattice,
-        backend=backend,
-    )
-
-    assert pbc == (True, True, False)
-    np.testing.assert_array_equal(returned_lattice, lattice)
-
-
-@pytest.mark.parametrize(
-    ("pbc", "lattice", "positions", "cutoff"),
-    [
-        (
-            (True, False, False),
-            np.diag([4.0, 0.0, 0.0]),
-            np.array([[0.1, 0.9, 1.9], [3.9, 1.1, 2.1]]),
-            0.5,
-        ),
-        (
-            (True, True, False),
-            np.diag([4.0, 4.0, 0.0]),
-            np.array(
-                [[0.1, 0.1, 0.9], [3.9, 0.1, 1.1], [0.1, 3.9, 1.0]]
-            ),
-            0.5,
-        ),
-    ],
-)
-def test_vesin_partial_pbc_matches_matscipy(pbc, lattice, positions, cutoff):
-    pytest.importorskip("vesin")
-
-    reference_index, reference_shifts, _, _ = get_neighborhood(
-        positions,
-        cutoff=cutoff,
-        pbc=pbc,
-        lattice=lattice,
-        backend="matscipy",
-    )
     edge_index, shifts, returned_pbc, returned_lattice = get_neighborhood(
         positions,
         cutoff=cutoff,
         pbc=pbc,
         lattice=lattice,
-        backend="vesin",
+        backend=backend,
     )
 
-    assert returned_pbc == pbc
-    np.testing.assert_array_equal(returned_lattice, lattice)
-    assert np.all(shifts[:, np.logical_not(pbc)] == 0)
-    assert _shifted_edge_set(edge_index, shifts) == _shifted_edge_set(
-        reference_index, reference_shifts
+    expected_pbc = (pbc,) * 3 if isinstance(pbc, bool) else pbc
+    expected_lattice = (
+        np.zeros((3, 3), dtype=positions.dtype) if lattice is None else lattice
     )
+    assert returned_pbc == expected_pbc
+    np.testing.assert_array_equal(returned_lattice, expected_lattice)
+    assert np.all(shifts[:, np.logical_not(expected_pbc)] == 0)
+    assert _canonical_edges(edge_index, shifts) == _reference_edges(
+        positions, cutoff, expected_pbc, expected_lattice
+    )
+
+
+def test_model_config_rejects_max_neighbors():
+    with pytest.raises(ValueError, match="does not truncate neighbor lists"):
+        check_model_config({"max_neighbors": 64})
 
 
 def test_periodic_structure_requires_cell():
@@ -156,7 +165,7 @@ def test_max_neighbors_is_retained_but_not_applied(backend):
         ]
     )
 
-    full_edges, _, _, _ = get_neighborhood(
+    full_edges, full_shifts, _, _ = get_neighborhood(
         positions,
         cutoff=2.0,
         pbc=False,
@@ -164,7 +173,7 @@ def test_max_neighbors_is_retained_but_not_applied(backend):
         max_neighbors=None,
         backend=backend,
     )
-    compatibility_edges, _, _, _ = get_neighborhood(
+    compatibility_edges, compatibility_shifts, _, _ = get_neighborhood(
         positions,
         cutoff=2.0,
         pbc=False,
@@ -174,41 +183,6 @@ def test_max_neighbors_is_retained_but_not_applied(backend):
     )
 
     assert full_edges.shape[1] == 12
-    assert _edge_set(compatibility_edges) == _edge_set(full_edges)
-
-
-@pytest.mark.parametrize(
-    ("pbc", "lattice"),
-    [
-        (False, None),
-        ((True, True, False), np.diag([3.0, 3.0, 0.0])),
-    ],
-)
-def test_alchemiops_matches_matscipy(tmp_path, monkeypatch, pbc, lattice):
-    pytest.importorskip("nvalchemiops")
-    monkeypatch.setenv("WARP_CACHE_PATH", str(tmp_path / "warp"))
-    positions = np.array(
-        [[0.0, 0.0, 0.0], [0.75, 0.0, 0.0], [0.0, 0.75, 0.0]]
+    assert _canonical_edges(compatibility_edges, compatibility_shifts) == (
+        _canonical_edges(full_edges, full_shifts)
     )
-
-    reference, _, _, _ = get_neighborhood(
-        positions,
-        cutoff=2.0,
-        pbc=pbc,
-        lattice=lattice,
-        backend="matscipy",
-    )
-    edge_index, _, returned_pbc, returned_lattice = get_neighborhood(
-        positions,
-        cutoff=2.0,
-        pbc=pbc,
-        lattice=lattice,
-        max_neighbors=1,
-        backend="alchemiops",
-    )
-
-    expected_pbc = (False, False, False) if pbc is False else pbc
-    expected_lattice = np.zeros((3, 3)) if lattice is None else lattice
-    assert returned_pbc == expected_pbc
-    np.testing.assert_array_equal(returned_lattice, expected_lattice)
-    assert _edge_set(edge_index) == _edge_set(reference)
