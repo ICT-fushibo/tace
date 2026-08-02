@@ -244,6 +244,7 @@ def read_all_files(
     logging.info(f"Using {num_workers} processes for parallel reading")
 
     all_structures = []
+    successful_files = 0
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         futures = [
             executor.submit(
@@ -257,10 +258,16 @@ def read_all_files(
             for f in all_files
         ]
         for future in futures:
-            all_structures.extend(future.result())
+            structures = future.result()
+            if structures:
+                successful_files += 1
+                all_structures.extend(structures)
 
     logging.info(
-        f"Successfully read {len(all_structures)} structures from {len(all_files)} files"
+        "Matching files: %d; successful files: %d; loaded structures: %d",
+        len(all_files),
+        successful_files,
+        len(all_structures),
     )
 
     return all_structures

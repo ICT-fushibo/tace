@@ -1,17 +1,21 @@
 # There is no need to modify this part of the logic
 
+## Dataset reader behavior
+
+The `fair_aselmdb` reader intentionally copies unknown `row.data` entries to
+both `Atoms.info` and `Atoms.arrays`. The input schema is not known in advance,
+and TACE later selects the appropriate source according to the configured
+property scope and key specification. This behavior should not be replaced.
+
+Multi-file reading also intentionally allows valid files to be used when
+another file cannot be read. A reader that returns an empty list is counted as
+a failed file, including a genuinely empty file.
+
 ## LMDB cache creation
 
 LMDB conversion must complete in a single uninterrupted run.
 If conversion is interrupted, remove the incomplete cache and rebuild it from
 the source dataset.
-
-## Polarization
-
-Polarization training, loss calculation, and metrics require fully 3D periodic
-structures with an invertible `3 x 3` lattice matrix. All structures in a batch 
-that uses polarization supervision or metrics must
-satisfy this requirement.
 
 ## Derived-property prerequisites
 
@@ -26,3 +30,14 @@ by the requested prediction. For example, charge-conserving charge prediction
 requires `charges` as an output and `total_charge` as an input, while
 `noncollinear_magnetic_forces` prediction requires `initial_noncollinear_magmoms`
 as an input.
+
+## Polarization
+
+Polarization training, loss calculation, and metrics require fully 3D periodic
+structures with an invertible `3 x 3` lattice matrix. All structures in a batch 
+that uses polarization supervision or metrics must
+satisfy this requirement.
+
+
+
+

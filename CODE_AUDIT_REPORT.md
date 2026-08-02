@@ -16,11 +16,7 @@ move after subsequent edits.
 
 ## 2. Executive summary
 
-The audit found one high-priority data-integrity issue:
-
-1. Dataset readers catch broad exceptions and return an empty list, which can
-   silently drop entire input files. The `fair_aselmdb` reader also mishandles
-   scalar metadata.
+The audit found no remaining high-priority correctness or data-integrity issues.
 
 The acceleration architecture is generally coherent, but AOTI has graph-size
 boundary conditions that are not fully handled, the CUE+AOTI metadata can
@@ -56,39 +52,7 @@ Limitations:
 
 ## 5. Findings
 
-### TACE-001: Reader failures can silently remove input data
-
-**Severity:** P1 / High  
-**Status:** Confirmed
-
-Relevant code:
-
-- `tace/dataset/read.py:95-105`
-- `tace/dataset/read.py:108-122`
-- `tace/dataset/read.py:125-144`
-- `tace/dataset/read.py:168-174`
-
-Several reader backends catch broad exceptions, log an error, and return an
-empty list. In a multi-file dataset, successful files are then concatenated and
-training continues. A corrupted file, unsupported metadata value, or parsing
-bug can therefore remove an entire file without failing the run.
-
-The `fair_aselmdb` path also writes every `row.data` item to both `atoms.info`
-and `atoms.arrays`. Scalar metadata is not a valid atom array; a reproduced
-scalar value later caused `Atoms.copy()` to call `.copy()` on a float.
-
-Recommended correction:
-
-- Make strict/fail-fast behavior the default for training input.
-- If tolerant reading is needed, require an explicit option and emit a final
-  failed-file summary with nonzero failure status unless the user accepts it.
-- Map per-system scalar/tensor metadata to `atoms.info` and per-atom arrays to
-  `atoms.arrays` based on known property scope and leading dimension.
-- Include source path and record index in raised exceptions.
-- Add tests for a corrupt file, scalar metadata, per-atom metadata, and a mixed
-  multi-file input.
-
-### TACE-002: AOTI dynamic-shape constraints exclude valid small graphs
+### TACE-001: AOTI dynamic-shape constraints exclude valid small graphs
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by export-contract inspection; full CUDA reproduction pending
@@ -123,7 +87,7 @@ Recommended correction:
   molecule, and differently sized structures loaded from the same sample-free
   PT2 package.
 
-### TACE-003: TorchSim adapter is not safely optional and can retain tensors on the wrong device
+### TACE-002: TorchSim adapter is not safely optional and can retain tensors on the wrong device
 
 **Severity:** P2 / Medium  
 **Status:** Optional-import failure confirmed; device issue confirmed by inspection
@@ -153,7 +117,7 @@ Recommended correction:
 - Test import without the optional extra and inference with CPU-created metadata
   on a CUDA model.
 
-### TACE-004: CUE+AOTI export metadata can disagree with the backend actually used
+### TACE-003: CUE+AOTI export metadata can disagree with the backend actually used
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed code inconsistency; package-loading impact needs CUDA test
@@ -178,7 +142,7 @@ Recommended correction:
 - Add an export/load test for every supported backend combination in a fresh
   Python process.
 
-### TACE-005: Acceleration environment setup does not normalize values to strings
+### TACE-004: Acceleration environment setup does not normalize values to strings
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by reproduction
@@ -198,7 +162,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-006: `allow_unused=True` does not protect disconnected derivatives
+### TACE-005: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -224,7 +188,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-007: Acceleration options are silently ineffective for fully serialized modules
+### TACE-006: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -246,7 +210,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-008: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-007: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -268,7 +232,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-009: Dataset split index arguments are declared but unused
+### TACE-008: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -287,7 +251,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-010: Optimizer configuration mutates the stored configuration
+### TACE-009: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -311,25 +275,21 @@ Recommended correction:
 
 ## 6. Suggested remediation order
 
-### Phase 1: Protect physical correctness and data integrity
-
-1. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
-
-### Phase 2: Stabilize deployment interfaces
+### Phase 1: Stabilize deployment interfaces
 
 1. Fix AOTI small-graph constraints and default-device handling.
 2. Make TorchSim optional import and device movement robust.
 3. Record actual custom-op dependencies during AOTI packaging.
 4. Define behavior for acceleration requests on full-model serialization.
 
-### Phase 3: Restore validation confidence
+### Phase 2: Restore validation confidence
 
 1. Add real PT2 export/reload tests across structure sizes.
 2. Add force-gradient and memory-regression tests for every fused backend.
 3. Add multigraph tests for polarization and partially labeled
    multi-fidelity data.
 
-### Phase 4: CLI and maintenance fixes
+### Phase 3: CLI and maintenance fixes
 
 1. Make Hydra resolver registration idempotent.
 2. Resolve unused split arguments.
@@ -357,9 +317,9 @@ memory, not only forward outputs.
 
 ## 8. Conclusion
 
-The most urgent remaining risk is silent loss of training data. Dataset readers
-should make failures explicit so training cannot continue with an unintentionally
-incomplete dataset.
+The remaining findings primarily concern deployment boundaries, acceleration
+selection, and maintenance behavior rather than high-priority correctness or
+data-integrity failures.
 
 No source code, configuration, or test file was modified as part of producing
 this report.
