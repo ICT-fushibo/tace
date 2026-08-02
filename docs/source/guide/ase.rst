@@ -5,34 +5,35 @@ This tutorial demonstrates how to use a TACE model as a calculator within ASE (A
 
 ASE Calculator documentation: `ASE Calculator <https://wiki.fysik.dtu.dk/ase/ase/calculators/calculator.html>`_
 
-For detailed usage and scripts (e.g., ``opt``, and other scripts), see  
-`https://github.com/xvzemin/tace/tree/main/example/ase <https://github.com/xvzemin/tace/tree/main/example/ase>`_
+For optimization, molecular dynamics, and other examples, see the
+`TACE ASE examples <https://github.com/xvzemin/tace/tree/main/example/ase>`_.
 
 .. code-block:: python
 
+    from ase import units
     from ase.io import read
     from tace.interface.ase import TACEAseCalc, add_dispersion
 
-    device = 'cuda'            # Compute device, e.g., 'cpu' or 'cuda'
-    dtype = 'float32'          # model dtype 'float32' or 'float64'
-    MODEL_PATH = '.pt'         # Path to the model checkpoint, file ends with .pt, .pth or .ckpt
-    fidelity_idx = 0  # first fidelity
-    atoms = read('*.xyz', 0)   #  Any ase readable files
+    device = "cuda"           # Use "cpu" when CUDA is unavailable
+    dtype = "float32"         # "float32" or "float64"
+    model_path = "model.pt"   # .pt, .pth, .ckpt, or compatible .pt2
+    fidelity_idx = 0
+    atoms = read("structure.xyz", index=0)
 
     dispersion = False
 
     calc = TACEAseCalc(
-        MODEL_PATH,
+        model_path,
         device=device,
         dtype=dtype,
-        fidelity_idx = fidelity_idx,
+        fidelity_idx=fidelity_idx,
     )
-    if dispersion: # pip install torch-dftd
+    if dispersion:  # Requires: pip install torch-dftd
         calc = add_dispersion(
             base_calc=calc,
-            damping= "bj",  # choices: ["zero", "bj", "zerom", "bjm"]
+            damping="bj",  # choices: ["zero", "bj", "zerom", "bjm"]
             dispersion_xc="pbe",
-            dispersion_cutoff= 40.0 * units.Bohr,
+            dispersion_cutoff=40.0 * units.Bohr,
         )
     atoms.calc = calc
 

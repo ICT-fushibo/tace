@@ -7,4 +7,5 @@ If finetuning is not required, this field should be set to ``null``.
 
 Additionally, if a ``finetune_config.yaml`` file exists in the current directory, 
 the model will default to LoRA finetuning. If this file does not exist, full-model 
-finetuning will be applied. Use ``tace-finetune --model `` to generate finetune config.
+finetuning will be applied. Use ``tace-finetune --model model.pt`` to generate
+``finetune_config.yaml``.

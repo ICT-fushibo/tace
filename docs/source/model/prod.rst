@@ -8,7 +8,3 @@ users are encouraged to refer to the source code for further exploration.
 .. autoclass:: tace.models._e3nn.prod.CgtpACE
    :no-members:
    :show-inheritance:
-
-.. autoclass:: tace.models._e3nn.prod.GtpACE
-   :no-members:
-   :show-inheritance:

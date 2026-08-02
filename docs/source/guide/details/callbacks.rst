@@ -26,7 +26,7 @@ Example
         decay: 0.999 # 0.99 - 0.999
         use_num_updates: true
 
-    checkpoint_epoch: # at leas one checkpoint is required
+    checkpoint_epoch: # at least one checkpoint is required
         _target_: lightning.pytorch.callbacks.ModelCheckpoint
         dirpath: checkpoints_epoch
         filename: TACE-{${misc.project_name}-{epoch}-{step}-{${synth_metric.monitor_metric_name}:.4f}

@@ -17,7 +17,3 @@ The nonlinear edge embedding is generally recommended when used together with el
 .. autoclass:: tace.models._e3nn.edge.NonLinearEdgeEmbedding
    :no-members:
    :show-inheritance:
-
-.. autoclass:: tace.models._e3nn.edge.ElementEdgeEmbedding
-   :no-members:
-   :show-inheritance:

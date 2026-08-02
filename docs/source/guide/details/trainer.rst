@@ -1,9 +1,8 @@
 trainer
 =======
 
-For a complete list of all parameters and their detailed descriptions, 
-please refer to the official PyTorch Lightning Trainer documentation: 
-https://lightning.ai/docs/pytorch/stable/common/trainer.html
+For a complete list of parameters, see the `Lightning Trainer documentation
+<https://lightning.ai/docs/pytorch/stable/common/trainer.html>`_.
 
 Example
 -------
@@ -36,4 +35,3 @@ Example
     inference_mode: false
     deterministic: false  
     # benchmark: true  
-

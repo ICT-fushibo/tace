@@ -5,24 +5,41 @@ This tutorial demonstrates how to use a TACE model as a calculator within TorchS
 
 TorchSim documentation: `torchsim <https://torchsim.github.io/torch-sim/>`_
 
-For detailed usage and scripts (e.g., ``batchOPT``, ``batchMD``, and other scripts), see  
-`https://github.com/xvzemin/tace/tree/main/example/torchSim <https://github.com/xvzemin/tace/tree/main/example/torchSim>`_
+Installation
+------------
+
+Install TACE with TorchSim support:
+
+.. code-block:: bash
+
+    pip install "tace[torchsim]"
+
+TACE requires ``torch-sim-atomistic>=0.6.1``. No upper version is pinned;
+compatibility with newer versions follows the upstream TorchSim API.
+
+For optimization, molecular dynamics, and batched examples, see the
+`TACE TorchSim examples <https://github.com/xvzemin/tace/tree/main/example/torchSim>`_.
+
+Calculator
+----------
 
 
 .. code-block:: python
 
+    import torch
+
     from tace.interface.torchsim import TACETorchSimCalc
 
-    # === Input ===
-    dtype = 'float32'
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = "../TACE-v1-OMat24-L.pt" # Your Model
-    fidelity_idx = 0  # first fidelity
-    model = TACETorchSimCalc(
-        model,
+    dtype = "float32"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model_path = "model.pt"
+    fidelity_idx = 0
+
+    calc = TACETorchSimCalc(
+        model_path,
         fidelity_idx=fidelity_idx,
         device=device,
-        dtype=dtype, 
+        dtype=dtype,
         compute_forces=True,
         compute_stress=True,
     )

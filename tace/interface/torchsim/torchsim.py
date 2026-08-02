@@ -16,7 +16,7 @@ try:
 except ImportError as e:
     raise ImportError(
         "The TACE TorchSim interface requires 'torch-sim-atomistic'. "
-        "Install it with `pip install torch-sim-atomistic`."
+        "Install it with `pip install 'torch-sim-atomistic==0.6.1'`."
     ) from e
 
 

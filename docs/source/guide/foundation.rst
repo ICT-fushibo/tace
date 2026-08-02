@@ -15,10 +15,9 @@ By default, all models are stored under::
 
     ~/.cache/tace/
 
-If your network connection is unstable or restricted, you may **manually download**
-the pretrained models from:
-
-    https://github.com/xvzemin/tace-foundations
+If your network connection is unstable or restricted, you may manually
+download the pretrained models from the
+`TACE Foundation Models repository <https://github.com/xvzemin/tace-foundations>`_.
 
 After downloading, please **keep the original directory and file names unchanged**
 and place them directly under ``~/.cache/tace/`` so that TACE can locate them correctly.
@@ -60,5 +59,4 @@ Dispersion Correction (Optional)
 
 Dispersion interactions can also be supported by calling third-party libraries.
 For detailed instructions, see ase guide.
-
 

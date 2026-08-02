@@ -5,10 +5,11 @@ This section describes the model architecture.
 
 .. note::
 
-We recommend an overall architecture with either more than two layers and correlation = 2, or two layers and correlation = 3.
+   We recommend an overall architecture with either more than two layers and
+   ``correlation = 2``, or two layers and ``correlation = 3``.
 
-- > 2 layer + correlation = 2
-- 2 layer + correlation = 3
+   - More than two layers with ``correlation = 2``
+   - Two layers with ``correlation = 3``
 
 
 The number of model parameters is mainly determined by the number of channels and 

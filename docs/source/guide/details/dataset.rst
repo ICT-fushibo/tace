@@ -21,7 +21,7 @@ Example
     split_seed: ${misc.global_seed} # this random seed is useful if auto split
     train_file: ../data/BaTiO3.xyz
     valid_file: null                
-    # test_files: # (null, str, list) recoomend to use tace-eval --test 1 to print test errors to avoild possible bugs
+    # test_files: # (null, str, list); use tace-eval --test 1 to report test errors
     #   - dataset/test_300K.xyz
     #   - dataset/test_600K.xyz
     #   - dataset/test_1200K.xyz

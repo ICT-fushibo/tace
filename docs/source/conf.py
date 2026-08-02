@@ -1,5 +1,5 @@
 project = "TACE"
-copyright = "2025, xuzemin"
+copyright = "2026, xuzemin"
 author = "xuzemin"
 release = "v0.2.0"
 
@@ -23,7 +23,10 @@ myst_heading_anchors = 3
 
 autodoc_member_order = "bysource"
 autosummary_generate = True
-source_suffix = [".rst", ".md"]
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
 templates_path = ["_templates"]
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),

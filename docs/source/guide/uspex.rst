@@ -11,9 +11,8 @@ we integrate TACE through the following workflow::
 At present (as of May 8, 2026), we restrict support to USPEX-v10.5, since
 USPEX-2025 does not yet provide LAMMPS support.
 
-USPEX can be obtained from the official website:
-
-https://uspex-team.org/en
+See the `USPEX website <https://uspex-team.org/en>`_ for installation and
+licensing information.
 
 To use this workflow, both USPEX and LAMMPS must be installed. Currently,
 only NVIDIA GPUs (not allow cpu) are supported.
@@ -60,8 +59,6 @@ Step 3: Example
 
     # Run USPEX
     USPEX -r
-
-
 
 
 

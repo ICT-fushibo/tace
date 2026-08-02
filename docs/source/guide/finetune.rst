@@ -79,8 +79,8 @@ multi-fidelity or multi-head training data during finetuning by default.
 Example
 -------
 
-First, download a pretrained model from
-https://github.com/xvzemin/tace-foundations
+First, download a pretrained model from the
+`TACE Foundation Models repository <https://github.com/xvzemin/tace-foundations>`_
 (you may also use a model pretrained by yourself).
 
 You can then follow the example below, which consists of three main steps:
@@ -105,7 +105,7 @@ Example commands are shown below:
    tace-finetune -m TACE-OAM-RRA.pt
 
    # Start finetuning (configuration file specified as needed)
-   tace-train -cn *.yaml
+   tace-train -cn tace
 
    # Merge LoRA weights into the base model
-   tace-convert -m *.ckpt --type merge_lora
+   tace-convert -m checkpoints_epoch/last.ckpt --type merge_lora

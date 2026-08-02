@@ -82,7 +82,8 @@ experiments without editing the source YAML:
 
 .. code-block:: bash
 
-   tace-train -cn tace trainer.max_epochs=10 dataset.batch_size=8
+   tace-train -cn tace trainer.max_epochs=10 \
+     dataset.train_dataloader.batch_size=8
 
 Training checkpoints contain optimizer, scheduler, callback, and model state,
 so keep ``.ckpt`` files when a run may need to be resumed. For resume settings,

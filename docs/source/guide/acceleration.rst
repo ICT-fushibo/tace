@@ -16,6 +16,8 @@ TACE supports three complementary forms of acceleration:
 The acceleration backend must be selected before the model is constructed.
 The same settings can be used during training, validation, testing, and model
 export, subject to the backend limitations described below.
+Installation commands for each optional backend are listed separately in
+:ref:`installation`.
 
 Kernel Backends
 ---------------

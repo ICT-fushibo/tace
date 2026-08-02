@@ -12,7 +12,7 @@ or irreducible Cartesian tensors, with an optional attention architecture.
 Cartesian Architecture
 ----------------------
 
-.. image:: fig/arch.png
+.. image:: fig/cartesian_arch.png
    :width: 100%
    :align: center
 
@@ -35,6 +35,7 @@ SOTA Foundation Model
 
 
 Default Ranking on Matbench as of July 8, 2026
+----------------------------------------------
 
 .. figure:: fig/matbench_tece_rra.png
    :width: 100%
@@ -46,9 +47,9 @@ Install, Train and Tutorial
 
 The docs contain a complete tutorial. 
 
-We also provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
-
-https://github.com/xvzemin/tace/tree/main/example
+We also provide complete input files and example scripts for training, ASE,
+TorchSim, LAMMPS, and other workflows in the
+`TACE examples <https://github.com/xvzemin/tace/tree/main/example>`_.
 
 
 .. code-block:: bash
@@ -161,7 +162,8 @@ If you use cartnn, Cartesian-3j, cMACE, cNequIP, cAllegro, please cite our paper
 Contact
 -------
 
-For bugs or feature requests, please use https://github.com/xvzemin/tace/issues.
+For bugs or feature requests, please use the
+`TACE issue <https://github.com/xvzemin/tace/issues>`_.
 
 License
 -------
