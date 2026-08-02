@@ -4,11 +4,17 @@ import numpy as np
 import pytest
 
 from tace.dataset.neighbour_list import get_neighborhood
+from tace.models._e3nn.default import check_model_config
 
 
 CPU_BACKENDS = ["ase", "matscipy"]
 if importlib.util.find_spec("vesin") is not None:
     CPU_BACKENDS.append("vesin")
+
+
+def test_model_config_rejects_max_neighbors():
+    with pytest.raises(ValueError, match="does not truncate neighbor lists"):
+        check_model_config({"max_neighbors": 64})
 
 
 def _edge_set(edge_index):

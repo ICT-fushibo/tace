@@ -16,16 +16,14 @@ move after subsequent edits.
 
 ## 2. Executive summary
 
-The audit found four high-priority correctness or data-integrity issues:
+The audit found three high-priority correctness or data-integrity issues:
 
-1. The default `matscipy` neighbor-list path can override explicit PBC settings
-   and fails for cell-less nonperiodic structures.
-2. Several external-field derivative targets are not wired end to end; in
+1. Several external-field derivative targets are not wired end to end; in
    particular, conservative dipoles, polarizability, and Born effective charges
    can fail during training or evaluation.
-3. Hessian training is exposed in configuration but does not have a complete
+2. Hessian training is exposed in configuration but does not have a complete
    loss, metric, batching, and evaluation path.
-4. Dataset readers catch broad exceptions and return an empty list, which can
+3. Dataset readers catch broad exceptions and return an empty list, which can
    silently drop entire input files. The `fair_aselmdb` reader also mishandles
    scalar metadata.
 
@@ -49,9 +47,8 @@ The following checks were performed without editing source code:
 - Global SO(2)/SO(3) tests: 3 failed and 1 passed. The failures use an older
   `ComplexProductBasis` constructor and are test/API drift rather than a newly
   observed production regression.
-- Isolated reproductions were run for the neighbor-list failure, missing
-  derivative-output keys, environment-variable type handling, optional
-  TorchSim import.
+- Isolated reproductions were run for missing derivative-output keys,
+  environment-variable type handling, and optional TorchSim import.
 
 Limitations:
 
@@ -70,50 +67,12 @@ Limitations:
 
 ## 5. Findings
 
-### TACE-001: Default neighbor-list construction changes PBC semantics and fails without a cell
-
-**Severity:** P1 / High  
-**Status:** Confirmed by isolated reproduction
-
-Relevant code:
-
-- `tace/dataset/neighbour_list.py:183-206`
-- `tace/dataset/neighbour_list.py:214-221`
-- `tace/interface/ase/calculator.py:75`
-
-The `matscipy` neighbor-list path treats any nontrivial lattice as fully
-periodic, replacing the caller's explicit PBC vector with `(True, True, True)`.
-This changes the meaning of nonperiodic structures with a simulation box and of
-partially periodic systems such as slabs and chains.
-
-For a nonperiodic structure without a cell, the same path eventually passes
-`cell=None` into the matscipy neighbor-list calculation. A one-atom ASE
-structure reproduced a singular-matrix failure. Because the ASE calculator
-defaults to the matscipy backend, this affects an ordinary calculator call and
-not only an explicitly selected advanced backend.
-
-Potential consequences:
-
-- A molecule in a finite box can acquire periodic image interactions.
-- A slab with PBC `[True, True, False]` can be treated as periodic in all three
-  directions.
-- A cell-less molecule can fail before model inference.
-
-Recommended correction:
-
-1. Preserve the input PBC vector exactly.
-2. Keep cell and PBC handling independent; a nonzero cell must not imply PBC.
-3. For nonperiodic structures without a cell, use a backend path that does not
-   require inversion of a cell matrix, or construct a temporary nonperiodic
-   bounding cell without changing the physical PBC flags.
-4. Add tests for no cell/no PBC, finite cell/no PBC, partial PBC, and full PBC.
-
-### TACE-002: External-field derivative outputs are not connected end to end
+### TACE-001: External-field derivative outputs are not connected end to end
 
 **Severity:** P1 / High  
 **Status:** Multiple confirmed defects
 
-#### TACE-002A: `conservative_dipole` is computed under another name
+#### TACE-001A: `conservative_dipole` is computed under another name
 
 Relevant code:
 
@@ -138,7 +97,7 @@ Recommended correction:
 - Add a training-step test that enables only `conservative_dipole`.
 - Add a consistency test when both aliases are requested.
 
-#### TACE-002B: Polarizability and BEC evaluation access nonexistent flags
+#### TACE-001B: Polarizability and BEC evaluation access nonexistent flags
 
 Relevant code:
 
@@ -162,7 +121,7 @@ Recommended correction:
   charges.
 - Ensure optional or disabled properties have explicit false-valued flags.
 
-#### TACE-002C: Polarization has inconsistent scope and shape
+#### TACE-001C: Polarization has inconsistent scope and shape
 
 Relevant code:
 
@@ -184,7 +143,7 @@ Recommended correction:
 - Verify that dataset keys, loss shapes, metrics, and exported model outputs all
   use the same scope.
 
-#### TACE-002D: Derived-property prerequisites are not validated
+#### TACE-001D: Derived-property prerequisites are not validated
 
 Some derivative targets require energy, electric field, polarization, or a
 specific differentiable input. The current `must_be_with` metadata primarily
@@ -196,7 +155,7 @@ Recommended correction:
 - Validate the complete requested-property dependency graph during model/config
   construction and fail with a targeted message before training starts.
 
-### TACE-003: Hessian training and evaluation are incomplete
+### TACE-002: Hessian training and evaluation are incomplete
 
 **Severity:** P1 / High  
 **Status:** Confirmed by code and registry inspection
@@ -232,7 +191,7 @@ Recommended correction:
 6. Until complete, reject Hessian training early instead of failing later or
    training without the requested target.
 
-### TACE-004: Reader failures can silently remove input data
+### TACE-003: Reader failures can silently remove input data
 
 **Severity:** P1 / High  
 **Status:** Confirmed
@@ -264,7 +223,7 @@ Recommended correction:
 - Add tests for a corrupt file, scalar metadata, per-atom metadata, and a mixed
   multi-file input.
 
-### TACE-005: AOTI dynamic-shape constraints exclude valid small graphs
+### TACE-004: AOTI dynamic-shape constraints exclude valid small graphs
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by export-contract inspection; full CUDA reproduction pending
@@ -280,7 +239,7 @@ The exported dynamic dimensions require at least two nodes and two edges. The
 sample-free export path pads graph-related entries but does not guarantee at
 least two actual nodes and edges at inference.
 
-Valid inputs such as a one-atom structure or a graph with no neighbors can
+Valid inputs such as a one-atom structure or a graph with zero edges can
 violate the generated PT2 guards. This is the same class of failure as symbolic
 shape assertions that pass during export but fail for a later structure.
 
@@ -299,7 +258,7 @@ Recommended correction:
   molecule, and differently sized structures loaded from the same sample-free
   PT2 package.
 
-### TACE-006: TorchSim adapter is not safely optional and can retain tensors on the wrong device
+### TACE-005: TorchSim adapter is not safely optional and can retain tensors on the wrong device
 
 **Severity:** P2 / Medium  
 **Status:** Optional-import failure confirmed; device issue confirmed by inspection
@@ -329,7 +288,7 @@ Recommended correction:
 - Test import without the optional extra and inference with CPU-created metadata
   on a CUDA model.
 
-### TACE-007: CUE+AOTI export metadata can disagree with the backend actually used
+### TACE-006: CUE+AOTI export metadata can disagree with the backend actually used
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed code inconsistency; package-loading impact needs CUDA test
@@ -354,7 +313,7 @@ Recommended correction:
 - Add an export/load test for every supported backend combination in a fresh
   Python process.
 
-### TACE-008: Acceleration environment setup does not normalize values to strings
+### TACE-007: Acceleration environment setup does not normalize values to strings
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by reproduction
@@ -374,7 +333,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-009: Polarization metrics ignore missing-label weights
+### TACE-008: Polarization metrics ignore missing-label weights
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by inspection
@@ -400,7 +359,7 @@ Recommended correction:
 - Define how molecular/nonperiodic samples are treated.
 - Add a mixed labeled/unlabeled batch test and a nonperiodic-cell test.
 
-### TACE-010: `allow_unused=True` does not protect disconnected derivatives
+### TACE-009: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -426,7 +385,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-011: Acceleration options are silently ineffective for fully serialized modules
+### TACE-010: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -448,7 +407,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-012: Test isolation and coverage do not reliably validate acceleration behavior
+### TACE-011: Test isolation and coverage do not reliably validate acceleration behavior
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed
@@ -481,7 +440,7 @@ Recommended correction:
 - Add numerical forward/force-gradient parity and peak-memory assertions for
   fused backends.
 
-### TACE-013: Global SO(2)/SO(3) tests have drifted from the production API
+### TACE-012: Global SO(2)/SO(3) tests have drifted from the production API
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by pytest
@@ -508,7 +467,7 @@ Recommended correction:
   commented.
 - Add explicit O(3) inversion and magnetic/pseudovector transformation tests.
 
-### TACE-014: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-013: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -530,7 +489,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-015: Dataset split index arguments are declared but unused
+### TACE-014: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -549,7 +508,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-016: Optimizer configuration mutates the stored configuration
+### TACE-015: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -575,10 +534,9 @@ Recommended correction:
 
 ### Phase 1: Protect physical correctness and data integrity
 
-1. Fix neighbor-list cell/PBC handling.
-2. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
-3. Either complete Hessian support or reject it early.
-4. Repair and validate the external-field derivative property graph.
+1. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
+2. Either complete Hessian support or reject it early.
+3. Repair and validate the external-field derivative property graph.
 
 ### Phase 2: Stabilize deployment interfaces
 
@@ -609,7 +567,6 @@ full scientific benchmark for every commit:
 
 | Area | Minimum cases |
 | --- | --- |
-| Neighbor list | no cell/no PBC; cell/no PBC; partial PBC; full PBC |
 | Dataset readers | one valid file; one corrupt file; scalar metadata; per-atom metadata |
 | Derivatives | energy/forces/stress/virials; dipole; polarizability; BEC; disconnected output |
 | Multi-fidelity | one head missing labels; finite default scale/shift/atomic energies |
@@ -625,12 +582,10 @@ memory, not only forward outputs.
 
 ## 8. Conclusion
 
-The most urgent risks are not performance regressions but silent changes in
-physical boundary conditions and silent loss of training data. Those should be
-resolved before extending acceleration coverage. The derivative and Hessian
-interfaces should then be made internally consistent so every advertised target
-has a complete path from dataset specification through model output, loss,
-metric, evaluation, and export.
+The most urgent remaining risks are silent loss of training data and incomplete
+derivative or Hessian workflows. Those interfaces should be made internally
+consistent so every advertised target has a complete path from dataset
+specification through model output, loss, metric, evaluation, and export.
 
 No source code, configuration, or test file was modified as part of producing
 this report.

@@ -160,9 +160,6 @@ DEFAULT_MODEL_CONFIG = {
         },
     },
     "special": {
-        # "hessian": {
-        #     "num_samples": 2
-        # },
         "charges": {
             "method": "lagrangian",
         },
@@ -230,6 +227,13 @@ def check_model_config(cfg: dict[str, Any]):
     # Update default config with user config
     cfg = recursive_update(cfg)
 
+    if cfg.get("max_neighbors") is not None:
+        raise ValueError(
+            "TACE does not "
+            "truncate neighbor lists. Set `max_neighbors: null` in the model "
+            "configuration."
+        )
+
     # Update statistics info
     cfg['atomic_numbers'] = sorted(
         {z for s in cfg['statistics'] for z in s['atomic_numbers']}
@@ -262,10 +266,6 @@ def check_model_config(cfg: dict[str, Any]):
     cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
     cfg['atomic_basis']['use_graph_softmax'] = _to_list(cfg['atomic_basis']['use_graph_softmax'])
     # cfg['product_basis']['nonlinear'] = _to_list(cfg['product_basis']['nonlinear'])
-    # cfg['resnet']['type'] = _to_list(cfg['resnet']['type'])
-    # cfg['atomic_basis']["separate_so2_radial"] = _to_list(cfg['atomic_basis']["separate_so2_radial"])
-    # for b in cfg['atomic_basis']["separate_so2_radial"]:
-    #     if b: cfg['edge_update']['type'] = 'element2'
 
     # if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
     components = cfg['product_basis']['return_components']
@@ -279,11 +279,5 @@ def check_model_config(cfg: dict[str, Any]):
     else:
         assert components is None
     cfg['product_basis']['return_components'] = components
-
-
-    if cfg['parity']:
-        # assert cfg['dropout']['stochastic_depth'] == 0.0, "O(3) module support is still incomplete; dropout is not supported yet."
-        assert cfg['layer_norm']['pre_norm_type'] == None, "O(3) module support is still incomplete; layer_norm is not supported yet."
-        assert cfg['layer_norm']['final_norm_type'] == None, "O(3) module support is still incomplete; layer_norm is not supported yet."
 
     return cfg
