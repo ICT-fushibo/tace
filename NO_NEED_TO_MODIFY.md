@@ -31,13 +31,23 @@ requires `charges` as an output and `total_charge` as an input, while
 `noncollinear_magnetic_forces` prediction requires `initial_noncollinear_magmoms`
 as an input.
 
+## Optional interface dependencies
+
+Packages that support optional interfaces are not required for the core TACE
+package, but they must be installed before importing their corresponding
+interface. For example, `torch-sim-atomistic` must be installed before importing
+`tace.interface.torchsim`.
+
+An immediate `ImportError` with installation guidance is the intended behavior
+when such a dependency is missing. This logic does not need to be replaced with
+placeholder classes, delayed failures, or fallback implementations. Interfaces
+whose own dependencies are installed, such as `tace.interface.ase`, remain
+independently importable.
+
 ## Polarization
 
 Polarization training, loss calculation, and metrics require fully 3D periodic
 structures with an invertible `3 x 3` lattice matrix. All structures in a batch 
 that uses polarization supervision or metrics must
 satisfy this requirement.
-
-
-
 

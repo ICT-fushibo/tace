@@ -100,34 +100,60 @@ class TensorModel(torch.nn.Module):
             )
         idx = 0
         if self.flags.compute_forces:
-            F = -grads[idx]
+            grad = grads[idx]
+            F = (
+                torch.zeros_like(data["positions"])
+                if grad is None
+                else -grad
+            )
             idx += 1
-            if F is None:
-                F = torch.zeros_like(data['positions'])
         if self.flags.compute_stress or self.flags.compute_virials:
-            V = -grads[idx]
-            if V is None:
-                V = torch.zeros_like(data['lattice'])
+            grad = grads[idx]
+            V = (
+                torch.zeros_like(data["lattice"])
+                if grad is None
+                else -grad
+            )
             VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
             S = -V / VOLUME.view(-1, 1, 1)
             S = torch.where(torch.abs(S) < 1e10, S, torch.zeros_like(S))
             idx += 1
         if self.flags.compute_polarization or self.flags.compute_conservative_dipole:
-            P = -grads[idx]
+            grad = grads[idx]
+            P = (
+                torch.zeros_like(data["electric_field"])
+                if grad is None
+                else -grad
+            )
             idx += 1
         # if self.flags.compute_magnetization:
         #     M = -grads[idx]
         #     idx += 1
         if self.flags.compute_collinear_magnetic_forces:
-            C_MAG_F = -grads[idx]
+            grad = grads[idx]
+            C_MAG_F = (
+                torch.zeros_like(data["initial_collinear_magmoms"])
+                if grad is None
+                else -grad
+            )
             idx += 1
         if self.flags.compute_noncollinear_magnetic_forces:
-            NC_MAG_F = -grads[idx]
+            grad = grads[idx]
+            NC_MAG_F = (
+                torch.zeros_like(data["initial_noncollinear_magmoms"])
+                if grad is None
+                else -grad
+            )
             idx += 1
         if self.flags.compute_edge_forces or \
             self.flags.compute_atomic_virials or \
             self.flags.compute_atomic_stresses:
-            EDGE_F = grads[idx] # consistency with LAMMPS
+            grad = grads[idx]
+            EDGE_F = (
+                torch.zeros_like(graph.edge_vector)
+                if grad is None
+                else grad
+            )  # consistency with LAMMPS
             idx += 1
             if not self.lmp:
                 A_V, A_S = compute_atomic_virials_stresses(

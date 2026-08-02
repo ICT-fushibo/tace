@@ -19,6 +19,11 @@ ACCELERATION_ENV = {
 def set_env(cfg: Dict):
     env = cfg.get("misc", {}).get("env", {})
     for k, v in env.items():
+        if not isinstance(v, str):
+            raise TypeError(
+                f"Environment variable {k!r} must have a string value, "
+                f"got {type(v).__name__}. Quote the value in the YAML file."
+            )
         os.environ[k] = v
 
 

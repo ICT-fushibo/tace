@@ -256,15 +256,18 @@ class _FlatE3nnCompileModel(torch.nn.Module):
         output: Dict[str, torch.Tensor] = {}
         grad_index = 0
         if self.compute_forces:
-            forces = -grads[grad_index]
+            grad = grads[grad_index]
             output["forces"] = (
-                forces if forces is not None else torch.zeros_like(graph.positions)
+                torch.zeros_like(graph.positions) if grad is None else -grad
             )
             grad_index += 1
         if self.compute_stress or self.compute_virials:
-            virials = -grads[grad_index]
-            if virials is None:
-                virials = torch.zeros_like(data["lattice"])
+            grad = grads[grad_index]
+            virials = (
+                torch.zeros_like(data["lattice"])
+                if grad is None
+                else -grad
+            )
             volume = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
             stress = -virials / volume.view(-1, 1, 1)
             output["virials"] = virials
