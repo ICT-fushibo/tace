@@ -71,7 +71,7 @@ def parse_args():
         "--nl-backend",
         type=str,
         default="matscipy",
-        choices=["ase", "vesin", "matscipy"],
+        choices=["ase", "matscipy", "vesin", "alchemiops"],
         help="Neighbor-list backend for --sample",
     )
     return parser.parse_args()

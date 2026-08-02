@@ -7,6 +7,7 @@ import os
 from typing import Optional, Tuple, Union
 
 import numpy as np
+from ase.geometry import complete_cell
 from matscipy.neighbours import neighbour_list
 try:
     from ase.neighborlist import primitive_neighbor_list
@@ -20,7 +21,7 @@ except ImportError:
 
 # self-interaction: ase
 # 1D, 2D: ase, matscipy
-NL_BACKEND = ["ase", "vesin", "matscipy", "nvidia"]
+NL_BACKEND = ["ase", "matscipy", "vesin", "alchemiops"]
 
 NV_CELL_LIST_THRESHOLD = 1024
 NV_NONPERIODIC_CELL_LIST_THRESHOLD = 4096
@@ -47,7 +48,7 @@ def _get_nv_start_capacity(n_atoms: int, max_neighbors: Union[int, str, None]) -
     return max(1, int(max_neighbors))
 
 
-def _build_nvalchemiops_edges(
+def _build_alchemiops_edges(
     positions: np.ndarray,
     cutoff: float,
     pbc: Tuple[bool, bool, bool],
@@ -59,7 +60,7 @@ def _build_nvalchemiops_edges(
         from nvalchemiops.torch.neighbors import neighbor_list as nvidia_neighbor_list
     except ImportError as exc:
         raise ImportError(
-            "neighborlist_backend='nvidia' requires "
+            "neighborlist_backend='alchemiops' requires "
             "`nvalchemi-toolkit-ops` from https://github.com/NVIDIA/nvalchemi-toolkit-ops."
         ) from exc
 
@@ -175,18 +176,18 @@ def get_neighborhood(
     pbc: Union[bool, Tuple[bool, bool, bool], None] = None,
     lattice: Union[np.ndarray, None] = None,  # [3, 3]
     max_neighbors: Union[int, None] = None,
-    backend: str = "vesin" # "matscipy",
-) -> Tuple[np.ndarray, np.ndarray]:
-    
-    assert backend in NL_BACKEND, f"Neighborlist backend should be in {NL_BACKEND}"
-
-    if isinstance(lattice, np.ndarray):
-        all_zero = np.allclose(lattice, 0)
-        all_one = np.allclose(lattice, 1)
-        identity = np.allclose(lattice, np.eye(lattice.shape[0]))
-
-        if not (all_zero or all_one or identity):
-            pbc = (True, True, True)
+    backend: str = "matscipy",
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    Tuple[bool, bool, bool],
+    np.ndarray,
+]:
+    if backend not in NL_BACKEND:
+        raise ValueError(
+            f"Unknown neighborlist backend '{backend}'. "
+            f"Supported backends: {NL_BACKEND}"
+        )
 
     # === PBC ===
     if pbc is None:
@@ -195,74 +196,79 @@ def get_neighborhood(
         pbc = (pbc,) * 3
     else:
         pbc = tuple(bool(i) for i in pbc)
+    if len(pbc) != 3:
+        raise ValueError(f"pbc must contain three values, got {pbc}")
 
-    # === Lattiace ===
-    if any(pbc):
-        if lattice is None or np.allclose(lattice, 0.0):
-            raise ValueError(
-                "At least one direction is periodic, but lattice is None or zero."
-            )
-    if not any(pbc):
-        lattice = None
+    # Keep the physical lattice unchanged and construct a complete temporary
+    # cell only for neighbor-list backends that require a nonsingular cell.
+    if lattice is None:
+        lattice = np.zeros((3, 3), dtype=positions.dtype)
     else:
-        if lattice is None:
-            raise ValueError(
-                "At least one direction is periodic, but lattice is None."
-            )
-        
+        lattice = np.asarray(lattice, dtype=positions.dtype)
+        if lattice.shape != (3, 3):
+            raise ValueError(f"lattice must have shape (3, 3), got {lattice.shape}")
+        lattice = lattice.copy()
+    if any(pbc) and np.allclose(lattice, 0.0):
+        raise ValueError(
+            "At least one direction is periodic, but lattice is None or zero."
+        )
+    neighbor_cell = complete_cell(lattice)
+
     # === Neighborlist ===
     if backend == "matscipy":
         edges = neighbour_list(
             quantities="ijSd",
             pbc=pbc,
-            cell=lattice,
+            cell=neighbor_cell,
             positions=positions,
             cutoff=cutoff,
         )
     elif backend == "vesin":
-        # https://github.com/Luthaf/vesin/blob/main/python/vesin/src/vesin/_ase.py
+        # https://github.com/Luthaf/vesin/blob/main/python/vesin/vesin/_ase.py
         if all(pbc):
             is_3D = True
         elif not any(pbc):
             is_3D = False
         else:
             raise ValueError("vesin only support pbc=(F, F, F) or (T, T, T)")
-        if lattice is None:
-            box = np.zeros((3, 3), dtype=positions.dtype)
-        else:
-            box = lattice
         edges = vesin_nl(
             cutoff=cutoff, 
             full_list=True
-        ).compute(points=positions, box=box, periodic=is_3D, quantities="ijSd")
+        ).compute(
+            points=positions,
+            box=neighbor_cell,
+            periodic=is_3D,
+            quantities="ijSd",
+        )
         edges = list(edges)
         edges[0] = edges[0].astype(np.int64)
         edges[1] = edges[1].astype(np.int64)
         edges = tuple(edges)
     elif backend == "ase":
-        if lattice is None:
-            cell = np.zeros((3, 3), dtype=positions.dtype)
-        else:
-            cell = lattice
         edges = primitive_neighbor_list(
             "ijSd",
             pbc,
-            cell,
+            neighbor_cell,
             positions,
             cutoff=cutoff,
             self_interaction=False,
             use_scaled_positions=False,
         )
-    elif backend in ("nvidia"):
-        edges = _build_nvalchemiops_edges(
+    elif backend == "alchemiops":
+        edges = _build_alchemiops_edges(
             positions=positions,
             cutoff=cutoff,
             pbc=pbc,
-            lattice=lattice,
-            max_neighbors=max_neighbors,
+            lattice=neighbor_cell,
+            max_neighbors=None,
         )
 
-    source, target, shifts = filter_max_neighbors(*edges, max_neighbors=max_neighbors)
+    # max_neighbors is retained in model/config interfaces for compatibility,
+    # but neighbor truncation is intentionally disabled.
+    # source, target, shifts = filter_max_neighbors(
+    #     *edges, max_neighbors=max_neighbors
+    # )
+    source, target, shifts = edges[:3]
 
     real_self_loop = source == target
     real_self_loop &= np.all(shifts == 0, axis=1)
@@ -274,9 +280,6 @@ def get_neighborhood(
     edge_shifts = shifts[keep_edge]
     edge_index = np.stack((source, target))
 
-    if lattice is None:
-        lattice = np.zeros((3, 3), dtype=positions.dtype)
- 
     return edge_index, edge_shifts, pbc, lattice
 
 
@@ -287,24 +290,12 @@ def get_neighborhood_for_calculator(
     lattice: Optional[np.ndarray] = None,  # [3, 3]
     max_neighbors: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
-
-    edges = neighbour_list(
-        quantities="ijSd",
-        pbc=pbc,
-        cell=lattice,
+    edge_index, edge_shifts, _, _ = get_neighborhood(
         positions=positions,
         cutoff=cutoff,
+        pbc=pbc,
+        lattice=lattice,
+        max_neighbors=max_neighbors,
+        backend="matscipy",
     )
-    source, target, shifts = filter_max_neighbors(*edges, max_neighbors=max_neighbors)
-
-    real_self_loop = source == target
-    real_self_loop &= np.all(shifts == 0, axis=1)
-    keep_edge = ~real_self_loop
-
-    source = source[keep_edge]
-    target = target[keep_edge]
-
-    edge_shifts = shifts[keep_edge]
-    edge_index = np.stack((source, target))
-
     return edge_index, edge_shifts

@@ -34,7 +34,7 @@ Example
         _target_: tace.models.TensorModel # [TensorModel]
 
         cutoff: 6.0 # (float), recommend 6.0
-        max_neighbors: null # (null, int) # in test, not for users
+        max_neighbors: null # retained for model compatibility; neighbor filtering is disabled
         atomic_numbers: null # (null, list), null = read from dataset.
         
         fidelity:

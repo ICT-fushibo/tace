@@ -29,7 +29,7 @@ Example
     valid_ratio: 0.1 # auto split from train file if valid file is null, The priority order is:  no_valid_set > valid_file > valid_from_index > ``valid_ratio.
     valid_from_index: false # split train and val from train.index and valid.index in current directory
     no_valid_set: false # The prerequisite for enabling this is that you are using a learning rate scheduler that does not depend on the validation set.
-    neighborlist_backend: matscipy # [ase, vesin, matscipy, nvidia] recommend matscipy
+    neighborlist_backend: matscipy # [ase, matscipy, vesin, alchemiops] recommend matscipy
     storage_mode: memory # [memory, lmdb], if your dataset is large (> 100w), the recommended approach is to use lmdb, as this avoids repeatedly constructing the graph.  
     shard_dirs: # if lmdb model, specify a list of path where you save you graph
       - graphCache
@@ -83,4 +83,3 @@ Example
       num_workers: 2 # If the batch size is large, you need to set up multiple workers
 
     test_dataloader: ${dataset.valid_dataloader}
-

@@ -48,7 +48,7 @@ class TACEAseCalc(Calculator):
         Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
         If you want to use this parameter, you must provide all the required physical quantities.
     neighborlist_backend: str
-        Support backend in one of [ase, matscipy, vesin, nvidia],
+        Support backend in one of [ase, matscipy, vesin, alchemiops],
         recommend matscipy.
     enable_oeq : bool, optional
         Whether to enable OpenEquivariance acceleration.

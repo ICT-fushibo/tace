@@ -41,7 +41,7 @@ def parse_args():
         "--nl_backend",
         type=str,
         default="matscipy",
-        choices=["ase", "vesin", "matscipy", "nvidia"],
+        choices=["ase", "matscipy", "vesin", "alchemiops"],
         help="nl_backend",
     )
     # parser.add_argument("-c", "--compile", type=int, default=0, help="Compile to jit-model, not support know")
