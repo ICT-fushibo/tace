@@ -12,17 +12,15 @@ model conversion, and deployment. Most scripts use ``argparse`` and support
 
 .. important::
 
-   Some scripts, including ``tace-train`` and ``tace-graph``, are launched
-   through Hydra. Hydra resolves the configuration before running the command,
-   so the corresponding YAML file must be available even when only requesting
-   ``-h``. Run these commands from the configuration directory and select the
-   YAML file with ``-cn`` when needed:
+   ``tace-train`` is launched through Hydra. Hydra resolves the configuration
+   before running the command, so the corresponding YAML file must be available
+   even when only requesting ``-h``. Run the command from the configuration
+   directory and select the YAML file with ``-cn`` when needed:
 
    .. code-block:: bash
 
       cd example/train
       tace-train -cn tace.yaml -h
-      tace-graph -cn tace.yaml -h
 
 Script Overview
 ---------------
@@ -45,8 +43,6 @@ Script Overview
      - Export eager or AOTI-backed LAMMPS ML-IAP artifacts
    * - ``tace-compile``
      - Alias for ``tace-export-eval``
-   * - ``tace-graph``
-     - Pre-build graph data using a training configuration
    * - ``tace-split``
      - Split an ASE-readable dataset into train/validation/test files
    * - ``tace-finetune``
@@ -154,22 +150,6 @@ For ``dataset.xyz``, the command writes ``dataset_train.xyz``,
 ``dataset_valid.xyz``, and ``dataset_test.xyz``. Each selected structure keeps
 its original position in ``atoms.info["tace_index"]``. The requested counts
 must not exceed the number of input structures.
-
-``tace-graph``
-~~~~~~~~~~~~~~
-
-Pre-building graphs is useful for very large datasets or datasets reused by
-multiple training runs:
-
-.. code-block:: bash
-
-   tace-graph -cn tace
-
-The command uses the dataset, element mapping, cutoff, neighbor-list backend,
-and other graph settings from the training configuration, then exits after
-graph construction. The input and graph-related settings must exactly match
-the later training run. When LMDB storage and the configured shard directories
-already contain graphs, ``tace-train`` reads them and skips reconstruction.
 
 Fine-Tuning and Model Conversion
 --------------------------------

@@ -44,10 +44,16 @@ placeholder classes, delayed failures, or fallback implementations. Interfaces
 whose own dependencies are installed, such as `tace.interface.ase`, remain
 independently importable.
 
+## Fully serialized model backends
+
+A model saved by serializing the complete `torch.nn.Module` preserves the
+backend and module implementations that were selected when the model was
+constructed. Acceleration options set while loading a full model therefore do not change its
+backend. This is intended behavior.
+
 ## Polarization
 
 Polarization training, loss calculation, and metrics require fully 3D periodic
 structures with an invertible `3 x 3` lattice matrix. All structures in a batch 
 that uses polarization supervision or metrics must
 satisfy this requirement.
-

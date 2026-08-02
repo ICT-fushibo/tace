@@ -137,7 +137,9 @@ Now, we support:
 
 - **Fair aselmdb** (``.aselmdb``) created with `ase.db <https://docs.ase-lib.org/ase/db/db.html>`_.  
 
-For large datasets, we support preprocessing and graph construction in advance using the ``tace-graph`` command :doc:`Scripts <scripts>`
+For large datasets, set ``dataset.storage_mode`` to ``lmdb``. ``tace-train``
+constructs and caches the graphs automatically, and later runs reuse compatible
+graphs from the configured shard directories.
 
 Output Files
 ------------
@@ -168,7 +170,6 @@ During training, **TACE** automatically generates several directories and files 
 .. note::
   Automatically reading the statistics is equivalent to running the dataloader once in advance, which may sometimes 
   cause subtle effects, though in most cases these can be ignored.
-
 
 
 

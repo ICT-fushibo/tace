@@ -9,30 +9,7 @@ is broken.
 
 ## Remaining issues
 
-### TACE-001: Acceleration options are ineffective for fully serialized modules
-
-Relevant code:
-
-- acceleration selection in `tace/lightning/torch_model.py:63-70`
-- full-module and already-loaded-model paths in the loading code
-
-Backend selection is applied while constructing a model from configuration. A
-fully serialized `torch.nn.Module`, or a module object already instantiated by
-the caller, bypasses that construction path. Requesting OEQ, CUE, EQT, or other
-construction-time acceleration therefore has no effect on these models.
-
-### TACE-002: Duplicate Hydra resolver registration prevents importing scripts together
-
-Relevant code:
-
-- resolver registration in `tace/scripts/train.py:40`
-- resolver registration in `tace/scripts/graph.py:39`
-- helper implementation in `tace/utils/hydra_resolver.py:30-41`
-
-Both scripts register the same resolver at import time. Importing them in one
-Python process raises a duplicate-registration `ValueError`.
-
-### TACE-003: Dataset split index arguments are declared but unused
+### TACE-001: Dataset split index arguments are declared but unused
 
 Relevant code:
 
@@ -42,7 +19,7 @@ Relevant code:
 The CLI declares three index-related options, but the implementation does not
 consume them. Providing these arguments does not affect the generated split.
 
-### TACE-004: Optimizer configuration mutates the stored configuration
+### TACE-002: Optimizer configuration mutates the stored configuration
 
 Relevant code:
 
