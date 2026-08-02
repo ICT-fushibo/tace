@@ -9,17 +9,7 @@ is broken.
 
 ## Remaining issues
 
-### TACE-001: Dataset split index arguments are declared but unused
-
-Relevant code:
-
-- argument declarations in `tace/scripts/split.py:35-37`
-- command implementation after `tace/scripts/split.py:41`
-
-The CLI declares three index-related options, but the implementation does not
-consume them. Providing these arguments does not affect the generated split.
-
-### TACE-002: Optimizer configuration mutates the stored configuration
+### TACE-001: Optimizer configuration mutates the stored configuration
 
 Relevant code:
 

@@ -32,9 +32,6 @@ def parse_args():
         help="Three non-negative integers: number of train, val, and test samples",
     )
     parser.add_argument("-s", "--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--train_index", type=str, default=None, help="Split from index file (index start from zero)")
-    parser.add_argument("--valid_index", type=str, default=None, help="Split from index file (index start from zero)")
-    parser.add_argument("--test_index", type=str, default=None, help="Split from index file (index start from zero)")
     return parser.parse_args()
 
 
