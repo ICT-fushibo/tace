@@ -319,7 +319,7 @@ PROPERTY = {
     "polarization": {
         "ase_name": "polarization",
         'type': 'float',
-        "scope": "per-atom",
+        "scope": "per-system",
         "rank": 1,
         "irreps": '1x1o',
         "abbreviation": "P",
@@ -917,4 +917,3 @@ fields = {f"compute_{k}": False for k, v in PROPERTY.items()}
 class ComputeFlag:
     __annotations__ = {k: bool for k in fields} 
     locals().update(fields)
-

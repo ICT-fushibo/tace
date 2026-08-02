@@ -307,5 +307,3 @@ def replace_module_recursively(
         else:
             replace_module_recursively(child, target_cls, factory)
     return model
-
-

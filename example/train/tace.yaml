@@ -433,8 +433,6 @@ model:
       charges:
         method: lagrangian # [lagrangian, uniform_distribution]
 
-      hessian:
-        num_samples: 2 # traing E/F/Hessian, for each graph, <= num_samples atoms's hessian will be used to train
 
 
     # Unless you are traing foundation model, never use dropout

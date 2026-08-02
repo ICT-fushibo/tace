@@ -17,7 +17,6 @@ from .utils import (
     compute_symmetric_displacement, 
     compute_atomic_virials_stresses,
     compute_hessians_vmap,
-    sample_force_jacobian,
 )
 from .lammps import Graph
 
@@ -164,6 +163,12 @@ class TensorModel(torch.nn.Module):
         first_derivative: Dict[str, torch.Tensor],
     ) -> Dict[str, torch.Tensor]:
 
+        if self.flags.compute_hessian and self.training:
+            raise RuntimeError(
+                "Hessian prediction is only supported in evaluation mode. "
+                "Training with a Hessian target is not supported."
+            )
+
         forces = first_derivative["forces"]
         polarization = first_derivative["polarization"]
         magnetization = first_derivative["magnetization"]
@@ -178,8 +183,6 @@ class TensorModel(torch.nn.Module):
         ALPHA = None
         CHI_M = None
         HESSIAN = None
-        jacs_per_graph = None
-        samples_per_graph = None
 
         BECList = []
         ALPHAList = []
@@ -194,8 +197,7 @@ class TensorModel(torch.nn.Module):
                     retain_graph=(
                         i != 2 
                         or self.training 
-                        or self.flags.compute_hessians 
-                        or self.flags.compute_magnetization
+                        or self.flags.compute_hessian
                     ),
                     create_graph=self.training,
                 )
@@ -244,23 +246,12 @@ class TensorModel(torch.nn.Module):
         #         CHI_MList.append(CHI_M)  # [B,3]
         #     CHI_M = torch.stack(CHI_MList, dim=1)  # [B,3,3]
 
-
+        # Sampled Hessian training is disabled, only allow eval.
         if self.flags.compute_hessian:
-            if self.training:
-                jacs_per_graph, samples_per_graph = sample_force_jacobian(
-                    forces, 
-                    graph.positions, 
-                    data["ptr"], 
-                    num_samples=self.readout_fn.special['hessian']['num_samples'],
-                    create_graph=self.training,
-                )
-            else:
-                HESSIAN = compute_hessians_vmap(forces, graph.positions)
+            HESSIAN = compute_hessians_vmap(forces, graph.positions)
 
         return {
             "hessian": HESSIAN,
-            "jacs_per_graph": jacs_per_graph,
-            "samples_per_graph": samples_per_graph,
             "conservative_polarizability": ALPHA,
             "born_effective_charges": BEC,
             "magnetic_susceptibility": CHI_M,
