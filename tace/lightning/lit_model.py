@@ -61,6 +61,7 @@ class LightningWrapperModel(L.LightningModule):
             statistics, 
         ):
         super().__init__()
+        cfg = copy.deepcopy(cfg)
         self.save_hyperparameters(ignore=["model"])
         self.cfg = cfg
         self.statistics = statistics 
@@ -363,125 +364,9 @@ class LightningWrapperModel(L.LightningModule):
     #                 group["weight_decay"] = 1e-8
 
 
-    # def configure_optimizers(self):
-
-    #     optimizer_cfg = self.cfg["optimizer"]
-
-    #     optimizer_target = optimizer_cfg.pop("_target_")
-    #     weight_decay = float(optimizer_cfg.pop("weight_decay", 0.0))
-
-    #     optimizer_cfg.pop("extra", None)
-    #     optimizer_cfg.pop("params", None)
-
-    #     decay_params = []
-    #     no_decay_params = []
-    #     no_decay_names = []
-
-    #     for module_name, module in self.named_modules():
-    #         for param_name, param in module.named_parameters(recurse=False):
-    #             if not param.requires_grad:
-    #                 continue
-
-    #             full_name = f"{module_name}.{param_name}" if module_name else param_name
-
-    #             if (
-    #                 param_name.endswith("bias")
-    #                 or "_readout" in full_name
-    #                 or "_readouts" in full_name
-    #                 or ".node_embedding." in full_name
-    #                 or ".source_embedding." in full_name
-    #                 or ".target_embedding." in full_name
-    #                 or ".uie." in full_name
-    #                 or ".uee." in full_name
-    #                 or ".embedding." in full_name
-    #                 or ".router." in full_name
-    #                 or ".radial_basis" in full_name
-    #                 or isinstance(module, torch.nn.LayerNorm)
-    #                 or isinstance(module, torch.nn.RMSNorm)
-    #                 or isinstance(module, torch.nn.Embedding)
-    #             ):
-    #                 no_decay_params.append(param)
-    #                 no_decay_names.append(full_name)
-    #             else:
-    #                 decay_params.append(param)
-
-
-    #     if weight_decay > 0 and len(no_decay_names) > 0:
-    #         logging.debug("Parameters excluded from weight decay:")
-    #         for name in no_decay_names:
-    #             logging.debug(f"  {name}")
-    #     else:
-    #         logging.debug("All parameters use same weight decay")
-
-
-    #     decay_ids = set(map(id, decay_params))
-    #     no_decay_ids = set(map(id, no_decay_params))
-    #     overlap = decay_ids.intersection(no_decay_ids)
-    #     if len(overlap) > 0:
-    #         raise RuntimeError("Some parameters appear in both decay and no_decay groups")
-
-    #     param_groups = [
-    #         {"params": decay_params, "weight_decay": weight_decay},
-    #         {"params": no_decay_params, "weight_decay": 0.0},
-    #     ]
-
-    #     module_path, class_name = optimizer_target.rsplit(".", 1)
-    #     module = importlib.import_module(module_path)
-    #     OptimizerClass = getattr(module, class_name)
-
-    #     optimizer = OptimizerClass(
-    #         params=param_groups,
-    #         **optimizer_cfg,
-    #     )
-
-    #     if "scheduler" not in self.cfg:
-    #         return {"optimizer": optimizer}
-
-
-    #     scheduler_cfg = self.cfg["scheduler"]
-
-    #     scheduler_target = scheduler_cfg.pop("_target_")
-
-    #     scheduler_extra = scheduler_cfg.pop("extra", {})
-    #     scheduler_cfg.pop("optimizer", None)
-
-    #     monitor = scheduler_extra.get("monitor", "val/loss")
-    #     interval = scheduler_extra.get("interval", "epoch")
-    #     frequency = scheduler_extra.get("frequency", 1)
-
-    #     module_path, class_name = scheduler_target.rsplit(".", 1)
-    #     module = importlib.import_module(module_path)
-    #     SchedulerClass = getattr(module, class_name)
-
-    #     scheduler = SchedulerClass(
-    #         optimizer=optimizer,
-    #         **scheduler_cfg,
-    #     )
-
-    #     if getattr(self, "no_valid_set", False):
-    #         return {
-    #             "optimizer": optimizer,
-    #             "lr_scheduler": {
-    #                 "scheduler": scheduler,
-    #                 "interval": interval,
-    #                 "frequency": frequency,
-    #             },
-    #         }
-    #     else:
-    #         return {
-    #             "optimizer": optimizer,
-    #             "lr_scheduler": {
-    #                 "scheduler": scheduler,
-    #                 "monitor": monitor,
-    #                 "interval": interval,
-    #                 "frequency": frequency,
-    #             },
-    #         }
-        
-
     def configure_optimizers(self):
 
-        optimizer_cfg = self.cfg["optimizer"]
+        optimizer_cfg = copy.deepcopy(self.cfg["optimizer"])
 
         optimizer_target = optimizer_cfg.pop("_target_")
         weight_decay = float(optimizer_cfg.pop("weight_decay", 0.0))
@@ -564,7 +449,7 @@ class LightningWrapperModel(L.LightningModule):
             return {"optimizer": optimizer}
 
 
-        scheduler_cfg = self.cfg["scheduler"]
+        scheduler_cfg = copy.deepcopy(self.cfg["scheduler"])
 
         scheduler_target = scheduler_cfg.pop("_target_")
 
