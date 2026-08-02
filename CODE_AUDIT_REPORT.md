@@ -16,11 +16,9 @@ move after subsequent edits.
 
 ## 2. Executive summary
 
-The audit found two high-priority correctness or data-integrity issues:
+The audit found one high-priority data-integrity issue:
 
-1. Dependencies between derived external-field targets are not validated when
-   the model is constructed.
-2. Dataset readers catch broad exceptions and return an empty list, which can
+1. Dataset readers catch broad exceptions and return an empty list, which can
    silently drop entire input files. The `fair_aselmdb` reader also mishandles
    scalar metadata.
 
@@ -58,24 +56,7 @@ Limitations:
 
 ## 5. Findings
 
-### TACE-001: External-field derivative outputs are not connected end to end
-
-**Severity:** P1 / High  
-**Status:** Confirmed
-
-#### TACE-001A: Derived-property prerequisites are not validated
-
-Some derivative targets require energy, electric field, polarization, or a
-specific differentiable input. The current `must_be_with` metadata primarily
-affects data reading and does not guarantee that model targets and readouts
-contain the required upstream quantity.
-
-Recommended correction:
-
-- Validate the complete requested-property dependency graph during model/config
-  construction and fail with a targeted message before training starts.
-
-### TACE-002: Reader failures can silently remove input data
+### TACE-001: Reader failures can silently remove input data
 
 **Severity:** P1 / High  
 **Status:** Confirmed
@@ -107,7 +88,7 @@ Recommended correction:
 - Add tests for a corrupt file, scalar metadata, per-atom metadata, and a mixed
   multi-file input.
 
-### TACE-003: AOTI dynamic-shape constraints exclude valid small graphs
+### TACE-002: AOTI dynamic-shape constraints exclude valid small graphs
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by export-contract inspection; full CUDA reproduction pending
@@ -142,7 +123,7 @@ Recommended correction:
   molecule, and differently sized structures loaded from the same sample-free
   PT2 package.
 
-### TACE-004: TorchSim adapter is not safely optional and can retain tensors on the wrong device
+### TACE-003: TorchSim adapter is not safely optional and can retain tensors on the wrong device
 
 **Severity:** P2 / Medium  
 **Status:** Optional-import failure confirmed; device issue confirmed by inspection
@@ -172,7 +153,7 @@ Recommended correction:
 - Test import without the optional extra and inference with CPU-created metadata
   on a CUDA model.
 
-### TACE-005: CUE+AOTI export metadata can disagree with the backend actually used
+### TACE-004: CUE+AOTI export metadata can disagree with the backend actually used
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed code inconsistency; package-loading impact needs CUDA test
@@ -197,7 +178,7 @@ Recommended correction:
 - Add an export/load test for every supported backend combination in a fresh
   Python process.
 
-### TACE-006: Acceleration environment setup does not normalize values to strings
+### TACE-005: Acceleration environment setup does not normalize values to strings
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by reproduction
@@ -217,7 +198,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-007: `allow_unused=True` does not protect disconnected derivatives
+### TACE-006: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -243,7 +224,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-008: Acceleration options are silently ineffective for fully serialized modules
+### TACE-007: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -265,7 +246,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-009: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-008: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -287,7 +268,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-010: Dataset split index arguments are declared but unused
+### TACE-009: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -306,7 +287,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-011: Optimizer configuration mutates the stored configuration
+### TACE-010: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -333,7 +314,6 @@ Recommended correction:
 ### Phase 1: Protect physical correctness and data integrity
 
 1. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
-2. Validate the external-field derivative property graph.
 
 ### Phase 2: Stabilize deployment interfaces
 
@@ -377,10 +357,9 @@ memory, not only forward outputs.
 
 ## 8. Conclusion
 
-The most urgent remaining risks are silent loss of training data and incomplete
-derivative or Hessian workflows. Those interfaces should be made internally
-consistent so every advertised target has a complete path from dataset
-specification through model output, loss, metric, evaluation, and export.
+The most urgent remaining risk is silent loss of training data. Dataset readers
+should make failures explicit so training cannot continue with an unintentionally
+incomplete dataset.
 
 No source code, configuration, or test file was modified as part of producing
 this report.
