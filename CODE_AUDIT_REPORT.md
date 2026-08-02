@@ -16,18 +16,16 @@ move after subsequent edits.
 
 ## 2. Executive summary
 
-The audit found five high-priority correctness or data-integrity issues:
+The audit found four high-priority correctness or data-integrity issues:
 
 1. The default `matscipy` neighbor-list path can override explicit PBC settings
    and fails for cell-less nonperiodic structures.
 2. Several external-field derivative targets are not wired end to end; in
    particular, conservative dipoles, polarizability, and Born effective charges
    can fail during training or evaluation.
-3. An interrupted LMDB conversion can be mistaken for a complete cache, causing
-   later training to silently use only part of the dataset.
-4. Hessian training is exposed in configuration but does not have a complete
+3. Hessian training is exposed in configuration but does not have a complete
    loss, metric, batching, and evaluation path.
-5. Dataset readers catch broad exceptions and return an empty list, which can
+4. Dataset readers catch broad exceptions and return an empty list, which can
    silently drop entire input files. The `fair_aselmdb` reader also mishandles
    scalar metadata.
 
@@ -59,9 +57,6 @@ Limitations:
 
 - A complete CUDA/Triton/AOTI compilation and execution matrix was not run in
   this audit because GPU access was unavailable inside the sandbox.
-- A multiprocessing LMDB integration test could not run because the sandbox
-  denied creation of the required process synchronization socket. The LMDB
-  findings below are based on deterministic control-flow analysis.
 - Multi-node and LAMMPS runtime behavior was not retested in this audit.
 
 ## 4. Severity convention
@@ -201,54 +196,7 @@ Recommended correction:
 - Validate the complete requested-property dependency graph during model/config
   construction and fail with a targeted message before training starts.
 
-### TACE-003: Partial LMDB caches can be accepted as complete datasets
-
-**Severity:** P1 / High  
-**Status:** Confirmed by control-flow analysis
-
-Relevant code:
-
-- `tace/dataset/datamodule.py:435-451`
-- `tace/dataset/datamodule.py:454-465`
-- `tace/dataset/datamodule.py:247-264`
-- `tace/dataset/datamodule.py:286-344`
-
-The cache-existence check treats a stage as available when at least one shard is
-present. `create_graphs()` then returns those existing shards immediately.
-Because shards are finalized independently, interruption after the first shard
-leaves a directory that looks valid on the next run.
-
-The next training run can therefore skip raw-data conversion and silently train
-on only the structures contained in the completed shards.
-
-Potential consequences:
-
-- Silent dataset truncation after job preemption, OOM, node failure, or manual
-  interruption.
-- Different data volume between otherwise identical reruns.
-- Incorrect statistics if they were computed from a different/full source set.
-
-Recommended correction:
-
-1. Write shards into a temporary stage directory.
-2. Record expected shard count, structure count, source files, and conversion
-   parameters in a completion manifest.
-3. Publish the completed cache atomically only after every shard is closed and
-   validated.
-4. Treat a cache without a valid completion marker as incomplete and rebuild or
-   report it explicitly.
-5. Add an interruption test that creates only the first shard and verifies that
-   the next run does not accept it.
-
-Related ordering issue:
-
-When several LMDB directories are supplied, path collection groups shards by
-directory, while creation distributes records round-robin across shards. This
-can produce an order such as shard `0, 2, 1, 3` instead of the original global
-sequence. If deterministic ordering matters for reproducibility, shard metadata
-should include and restore the global shard index.
-
-### TACE-004: Hessian training and evaluation are incomplete
+### TACE-003: Hessian training and evaluation are incomplete
 
 **Severity:** P1 / High  
 **Status:** Confirmed by code and registry inspection
@@ -284,7 +232,7 @@ Recommended correction:
 6. Until complete, reject Hessian training early instead of failing later or
    training without the requested target.
 
-### TACE-005: Reader failures can silently remove input data
+### TACE-004: Reader failures can silently remove input data
 
 **Severity:** P1 / High  
 **Status:** Confirmed
@@ -316,7 +264,7 @@ Recommended correction:
 - Add tests for a corrupt file, scalar metadata, per-atom metadata, and a mixed
   multi-file input.
 
-### TACE-006: AOTI dynamic-shape constraints exclude valid small graphs
+### TACE-005: AOTI dynamic-shape constraints exclude valid small graphs
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by export-contract inspection; full CUDA reproduction pending
@@ -351,7 +299,7 @@ Recommended correction:
   molecule, and differently sized structures loaded from the same sample-free
   PT2 package.
 
-### TACE-007: TorchSim adapter is not safely optional and can retain tensors on the wrong device
+### TACE-006: TorchSim adapter is not safely optional and can retain tensors on the wrong device
 
 **Severity:** P2 / Medium  
 **Status:** Optional-import failure confirmed; device issue confirmed by inspection
@@ -381,7 +329,7 @@ Recommended correction:
 - Test import without the optional extra and inference with CPU-created metadata
   on a CUDA model.
 
-### TACE-008: CUE+AOTI export metadata can disagree with the backend actually used
+### TACE-007: CUE+AOTI export metadata can disagree with the backend actually used
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed code inconsistency; package-loading impact needs CUDA test
@@ -406,7 +354,7 @@ Recommended correction:
 - Add an export/load test for every supported backend combination in a fresh
   Python process.
 
-### TACE-009: Acceleration environment setup does not normalize values to strings
+### TACE-008: Acceleration environment setup does not normalize values to strings
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by reproduction
@@ -426,7 +374,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-010: Polarization metrics ignore missing-label weights
+### TACE-009: Polarization metrics ignore missing-label weights
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by inspection
@@ -452,7 +400,7 @@ Recommended correction:
 - Define how molecular/nonperiodic samples are treated.
 - Add a mixed labeled/unlabeled batch test and a nonperiodic-cell test.
 
-### TACE-011: `allow_unused=True` does not protect disconnected derivatives
+### TACE-010: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -478,7 +426,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-012: Acceleration options are silently ineffective for fully serialized modules
+### TACE-011: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -500,7 +448,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-013: Test isolation and coverage do not reliably validate acceleration behavior
+### TACE-012: Test isolation and coverage do not reliably validate acceleration behavior
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed
@@ -533,7 +481,7 @@ Recommended correction:
 - Add numerical forward/force-gradient parity and peak-memory assertions for
   fused backends.
 
-### TACE-014: Global SO(2)/SO(3) tests have drifted from the production API
+### TACE-013: Global SO(2)/SO(3) tests have drifted from the production API
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by pytest
@@ -560,7 +508,7 @@ Recommended correction:
   commented.
 - Add explicit O(3) inversion and magnetic/pseudovector transformation tests.
 
-### TACE-015: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-014: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -582,7 +530,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-016: Dataset split index arguments are declared but unused
+### TACE-015: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -601,7 +549,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-017: Optimizer configuration mutates the stored configuration
+### TACE-016: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -629,9 +577,8 @@ Recommended correction:
 
 1. Fix neighbor-list cell/PBC handling.
 2. Add strict reader behavior and correct `fair_aselmdb` metadata placement.
-3. Add an atomic LMDB completion protocol.
-4. Either complete Hessian support or reject it early.
-5. Repair and validate the external-field derivative property graph.
+3. Either complete Hessian support or reject it early.
+4. Repair and validate the external-field derivative property graph.
 
 ### Phase 2: Stabilize deployment interfaces
 
@@ -664,7 +611,6 @@ full scientific benchmark for every commit:
 | --- | --- |
 | Neighbor list | no cell/no PBC; cell/no PBC; partial PBC; full PBC |
 | Dataset readers | one valid file; one corrupt file; scalar metadata; per-atom metadata |
-| LMDB | complete cache; interrupted cache; two cache directories; two local ranks |
 | Derivatives | energy/forces/stress/virials; dipole; polarizability; BEC; disconnected output |
 | Multi-fidelity | one head missing labels; finite default scale/shift/atomic energies |
 | Parity | SO(3) rotations; inversion; polar vectors; axial vectors/magnetic forces |

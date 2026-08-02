@@ -2,7 +2,10 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-
+'''
+LMDB caches are assumed to be created without interruption; partial caches
+are unsupported.
+'''
 import gc
 import lmdb
 import logging
@@ -26,6 +29,7 @@ from .graph import from_atoms
 from .element import build_element_lookup, TorchElement
 from .read import tace_read_all_files
 from .quantity import KeySpecification
+
 
 
 class GraphDatasetLMDB(Dataset):
