@@ -15,6 +15,7 @@ from tace.dataset.graph import from_atoms
 from tace.dataset.quantity import KEYS, KeySpecification, update_keyspec_from_kwargs
 from tace.lightning import export_tace, load_tace
 from tace.models.compile import export_aotinductor
+from tace.utils.env import enable_acceleration
 
 
 ALLOWED_BACKEND = ["state_dict", "full_model", "aoti"]
@@ -133,6 +134,8 @@ def _build_sample_data(
 
 def main():
     args = parse_args()
+    if args.backend == "aoti":
+        enable_acceleration(enable_compile=True)
     model = load_tace(
         args.model,
         args.device,

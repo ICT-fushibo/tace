@@ -10,6 +10,7 @@ import torch
 
 from tace.lightning import load_tace
 from tace.models.compile import export_lammps_aotinductor
+from tace.utils.env import enable_acceleration
 
 
 ALLOWED_BACKEND = ["mliap", "aoti"]
@@ -70,6 +71,8 @@ def _default_aoti_package_path(model_path: str) -> str:
 
 def main():
     args = parse_args()
+    if args.backend == "aoti":
+        enable_acceleration(enable_compile=True)
     model = load_tace(
         args.model,
         args.device,
