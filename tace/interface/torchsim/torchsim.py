@@ -2,14 +2,10 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-"""Wrapper for TACE model in TorchSim.
 
-Based on https://github.com/TorchSim/torch-sim/blob/main/torch_sim/models
-"""
-
-from typing import Union
 from collections.abc import Callable
 from pathlib import Path
+from typing import Union
 
 
 import torch
@@ -17,10 +13,11 @@ try:
     import torch_sim as ts
     from torch_sim.models.interface import ModelInterface
     from torch_sim.neighbors import torchsim_nl
-    TORCH_SIM_AVAILABLE = True
 except ImportError as e:
-    TORCH_SIM_AVAILABLE = False
-    print(f"[warning] torch_sim import failed: {e}")
+    raise ImportError(
+        "The TACE TorchSim interface requires 'torch-sim-atomistic'. "
+        "Install it with `pip install torch-sim-atomistic`."
+    ) from e
 
 
 from tace.lightning import load_tace
@@ -58,7 +55,7 @@ class TACETorchSimCalc(ModelInterface):
         *,
         device: Union[torch.device, None] = None,
         dtype: torch.dtype = torch.float32,
-        neighbor_list_fn: Callable = torchsim_nl,
+        neighbor_list_fn: Union[Callable, None] = None,
         compute_forces: bool = True,
         compute_stress: bool = True,
         atomic_numbers: Union[torch.Tensor, None] = None,
@@ -105,8 +102,6 @@ class TACETorchSimCalc(ModelInterface):
                 operator. Defaults to False.
         """
         super().__init__()
-
-        assert TORCH_SIM_AVAILABLE, "Please install package torch-sim-atomistic !"
         enable_acceleration(
             enable_oeq=enable_oeq,
             enable_cue=enable_cue,
@@ -120,7 +115,9 @@ class TACETorchSimCalc(ModelInterface):
         )
         self._compute_forces = compute_forces
         self._compute_stress = compute_stress
-        self.neighbor_list_fn = neighbor_list_fn
+        self.neighbor_list_fn = (
+            torchsim_nl if neighbor_list_fn is None else neighbor_list_fn
+        )
         self._memory_scales_with = "n_atoms_x_density"
 
         # Load TACE model
@@ -156,12 +153,14 @@ class TACETorchSimCalc(ModelInterface):
         self.system_idx_in_init = system_idx is not None
 
         if atomic_numbers is not None:
-            self.atomic_numbers = atomic_numbers
-            self._setup_node_attrs(atomic_numbers)
+            self.atomic_numbers = atomic_numbers.to(
+                device=self.device, dtype=torch.int64
+            )
+            self._setup_node_attrs(self.atomic_numbers)
 
         if system_idx is not None:
-            self.system_idx = system_idx
-            self._setup_ptr(system_idx)
+            self.system_idx = system_idx.to(device=self.device, dtype=torch.int64)
+            self._setup_ptr(self.system_idx)
 
         if (
             atomic_numbers is not None
@@ -224,11 +223,15 @@ class TACETorchSimCalc(ModelInterface):
                     f"Expected {self.atomic_numbers.shape[0]} atoms, "
                     f"got {state.positions.shape[0]}."
                 )
-        elif not hasattr(self, "atomic_numbers") or not torch.equal(
-            state.atomic_numbers, self.atomic_numbers
-        ):
-            self._setup_node_attrs(state.atomic_numbers)
-            self.atomic_numbers = state.atomic_numbers
+        else:
+            atomic_numbers = state.atomic_numbers.to(
+                device=self.device, dtype=torch.int64
+            )
+            if not hasattr(self, "atomic_numbers") or not torch.equal(
+                atomic_numbers, self.atomic_numbers
+            ):
+                self._setup_node_attrs(atomic_numbers)
+                self.atomic_numbers = atomic_numbers
 
         if self.system_idx_in_init:
             if state.system_idx.shape[0] != self.system_idx.shape[0]:
@@ -236,18 +239,22 @@ class TACETorchSimCalc(ModelInterface):
                     f"Expected system_idx of length {self.system_idx.shape[0]}, "
                     f"got {state.system_idx.shape[0]}."
                 )
-        elif not hasattr(self, "system_idx") or not torch.equal(
-            state.system_idx, self.system_idx
-        ):
-            self._setup_ptr(state.system_idx)
-            self.system_idx = state.system_idx
+        else:
+            system_idx = state.system_idx.to(
+                device=self.device, dtype=torch.int64
+            )
+            if not hasattr(self, "system_idx") or not torch.equal(
+                system_idx, self.system_idx
+            ):
+                self._setup_ptr(system_idx)
+                self.system_idx = system_idx
 
         edge_index, mapping_system, unit_shifts = self.neighbor_list_fn(
             state.positions,
             state.row_vector_cell,
             state.pbc,
             self.r_max,
-            state.system_idx,
+            self.system_idx,
         )
         # shifts = ts.transforms.compute_cell_shifts(
         #     state.row_vector_cell, unit_shifts, mapping_system
@@ -256,12 +263,14 @@ class TACETorchSimCalc(ModelInterface):
         data_dict = dict(
             ptr=self.ptr,
             node_attrs=self.node_attrs,
-            batch=state.system_idx,
+            batch=self.system_idx,
             pbc=state.pbc,
             lattice=state.row_vector_cell,
             positions=state.positions,
             edge_index=edge_index,
             edge_shifts=unit_shifts,
+            # fidelity_idx=getattr(state, "fidelity_idx", None),
+            # total_charge=getattr(state, "total_charge", None),
             # initial_noncollinear_magmoms=getattr(state, "initial_noncollinear_magmoms", None),
         )
 

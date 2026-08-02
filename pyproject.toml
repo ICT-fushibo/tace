@@ -34,7 +34,7 @@ oeq = [
 ]
 
 torchsim = [
-    "torch-sim-atomistic==0.6.0",
+    "torch-sim-atomistic==0.6.1",
 ]
  
 cueq12 = [

@@ -20,9 +20,8 @@ The audit found no remaining high-priority correctness or data-integrity issues.
 
 The AOTI graph, ASE, TorchSim, and LAMMPS deployment paths were validated on
 CPU and CUDA. Dynamic single-system execution, actual custom-op dependency
-metadata, and PT2 archive compatibility were corrected. TorchSim's optional
-dependency handling remains a separate interface issue when `torch_sim` is
-absent.
+metadata, PT2 archive compatibility, and TorchSim's dependency and device
+handling were corrected.
 
 ## 3. Validation performed
 
@@ -51,6 +50,10 @@ NVIDIA RTX 4090 GPUs and with GPU visibility disabled for CPU deployment:
 - CUE+AOTI correctly recorded OEQ as the actual custom-op dependency after the
   scatter tensor products fell back to OEQ. Loading succeeded in a fresh
   process with all acceleration environment variables disabled.
+- Importing the TorchSim adapter without `torch-sim-atomistic` raised a clear
+  error with the installation command. CPU-created atomic numbers and system
+  indices were moved to CUDA before a real TACE-OAM-7M H2O forward pass and
+  one-step TorchSim MD run on the second RTX 4090.
 
 Limitations:
 
@@ -71,37 +74,7 @@ Limitations:
 
 ## 5. Findings
 
-### TACE-001: TorchSim adapter is not safely optional and can retain tensors on the wrong device
-
-**Severity:** P2 / Medium  
-**Status:** Optional-import failure confirmed; device issue confirmed by inspection
-
-Relevant code:
-
-- `tace/interface/torchsim.py:16-31`
-- `tace/interface/torchsim.py:61`
-- `tace/interface/torchsim.py:158-164`
-- `tace/interface/torchsim.py:187-196`
-- TorchSim optional dependency declaration in `pyproject.toml`
-
-The module catches `ImportError` when `torch_sim` is absent, but class creation
-immediately references undefined TorchSim symbols in its base class, defaults,
-and annotations. Importing the adapter in a base TACE installation therefore
-warns and then fails with `NameError`.
-
-When TorchSim is installed, constructor-provided `atomic_numbers` and
-`system_idx` are retained on their original device. A CUDA model can therefore
-combine CPU node metadata with CUDA positions and model parameters.
-
-Recommended correction:
-
-- Define the adapter only when TorchSim imports successfully, or expose a small
-  placeholder that raises a clear installation error on construction.
-- Move all retained tensors to `self.device` and normalize dtypes during setup.
-- Test import without the optional extra and inference with CPU-created metadata
-  on a CUDA model.
-
-### TACE-002: Acceleration environment setup does not normalize values to strings
+### TACE-001: Acceleration environment setup does not normalize values to strings
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed by reproduction
@@ -121,7 +94,7 @@ Recommended correction:
 - Reject ambiguous values with a configuration-path-aware message.
 - Test boolean, integer, string, missing, and `force=False` behavior.
 
-### TACE-003: `allow_unused=True` does not protect disconnected derivatives
+### TACE-002: `allow_unused=True` does not protect disconnected derivatives
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed with a disconnected-output reproduction
@@ -147,7 +120,7 @@ Recommended correction:
 - Keep eager and compile wrappers behaviorally identical.
 - Test a constant-energy dummy model in training and evaluation modes.
 
-### TACE-004: Acceleration options are silently ineffective for fully serialized modules
+### TACE-003: Acceleration options are silently ineffective for fully serialized modules
 
 **Severity:** P2 / Medium  
 **Status:** Confirmed behavior/design gap
@@ -169,7 +142,7 @@ Recommended correction:
 - Detect incompatible acceleration requests and fail or warn explicitly.
 - Prefer state-dict/config artifacts when backend substitution is expected.
 
-### TACE-005: Duplicate Hydra resolver registration prevents importing scripts together
+### TACE-004: Duplicate Hydra resolver registration prevents importing scripts together
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by module import scan
@@ -191,7 +164,7 @@ Recommended correction:
   or centralize one registration call.
 - Add an import-order test for all script modules.
 
-### TACE-006: Dataset split index arguments are declared but unused
+### TACE-005: Dataset split index arguments are declared but unused
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -210,7 +183,7 @@ Recommended correction:
 - Implement the documented behavior or remove the options until supported.
 - Add an assertion that custom indices change the output split.
 
-### TACE-007: Optimizer configuration mutates the stored configuration
+### TACE-006: Optimizer configuration mutates the stored configuration
 
 **Severity:** P3 / Low  
 **Status:** Confirmed by inspection
@@ -236,8 +209,7 @@ Recommended correction:
 
 ### Phase 1: Stabilize deployment interfaces
 
-1. Make TorchSim optional import and device movement robust.
-2. Define behavior for acceleration requests on full-model serialization.
+1. Define behavior for acceleration requests on full-model serialization.
 
 ### Phase 2: Restore validation confidence
 
@@ -275,6 +247,7 @@ memory, not only forward outputs.
 
 The resolved AOTI issues covered dynamic single-system constraints, CLI
 activation, actual custom-op dependency recording, PT2 archive layout, and
-default-device loading. The remaining findings concern optional interfaces,
-configuration handling, derivative boundary cases, and maintenance behavior
-rather than the tested AOTI deployment paths.
+default-device loading. TorchSim dependency errors and retained tensor devices
+were also corrected. The remaining findings concern configuration handling,
+derivative boundary cases, and maintenance behavior rather than the tested
+deployment paths.
