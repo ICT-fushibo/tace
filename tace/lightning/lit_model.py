@@ -518,6 +518,7 @@ class LightningWrapperModel(L.LightningModule):
                 target_property,
                 embedding_property,
             )
+            model = to_lora_model(cfg.get("finetune", {}), model)
         state_dict = {
             k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
         }

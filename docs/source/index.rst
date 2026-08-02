@@ -34,11 +34,11 @@ Currently, the officially supported properties include:
 - Dipole moment (conservative | direct)
 - Polarization (conservative, multi-value for PBC systems)
 - Polarizability (conservative | direct)
-- Born effective charges (conservative, under electric field or LES)  (LES predict only)
+- Born effective charges (conservative, under electric field)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
-- absolute final collinear magmoms
-- Noncollinear magnetic forces (O(3))
+- Absolute final collinear magmoms
+- Noncollinear magnetic forces (full O(3))
 
 For embedding property, we support:
 
@@ -46,8 +46,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial (non)collinear magmoms
-- magnetic field (O(3))
+- initial noncollinear magmoms (full O(3))
 
 
 Plugins
@@ -80,31 +79,30 @@ If you use TACE, please cite our papers:
 .. code-block:: bibtex
 
    @misc{xu2026spectralspatialtensoratomiccluster,
-         title={Spectral/Spatial Tensor Atomic Cluster Expansion with Universal Embeddings in Cartesian Space}, 
-         author={Zemin Xu and Wenbo Xie and P. Hu},
-         year={2026},
-         eprint={2509.14961},
-         archivePrefix={arXiv},
-         primaryClass={stat.ML},
-         url={https://arxiv.org/abs/2509.14961}, 
+      title={Spectral/Spatial Tensor Atomic Cluster Expansion with Universal Embeddings in Cartesian Space}, 
+      author={Zemin Xu and Wenbo Xie and P. Hu},
+      year={2026},
+      eprint={2509.14961},
+      archivePrefix={arXiv},
+      primaryClass={stat.ML},
+      url={https://arxiv.org/abs/2509.14961}, 
    }
 
    @misc{xu2026edgeclusterexpansionradial,
-         title={Edge Cluster Expansion with Radial Rotary Attention for Interatomic Potentials}, 
-         author={Zemin Xu and Wenbo Xie and P. Hu},
-         year={2026},
-         eprint={2607.10664},
-         archivePrefix={arXiv},
-         primaryClass={stat.ML},
-         url={https://arxiv.org/abs/2607.10664}, 
+      title={Edge Cluster Expansion with Radial Rotary Attention for Interatomic Potentials}, 
+      author={Zemin Xu and Wenbo Xie and P. Hu},
+      year={2026},
+      eprint={2607.10664},
+      archivePrefix={arXiv},
+      primaryClass={stat.ML},
+      url={https://arxiv.org/abs/2607.10664}, 
    }
 
 If you use cartnn, Cartesian-3j, cMACE, cNequIP, cAllegro, please cite our papers:
 
 .. code-block:: bibtex
 
-   @inproceedings{
-      xu2026a,
+   @inproceedings{xu2026a,
       title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials},
       author={Zemin Xu and Chenyu Wu and Wenbo Xie and Peijun Hu},
       booktitle={Forty-third International Conference on Machine Learning},

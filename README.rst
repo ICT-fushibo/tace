@@ -1,15 +1,6 @@
-.. Note
-.. ====
-
-.. The OMat24 series of RRA and ECE models will be released soon, and smaller models will also be added.
-.. TECE-OAM-RRA-1.0 is not the final version of OAM. As the author will be attending ICML 2026 in the coming days, 
-.. TACE v0.2.0 will not be officially updated for the next few days. 
-.. However, the current models are already available for use.
-.. Please do not use the fine-tuning feature until the official release of v0.2.0.
-
-.. image:: fig/logo.svg
-   :width: 100%
-   :align: center
+.. .. image:: fig/logo.svg
+..    :width: 100%
+..    :align: center
 
 Tensor Atomic/Edge Cluster Expansion (TACE/TECE)
 ================================================
@@ -18,16 +9,29 @@ TACE is designed with physical priors and strong inductive biases to enhance ext
 It performs Atomic Cluster Expansion and Edge Cluster Expansion based on spherical tensors 
 or irreducible Cartesian tensors, with an optional attention architecture.
 
+Cartesian Architecture
+----------------------
+
+.. image:: fig/arch.png
+   :width: 100%
+   :align: center
+
+Spherical/SO(2) Architecture
+----------------------------
+
+The architecture of the spherical model is largely the same as that of the Cartesian space. 
+For details on the SO(2) component, please refer to our paper and code.
+
 Docs
 ----
 
-https://tace.readthedocs.io/en/latest/index.html
+`TACE documentation <https://tace.readthedocs.io/en/latest/index.html>`_
 
 
 SOTA Foundation Model
 ---------------------
 
-https://github.com/xvzemin/tace-foundations
+`TACE Foundation Models <https://github.com/xvzemin/tace-foundations>`_
 
 
 Default Ranking on Matbench as of July 8, 2026
@@ -36,6 +40,23 @@ Default Ranking on Matbench as of July 8, 2026
    :width: 100%
    :align: center
 
+
+Install, Train and Tutorial
+---------------------------
+
+The docs contain a complete tutorial. 
+
+We also provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
+
+https://github.com/xvzemin/tace/tree/main/example
+
+
+.. code-block:: bash
+
+   # Minimal install and training example
+   pip install tace
+   cd example/train
+   tace-train -cn tace.yaml
 
 Fine-tuning
 -----------
@@ -46,24 +67,6 @@ Fine-tuning
 
 - ✅ LoRA.
 
-
-Tutorial and Train from scratch
--------------------------------
-The docs contain a complete tutorial. 
-
-We also provide complete input files and a series of example scripts, including ASE, TorchSim ..., at 
-
-https://github.com/xvzemin/tace/tree/main/example
-
-
-.. code-block:: bash
-
-   # Minimal training example
-   git clone https://github.com/xvzemin/tace.git
-   cd tace
-   pip install .
-   cd example/train
-   tace-train -cn tace.yaml
 
 Overview
 --------
@@ -79,10 +82,10 @@ Currently, the officially supported properties include:
 - Dipole moment (conservative | direct)
 - Polarization (conservative, multi-value for PBC systems)
 - Polarizability (conservative | direct)
-- Born effective charges (conservative, under electric field or LES)  (LES predict only)
+- Born effective charges (conservative, under electric field)
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
-- absolute final collinear magmoms
+- Absolute final collinear magmoms
 - Noncollinear magnetic forces (full O(3))
 
 For embedding property, we support:
@@ -91,8 +94,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial (non)collinear magmoms
-- magnetic field (full O(3))
+- initial noncollinear magmoms (full O(3))
 
 
 Plugins
@@ -148,8 +150,7 @@ If you use cartnn, Cartesian-3j, cMACE, cNequIP, cAllegro, please cite our paper
 
 .. code-block:: bibtex
 
-   @inproceedings{
-      xu2026a,
+   @inproceedings{xu2026a,
       title={A Cartesian-3j Framework for Machine Learning Interatomic Potentials},
       author={Zemin Xu and Chenyu Wu and Wenbo Xie and Peijun Hu},
       booktitle={Forty-third International Conference on Machine Learning},
