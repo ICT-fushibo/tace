@@ -21,6 +21,13 @@ def _edge_set(edge_index):
     return set(zip(edge_index[0].tolist(), edge_index[1].tolist()))
 
 
+def _shifted_edge_set(edge_index, shifts):
+    return {
+        (int(source), int(target), tuple(int(value) for value in shift))
+        for source, target, shift in zip(edge_index[0], edge_index[1], shifts)
+    }
+
+
 @pytest.mark.parametrize("backend", CPU_BACKENDS)
 def test_nonperiodic_cell_is_preserved(backend):
     positions = np.array([[0.0, 0.0, 0.0], [0.75, 0.0, 0.0]])
@@ -56,7 +63,7 @@ def test_cellless_nonperiodic_structure(backend):
     assert _edge_set(edge_index) == {(0, 1), (1, 0)}
 
 
-@pytest.mark.parametrize("backend", ["ase", "matscipy"])
+@pytest.mark.parametrize("backend", CPU_BACKENDS)
 def test_partial_pbc_is_preserved(backend):
     positions = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
     lattice = np.diag([3.0, 3.0, 0.0])
@@ -73,17 +80,49 @@ def test_partial_pbc_is_preserved(backend):
     np.testing.assert_array_equal(returned_lattice, lattice)
 
 
-def test_vesin_rejects_partial_pbc():
+@pytest.mark.parametrize(
+    ("pbc", "lattice", "positions", "cutoff"),
+    [
+        (
+            (True, False, False),
+            np.diag([4.0, 0.0, 0.0]),
+            np.array([[0.1, 0.9, 1.9], [3.9, 1.1, 2.1]]),
+            0.5,
+        ),
+        (
+            (True, True, False),
+            np.diag([4.0, 4.0, 0.0]),
+            np.array(
+                [[0.1, 0.1, 0.9], [3.9, 0.1, 1.1], [0.1, 3.9, 1.0]]
+            ),
+            0.5,
+        ),
+    ],
+)
+def test_vesin_partial_pbc_matches_matscipy(pbc, lattice, positions, cutoff):
     pytest.importorskip("vesin")
 
-    with pytest.raises(ValueError, match="vesin only support"):
-        get_neighborhood(
-            np.array([[0.0, 0.0, 0.0]]),
-            cutoff=1.5,
-            pbc=(True, True, False),
-            lattice=np.eye(3),
-            backend="vesin",
-        )
+    reference_index, reference_shifts, _, _ = get_neighborhood(
+        positions,
+        cutoff=cutoff,
+        pbc=pbc,
+        lattice=lattice,
+        backend="matscipy",
+    )
+    edge_index, shifts, returned_pbc, returned_lattice = get_neighborhood(
+        positions,
+        cutoff=cutoff,
+        pbc=pbc,
+        lattice=lattice,
+        backend="vesin",
+    )
+
+    assert returned_pbc == pbc
+    np.testing.assert_array_equal(returned_lattice, lattice)
+    assert np.all(shifts[:, np.logical_not(pbc)] == 0)
+    assert _shifted_edge_set(edge_index, shifts) == _shifted_edge_set(
+        reference_index, reference_shifts
+    )
 
 
 def test_periodic_structure_requires_cell():
