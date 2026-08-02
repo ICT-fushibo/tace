@@ -31,4 +31,3 @@ and `Hydra <https://hydra.cc/>`_.
    uspex.rst
    torchSim.rst
    scripts.rst
-   property.rst

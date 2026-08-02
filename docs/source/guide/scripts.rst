@@ -53,10 +53,6 @@ Script Overview
      - Update model statistics such as atomic energies, scale, and shift
    * - ``tace-average``
      - Average parameters from models with identical architectures
-   * - ``tace-copy``
-     - Copy shape-compatible parameters between two models
-   * - ``tace-modify``
-     - Inspect or override model properties in memory
    * - ``tace-clean``
      - Remove standard training outputs from the current directory
 
@@ -180,19 +176,6 @@ Merge trained LoRA parameters into the base model for inference or export:
 The output is ``lora-model.pt-merged_lora.pt``. The merged model no longer
 requires separate LoRA adapter parameters.
 
-``tace-copy``
-~~~~~~~~~~~~~
-
-Copy parameters shared by a source and destination architecture:
-
-.. code-block:: bash
-
-   tace-copy -m source.pt destination.pt
-
-Only parameters with matching names and shapes are copied. Destination-only or
-shape-incompatible parameters are preserved, and the result is written to
-``destination.pt-merged.pt``.
-
 Model Statistics and Averaging
 ------------------------------
 
@@ -228,19 +211,6 @@ remain disabled when averaging multiple time-adjacent checkpoints.
 
 Inspection and Maintenance
 --------------------------
-
-``tace-modify``
-~~~~~~~~~~~~~~~
-
-Load a model and override its requested inference properties in memory:
-
-.. code-block:: bash
-
-   tace-modify -m model.pt -t energy forces stress
-
-This command currently validates and prints the resulting property selection;
-it does not save a new model. Atomic-number reduction is reserved by the CLI
-but is not implemented yet.
 
 ``tace-clean``
 ~~~~~~~~~~~~~~
