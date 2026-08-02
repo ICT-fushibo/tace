@@ -55,7 +55,9 @@ TorchSim, LAMMPS, and other workflows in the
 .. code-block:: bash
 
    # Minimal install and training example
-   pip install tace
+   git clone https://github.com/xvzemin/tace
+   cd tace
+   pip install . # or pip install tace
    cd example/train
    tace-train -cn tace.yaml
 

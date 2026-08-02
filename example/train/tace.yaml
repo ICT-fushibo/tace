@@ -281,6 +281,7 @@ model:
       _target_: tace.models.TensorModel # [TensorModel]
 
     cutoff: 6.0 # (float), recommend 6.0
+    max_neighbors: null # always null, we disable max_neighbors
     atomic_numbers: null # (null, list), null = read from dataset.
     
     fidelity:
@@ -432,8 +433,6 @@ model:
     
       charges:
         method: lagrangian # [lagrangian, uniform_distribution]
-
-
 
     # Unless you are traing foundation model, never use dropout
     # This is designed for direct pre-training
