@@ -120,6 +120,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
         l1l2: Union[str, None] = None,
         l2l3: Union[str, None] = None,
         l3l1: Union[str, None] = None,
+        instructions: Union[list[tuple], None] = None,
     ) -> None:
         super().__init__()
 
@@ -127,15 +128,19 @@ class O3ScatterTensorProduct(torch.nn.Module):
         irreps_in2 = o3.Irreps(irreps_in2)
         irreps_out = o3.Irreps(irreps_out)
 
-        instructions, actual_irreps_out = generate_paths(
-            irreps_out=irreps_out,
-            irreps_in1=irreps_in1,
-            irreps_in2=irreps_in2,
-            l1l2=l1l2,
-            l2l3=l2l3,
-            l3l1=l3l1,
-            e3nn_mode="uvu",
-        )
+        explicit_instructions = instructions is not None
+        if instructions is None:
+            instructions, actual_irreps_out = generate_paths(
+                irreps_out=irreps_out,
+                irreps_in1=irreps_in1,
+                irreps_in2=irreps_in2,
+                l1l2=l1l2,
+                l2l3=l2l3,
+                l3l1=l3l1,
+                e3nn_mode="uvu",
+            )
+        else:
+            actual_irreps_out = irreps_out
 
         self.tp = o3.TensorProduct(
             irreps_in1,
@@ -176,7 +181,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 irreps_out=self.irreps_out,
                 instructions=self.instructions,
             )
-        elif self.use_cue:
+        elif self.use_cue and not explicit_instructions:
             from .._cue import e3nnCueScatterTensorProduct
 
             self.fused_tp = e3nnCueScatterTensorProduct(
@@ -186,6 +191,11 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 l1l2=l1l2,
                 l2l3=l2l3,
                 l3l1=l3l1,
+            )
+        elif self.use_cue:
+            logging.warning(
+                "CUE scatter tensor products do not support explicit instructions. "
+                "Falling back to e3nn for this tensor product."
             )
 
     def forward(
