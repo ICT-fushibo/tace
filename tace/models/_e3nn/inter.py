@@ -12,7 +12,7 @@ from tace.utils.torch_scatter import scatter_sum
 
 from ..layout import LayoutTransform
 from ..linear import e3nnLinear
-from ..mlp import FFN, ScaledSigmoid, ScaledSiLU
+from ..mlp import MLP, ScaledSigmoid, ScaledSiLU
 from .base import Interaction
 from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct
 from .layer_norm import get_normalization_layer
@@ -65,19 +65,19 @@ class CgtpInteraction(Interaction):
             bias=self.use_bias,
         )
 
-        self.edge_info = FFN[self.edge_info_type](
+        self.edge_info = MLP(
             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
             bias=self.radial_bias,
             layer_norm=self.radial_layer_norm,
-            act=self.radial_act,
+            act="silu",
         )
 
         if self.scatter_norm == "density" or self.scatter_norm == "no_cutoff_density":
-            self.edge_density = FFN[self.edge_info_type](
+            self.edge_density = MLP(
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
                 layer_norm=self.radial_layer_norm,
-                act=self.radial_act,
+                act="silu",
             )  # From MACE
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
@@ -290,20 +290,20 @@ class uuSO2Interaction(Interaction):
             bias=self.use_bias,
         )
 
-        self.edge_info = FFN[self.edge_info_type](
+        self.edge_info = MLP(
             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
             bias=self.radial_bias,
             layer_norm=self.radial_layer_norm,
-            act=self.radial_act,
+            act="silu",
         )
 
         self.apply_density_cutoff = True
         if self.scatter_norm == "density":
-            self.edge_density = FFN[self.edge_info_type](
+            self.edge_density = MLP(
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
                 layer_norm=self.radial_layer_norm,
-                act=self.radial_act,
+                act="silu",
             )  # From MACE
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
@@ -540,11 +540,11 @@ class uvSO2Interaction(Interaction):
             bias=self.use_bias,
         )
 
-        self.edge_info = FFN[self.edge_info_type](
+        self.edge_info = MLP(
             [self.edge_feats_channel] + self.radial_mlp + [self.rejector.weight_numel],
             bias=self.radial_bias,
             layer_norm=self.radial_layer_norm,
-            act=self.radial_act,
+            act="silu",
         )
 
         if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BB":

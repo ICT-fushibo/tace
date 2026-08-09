@@ -165,7 +165,6 @@ class Representation(torch.nn.Module):
             "l1l2": atomic_basis["l1l2"],
             "scatter_norm": atomic_basis["scatter_norm"],
             "correlation": product_basis["correlation"],
-            "edge_info_type": atomic_basis["edge_info_type"],
             "resnet_type": resnet["type"],
             "resnet_linear_type": resnet["linear_type"],
             "use_first_resnet": resnet["use_first_resnet"],

@@ -137,7 +137,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         bias: bool = True,
         nonlinear: Union[str, None] = None,
         edge_nonlinear: Union[str, None] = None,
-        edge_info_type: str = "mlp",
         resnet_type: str = "BB",
         resnet_linear_type: str = "aware",
         use_first_resnet: bool = False,
@@ -189,11 +188,6 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.nonlinear_act = None
         if nonlinear is not None:
             self.nonlinear_act, self.nonlinear_type = nonlinear.split("_")
-        self.edge_info_type = edge_info_type
-        if self.edge_info_type == "mlp":
-            self.radial_act = "silu"
-        else:
-            self.radial_act = "sigmoid"
         self.use_temperature = use_temperature
         self.gate_m0 = gate_m0
         self.use_radial_phase = use_radial_phase

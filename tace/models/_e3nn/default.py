@@ -48,7 +48,6 @@ DEFAULT_MODEL_CONFIG = {
     "angular_basis": {},
     "atomic_basis": {
         "type": "cgtp",
-        "edge_info_type": "mlp",
         "scatter_norm": "avg_num_neighbors",
         "nonlinear": "sigmoid_gate",
         "edge_nonlinear": "so2_sigmoid_gate",
