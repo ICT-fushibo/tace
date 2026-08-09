@@ -85,19 +85,20 @@ class _CouplingPath:
 
 
 class O3Wigner6jScatterTensorProduct(torch.nn.Module):
-    r"""Recouple a position-first magnetic tensor product to magnetic-first.
+    r"""
 
-    The reference tree is ``(node x edge_attrs) x magnetic_moments``. The
-    executed tree is ``(node x magnetic_moments) x edge_attrs``. Every complete
-    reference path remains separate, and all allowed magnetic-first
+    Take node_attrs_beyond_element = magnetic_moments as example:
+
+    The reference tree is ``(node_feats x edge_attrs) x magnetic_moments``. The
+    executed tree is ``(node_feats x magnetic_moments) x edge_attrs``. Every complete
+    reference path remains separate, and all allowed magnetic first
     intermediate irreps are summed with fixed Wigner-6j coefficients. Therefore
     the two trees are equal for arbitrary per-edge, per-path radial and magnetic
     weights.
 
-    The magnetic input is the axial-vector irrep ``1e``. Tensor products use
-    e3nn's default component and element normalization. The registered
-    recoupling coefficients include the normalization ratio between the two
-    coupling trees.
+    Tensor products use e3nn's default component and element normalization. 
+    The registered recoupling coefficients include the normalization ratio 
+    between the two coupling trees.
     """
 
     def __init__(
@@ -153,7 +154,7 @@ class O3Wigner6jScatterTensorProduct(torch.nn.Module):
                         weight_offset += multiplicity
 
         if not paths:
-            raise ValueError("No magnetic Wigner-6j coupling paths were generated")
+            raise ValueError("No Wigner-6j coupling paths were generated")
 
         self.irreps_out = o3.Irreps(expanded_output)
 
