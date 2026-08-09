@@ -4,7 +4,7 @@
 # ################################################################################
 # # TODO
 
-# import abc 
+# import abc
 # from typing import Union
 
 
@@ -19,7 +19,7 @@
 #         super().__init__()
 
 #     def forward(
-#             self, 
+#             self,
 #             node_feats: torch.Tensor,
 #             edge_feats: torch.Tensor,
 #             edge_index: torch.Tensor,
@@ -28,7 +28,7 @@
 #             beta: torch.Tensor,
 #             fn: torch.nn.Module,
 #         ):
-            
+
 #             density = torch.tanh(fn(edge_feats) ** 2)
 #             if cutoff is not None and self.apply_density_cutoff:
 #                 density = density * cutoff
@@ -40,7 +40,7 @@
 
 #     def __repr__(self) -> str:
 #         return f"{self.__class__.__name__}
-    
+
 
 # def get_scatter_norm_layer(
 #         scatter_norm_type: str,
@@ -66,7 +66,7 @@
 #             'beta': beta,
 #         }
 
-#     if scatter_norm_type == 'no_cutoff_density': 
+#     if scatter_norm_type == 'no_cutoff_density':
 #         edge_density = FFN[edge_info_type](
 #             [edge_feats_channel, 64, 1],
 #             bias=radial_bias,

@@ -5,13 +5,11 @@
 
 from typing import Union
 
-
 import torch
 from e3nn.nn import Activation
 
-
-from .base import EdgeEmbedding, EdgeUpdate
 from ..linear import e3nnLinear
+from .base import EdgeEmbedding, EdgeUpdate
 
 
 class IdentityEdgeEmbedding(EdgeEmbedding):
@@ -33,7 +31,7 @@ class IdentityEdgeEmbedding(EdgeEmbedding):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         return edge_feats
 
 
@@ -48,7 +46,7 @@ class LinearEdgeEmbedding(EdgeEmbedding):
     a low-dimensional radial representation may become a bottleneck and limit
     the expressiveness of edge features.
     """
-    
+
     def _setup(self) -> None:
 
         self.out_dim = self.num_channel
@@ -67,7 +65,7 @@ class LinearEdgeEmbedding(EdgeEmbedding):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         return self.radial_proj(edge_feats)
 
 
@@ -104,7 +102,7 @@ class NonLinearEdgeEmbedding(EdgeEmbedding):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         return self.act1(self.radial_proj(edge_feats))
 
 
@@ -158,9 +156,9 @@ class NonLinearEdgeEmbedding(EdgeEmbedding):
 #         edge_index: torch.Tensor,
 #         cutoff: Union[torch.Tensor, None],
 #     ) -> torch.Tensor:
-        
+
 #         assert cutoff is not None, "Please set radial_basis.apply_cutoff = False"
-        
+
 #         x_j = self.source_embedding(node_attrs)[edge_index[0]]
 #         x_i = self.target_embedding(node_attrs)[edge_index[1]]
 #         edge_feats = self.radial_proj(edge_feats)
@@ -187,9 +185,9 @@ class IdentityEdgeUpdate(EdgeUpdate):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         return edge_feats
-    
+
 
 class ElementEdgeUpdate(EdgeUpdate):
     """
@@ -205,13 +203,13 @@ class ElementEdgeUpdate(EdgeUpdate):
         self.out_dim = self.edge_embedding_channel + self.num_channel * 2
 
         self.source_embedding = e3nnLinear(
-            f'{self.num_elements}x0e',
-            f'{self.num_channel}x0e',
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
             bias=self.use_bias,
         )
         self.target_embedding = e3nnLinear(
-            f'{self.num_elements}x0e',
-            f'{self.num_channel}x0e',
+            f"{self.num_elements}x0e",
+            f"{self.num_channel}x0e",
             bias=self.use_bias,
         )
         if isinstance(self.source_embedding.weight, torch.Tensor):
@@ -229,7 +227,7 @@ class ElementEdgeUpdate(EdgeUpdate):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         edge_feats_list = [edge_feats]
         edge_feats_list.append(self.source_embedding(node_attrs[edge_index[0]]))
         edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))
@@ -252,7 +250,7 @@ class Element2EdgeUpdate(ElementEdgeUpdate):
         edge_index: torch.Tensor,
         cutoff: Union[torch.Tensor, None],
     ) -> torch.Tensor:
-        
+
         edge_feats_list = [edge_feats]
         edge_feats_list.append(self.target_embedding(node_attrs[edge_index[1]]))
         edge_feats_list.append(self.source_embedding(node_attrs[edge_index[0]]))
@@ -271,6 +269,3 @@ EDGE_UPDATE = {
     "element": ElementEdgeUpdate,
     "element2": Element2EdgeUpdate,
 }
-
-
-

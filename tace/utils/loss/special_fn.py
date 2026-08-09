@@ -5,16 +5,16 @@
 
 from typing import Dict
 
-
 import torch
-
 
 from .mse_fn import register_loss
 
 
 @register_loss
 def conditional_huber_forces(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     pred_forces = pred["forces"]
     label_forces = label["forces"]
@@ -49,7 +49,7 @@ def mse_direct_forces_curl(
     label: Dict[str, torch.Tensor],
     huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    
+
     num_pairs = 1
     forces = pred["direct_forces"]
     positions = label["positions"]
@@ -87,5 +87,3 @@ def mse_direct_forces_curl(
         losses.append(curl_ab**2)
 
     return torch.mean(torch.stack(losses))
-
-

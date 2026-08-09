@@ -4,20 +4,18 @@
 ################################################################################
 
 from copy import deepcopy
-from typing import Optional, List
-
+from typing import List, Optional
 
 import ase
 import numpy as np
 import torch
 from torch_geometric.data import Data
 
-
 from .element import TorchElement
 from .neighbour_list import get_neighborhood
 from .quantity import (
-    KeySpecification,
     PROPERTY,
+    KeySpecification,
     get_need_property,
 )
 
@@ -100,24 +98,22 @@ def from_atoms(
         try:
             p = properties.get(name)
             if p is None:
-                if type_ == 'float':
+                if type_ == "float":
                     p = torch.tensor(
                         default_value_fn(num_atoms, type_),
                         dtype=torch.get_default_dtype(),
                     )
-                elif type_ == 'int':
+                elif type_ == "int":
                     p = torch.tensor(
                         np.round(default_value_fn(num_atoms, type_)),
                         dtype=torch.int64,
                     )
                 else:
-                    raise TypeError(
-                        f"Bug: Check {p}'s type in tace.dataset.quantity"
-                    )
+                    raise TypeError(f"Bug: Check {p}'s type in tace.dataset.quantity")
             else:
-                if type_ == 'float':
+                if type_ == "float":
                     p = torch.tensor(p, dtype=torch.get_default_dtype())
-                elif type_ == 'int':
+                elif type_ == "int":
                     p = torch.tensor(np.round(p), dtype=torch.int64)
                 else:
                     raise
@@ -134,25 +130,25 @@ def from_atoms(
             w = (
                 torch.tensor(
                     property_weights.get(name), dtype=torch.get_default_dtype()
-                ).view(
-                    1
-                )  # (1,)
+                ).view(1)  # (1,)
                 if property_weights.get(name) is not None
                 else torch.tensor(1.0, dtype=torch.get_default_dtype())  # ()
             )
             wDict.update({name: w})
         except Exception as e:
             raise RuntimeError(f"Failed to read property {name}") from e
-        
+
     data_dict = {
-        "entropy": to_tensor(atoms.info.get('entropy', 1.0)),
+        "entropy": to_tensor(atoms.info.get("entropy", 1.0)),
         "atomic_numbers": atomic_numbers,
         "lattice": lattice,
         "positions": to_tensor(positions),
         "node_attrs": onehot,
         "edge_index": torch.tensor(edge_index, dtype=torch.int64),
         "edge_shifts": to_tensor(edge_shifts),
-        "fidelity_idx": torch.tensor(atoms.info.get(keyspec.info_keys["fidelity_idx"], 0), dtype=torch.int64),
+        "fidelity_idx": torch.tensor(
+            atoms.info.get(keyspec.info_keys["fidelity_idx"], 0), dtype=torch.int64
+        ),
     }
 
     for name in need_property:

@@ -4,22 +4,22 @@
 ################################################################################
 
 from scipy.constants import (
-    pi,
-    e,
-    c,
-    Planck,
-    hbar,
-    Boltzmann,
-    epsilon_0,
     Avogadro,
+    Boltzmann,
+    Planck,
     R,
-    eV,
     angstrom,
-    femto,
-    pico,
-    nano,
     bar,
+    c,
     calorie,
+    e,
+    epsilon_0,
+    eV,
+    femto,
+    hbar,
+    nano,
+    pi,
+    pico,
 )
 
 kcalPerMol = 1000 * calorie / Avogadro

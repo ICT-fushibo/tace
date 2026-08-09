@@ -5,10 +5,7 @@
 
 import logging
 
-
-from lightning.pytorch.callbacks import Callback
-from lightning.pytorch.callbacks import TQDMProgressBar
-
+from lightning.pytorch.callbacks import Callback, TQDMProgressBar
 
 from .ema import ExponentialMovingAverage
 
@@ -36,7 +33,8 @@ class PrintMetricsCallback(Callback):
             logging.info(f"{name}: {value.item():.6f}")
         logging.info("")
         logging.info("")
-        
+
+
 # === EMA Callback ===
 class EMACallback(Callback):
     def __init__(self, decay: float = 0.99, use_num_updates: bool = True, device=None):
@@ -47,7 +45,7 @@ class EMACallback(Callback):
 
     def on_fit_start(self, trainer, pl_module):
         self.ema = ExponentialMovingAverage(
-            [p for p in pl_module.model.parameters()], # for freeze convenience
+            [p for p in pl_module.model.parameters()],  # for freeze convenience
             # [p for p in pl_module.model.parameters() if p.requires_grad],
             self.decay,
             self.use_num_updates,
@@ -99,7 +97,7 @@ class EMACallback(Callback):
 
 #     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
 #         super().on_train_batch_end(trainer, pl_module, outputs, batch, batch_idx)
-        
+
 #         if isinstance(outputs, dict) and "loss" in outputs:
 #             self._current_loss = outputs["loss"].item()
 
@@ -108,4 +106,3 @@ class EMACallback(Callback):
 
 #         if isinstance(outputs, dict) and "loss" in outputs:
 #             self._current_loss = outputs["loss"].item()
-

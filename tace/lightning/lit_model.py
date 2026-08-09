@@ -4,32 +4,31 @@
 ################################################################################
 
 import copy
-import logging
-from pathlib import Path
-from collections import Counter
-from typing import Optional, Dict, Any, Union
 import importlib
+import logging
+from collections import Counter
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
-
+import lightning as L
 import torch
 import torch.distributed as dist
-import lightning as L
-from torchmetrics import MetricCollection
 from omegaconf import OmegaConf
+from torchmetrics import MetricCollection
 
-
-from tace.utils.env import get_tace_apply_u_shift, get_tace_use_dens
-from tace.utils.metrics import build_metrics, update_metrics
-from tace.utils._global import DTYPE, DEVICE
-from tace.utils.utils import torch_default_dtype
-from tace.utils.loss.uncertainty import UncertaintyLoss
-from tace.dataset.quantity import get_target_property, get_embedding_property
+from tace.dataset.quantity import get_embedding_property, get_target_property
 from tace.models.adapter import TensorModel
-from .torch_model import create_model
-from .los_skip import LossSkipController
-from .lora import to_lora_model
-from .u_shift import apply_u_shift
+from tace.utils._global import DEVICE, DTYPE
+from tace.utils.env import get_tace_apply_u_shift, get_tace_use_dens
+from tace.utils.loss.uncertainty import UncertaintyLoss
+from tace.utils.metrics import build_metrics, update_metrics
+from tace.utils.utils import torch_default_dtype
+
 from ..utils.loss.dens import add_gaussian_noise_to_position
+from .lora import to_lora_model
+from .los_skip import LossSkipController
+from .torch_model import create_model
+from .u_shift import apply_u_shift
 
 
 def get_class_from_cfg(cfg):
@@ -53,35 +52,39 @@ def get_class_from_cfg(cfg):
 
 class LightningWrapperModel(L.LightningModule):
     def __init__(
-            self, 
-            cfg: Dict, 
-            model: torch.nn.Module,
-            target_property: list[str], 
-            embedding_property: list[str], 
-            statistics, 
-        ):
+        self,
+        cfg: Dict,
+        model: torch.nn.Module,
+        target_property: list[str],
+        embedding_property: list[str],
+        statistics,
+    ):
         super().__init__()
         cfg = copy.deepcopy(cfg)
         self.save_hyperparameters(ignore=["model"])
         self.cfg = cfg
-        self.statistics = statistics 
-        self.model = to_lora_model(cfg.get('finetune', {}), model)
+        self.statistics = statistics
+        self.model = to_lora_model(cfg.get("finetune", {}), model)
         # self.normalizers = copy.deepcopy(self.model.readout_fn.normalizers)
 
-        # === Loss === 
+        # === Loss ===
         loss_cls, loss_cfg = get_class_from_cfg(cfg["loss"])
-        self.loss_fn = loss_cls(**{k: v for k, v in loss_cfg.items() if k != '_target_'})
+        self.loss_fn = loss_cls(
+            **{k: v for k, v in loss_cfg.items() if k != "_target_"}
+        )
         self.loss_property = target_property
 
         # === Metric ===
         self._create_metrics("train")
         self._create_metrics("val")
-        synth_metric = cfg.get('synth_metric', None)
+        synth_metric = cfg.get("synth_metric", None)
         if synth_metric:
-            total = sum([v for k, v in synth_metric.items() if k != 'monitor_metric_name'])
+            total = sum(
+                [v for k, v in synth_metric.items() if k != "monitor_metric_name"]
+            )
             if total:
                 synth_metric = {
-                    k: (v / total if k != 'monitor_metric_name' else v)
+                    k: (v / total if k != "monitor_metric_name" else v)
                     for k, v in synth_metric.items()
                 }
         self.synth_metric = synth_metric
@@ -90,7 +93,7 @@ class LightningWrapperModel(L.LightningModule):
             self.num_test_sets = 0
         elif isinstance(test_sets, str):
             self.num_test_sets = 1
-            self._create_metrics(f"test_0")
+            self._create_metrics("test_0")
         else:
             self.num_test_sets = len(test_sets)
             for i in range(self.num_test_sets):
@@ -101,27 +104,26 @@ class LightningWrapperModel(L.LightningModule):
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
 
         self.skip_controller = None
-        if cfg['misc'].get('LossSkipController', {}).get('enable', False):
+        if cfg["misc"].get("LossSkipController", {}).get("enable", False):
             self.skip_controller = LossSkipController(
-                manual_threshold=cfg['misc']['LossSkipController']['manual_threshold'],
-                start_step=cfg['misc']['LossSkipController']['start_step'],
-                ema_window=cfg['misc']['LossSkipController']['ema_window'],
-                multiplier=cfg['misc']['LossSkipController']['multiplier'],
-                skip_nan=cfg['misc']['LossSkipController'].get('skip_nan', True),
-                skip_large=cfg['misc']['LossSkipController'].get('skip_large', True),
+                manual_threshold=cfg["misc"]["LossSkipController"]["manual_threshold"],
+                start_step=cfg["misc"]["LossSkipController"]["start_step"],
+                ema_window=cfg["misc"]["LossSkipController"]["ema_window"],
+                multiplier=cfg["misc"]["LossSkipController"]["multiplier"],
+                skip_nan=cfg["misc"]["LossSkipController"].get("skip_nan", True),
+                skip_large=cfg["misc"]["LossSkipController"].get("skip_large", True),
             )
-
 
         # from tace.utils.optimizer.hybrid_muon import get_adam_route, get_effective_shape, get_matrix_view_shape
         # for name, param in model.named_parameters():
-        #     route = get_adam_route(name) 
+        #     route = get_adam_route(name)
         #     eff_shape = get_effective_shape(param.shape)
         #     if route == "muon":
         #         mat_view = get_matrix_view_shape(eff_shape, muon_mode="slice")
         #         logging.info(f"{name:40s} shape={str(param.shape):15s} -> Muon {mat_view}")
         #     else:
         #         logging.info(f"{name:40s} shape={str(param.shape):15s} -> {route}")
-        # import sys 
+        # import sys
         # sys.exit()
 
     def _create_metrics(self, prefix):
@@ -129,16 +131,16 @@ class LightningWrapperModel(L.LightningModule):
         setattr(self, f"{prefix}_metrics", metric_collection)
 
     def _process_batch(self, batch):
-        output = self.model(batch) # normalized predict value
+        output = self.model(batch)  # normalized predict value
 
         # # # normalize label value
         # with torch.no_grad():
-        #     normalizerd_batch = copy.copy(batch) 
+        #     normalizerd_batch = copy.copy(batch)
         #     for k, v in self.normalizers.items():
         #         if k == 'energy':
         #             normalizerd_batch[k] = v.norm(normalizerd_batch[k] - output['e_base_graph'].detach())
         #         else:
-        #             normalizerd_batch[k] = v.norm(normalizerd_batch[k])      
+        #             normalizerd_batch[k] = v.norm(normalizerd_batch[k])
         # loss = self.loss_fn(output, normalizerd_batch)
         loss = self.loss_fn(output, batch)
         return output, loss
@@ -148,18 +150,18 @@ class LightningWrapperModel(L.LightningModule):
     def _shared_step(self, batch, batch_idx, prefix):
 
         with torch.no_grad():
-            if get_tace_apply_u_shift() == '1':
-                batch['energy'] = apply_u_shift(batch, batch['energy'])
+            if get_tace_apply_u_shift() == "1":
+                batch["energy"] = apply_u_shift(batch, batch["energy"])
 
-            if get_tace_use_dens() == '1':
-                    batch = add_gaussian_noise_to_position(batch)
+            if get_tace_use_dens() == "1":
+                batch = add_gaussian_noise_to_position(batch)
 
         if "forces" in batch:
-            batch['direct_forces'] = batch['forces']
-            batch['direct_forces_weight'] = batch['forces_weight']
+            batch["direct_forces"] = batch["forces"]
+            batch["direct_forces_weight"] = batch["forces_weight"]
         if "stress" in batch:
-            batch['direct_stress'] = batch['stress']
-            batch['direct_stress_weight'] = batch['stress_weight']
+            batch["direct_stress"] = batch["stress"]
+            batch["direct_stress_weight"] = batch["stress_weight"]
 
         if self.force_dtype is not None:
             batch = batch.apply(
@@ -223,9 +225,9 @@ class LightningWrapperModel(L.LightningModule):
         if prefix == "train":
             lr = self.optimizers().param_groups[0]["lr"]
             self.log(
-                "train/lr", 
-                lr, 
-                on_step=True, 
+                "train/lr",
+                lr,
+                on_step=True,
                 prog_bar=True,
             )
 
@@ -243,23 +245,19 @@ class LightningWrapperModel(L.LightningModule):
         update_metrics(metrics, prefix, output, batch, self.loss_property)
         return loss
 
-
     def training_step(self, batch, batch_idx):
         loss = self._shared_step(batch, batch_idx, "train")
         return loss
-
 
     def validation_step(self, batch, batch_idx):
         with torch.enable_grad():
             output = self._shared_step(batch, batch_idx, "val")
         return output
 
-
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         with torch.enable_grad():
             output = self._shared_step(batch, batch_idx, f"test_{dataloader_idx}")
         return output
-
 
     def on_epoch_end(self, prefix):
         metrics = getattr(self, f"{prefix}_metrics").compute()
@@ -273,9 +271,15 @@ class LightningWrapperModel(L.LightningModule):
                 add_dataloader_idx=True,
             )
 
-        if prefix == 'val':
+        if prefix == "val":
             if self.synth_metric is not None:
-                synth_metric = sum([metrics[k] * v * 0.001 for k, v in self.synth_metric.items() if k != 'monitor_metric_name'])
+                synth_metric = sum(
+                    [
+                        metrics[k] * v * 0.001
+                        for k, v in self.synth_metric.items()
+                        if k != "monitor_metric_name"
+                    ]
+                )
                 self.log(
                     f"{prefix}/synth_metric",
                     synth_metric,
@@ -286,9 +290,8 @@ class LightningWrapperModel(L.LightningModule):
                 )
         getattr(self, f"{prefix}_metrics").reset()
 
-
     def on_train_epoch_end(self):
-        self.on_epoch_end("train")        
+        self.on_epoch_end("train")
         if isinstance(self.loss_fn, UncertaintyLoss):
             with torch.no_grad():
                 logging.info("")
@@ -296,7 +299,6 @@ class LightningWrapperModel(L.LightningModule):
                     logging.info(
                         f"{k}: weight(log_sigma)|{0.5 * torch.exp(-v).item():.3f}({v.item():.3f})"
                     )
-
 
     def on_train_epoch_start(self):
         dataloader = self.trainer.train_dataloader
@@ -308,7 +310,7 @@ class LightningWrapperModel(L.LightningModule):
         self.on_epoch_end("val")
 
     def on_test_epoch_end(self):
-        logging.info(f"The error is 1000 times")
+        logging.info("The error is 1000 times")
         for i in range(self.num_test_sets):
             metrics = getattr(self, f"test_{i}_metrics").compute()
             for name, metric in metrics.items():
@@ -363,7 +365,6 @@ class LightningWrapperModel(L.LightningModule):
     #             if group["weight_decay"] != 0.0:
     #                 group["weight_decay"] = 1e-8
 
-
     def configure_optimizers(self):
 
         optimizer_cfg = copy.deepcopy(self.cfg["optimizer"])
@@ -378,7 +379,7 @@ class LightningWrapperModel(L.LightningModule):
         no_decay_params = []
         no_decay_names = []
 
-        all_named_params = []    
+        all_named_params = []
 
         for module_name, module in self.named_modules():
             for param_name, param in module.named_parameters(recurse=False):
@@ -409,7 +410,6 @@ class LightningWrapperModel(L.LightningModule):
                 else:
                     decay_params.append(param)
 
-
         if weight_decay > 0 and len(no_decay_names) > 0:
             logging.debug("Parameters excluded from weight decay:")
             for name in no_decay_names:
@@ -417,12 +417,13 @@ class LightningWrapperModel(L.LightningModule):
         else:
             logging.debug("All parameters use same weight decay")
 
-
         decay_ids = set(map(id, decay_params))
         no_decay_ids = set(map(id, no_decay_params))
         overlap = decay_ids.intersection(no_decay_ids)
         if len(overlap) > 0:
-            raise RuntimeError("Some parameters appear in both decay and no_decay groups")
+            raise RuntimeError(
+                "Some parameters appear in both decay and no_decay groups"
+            )
 
         param_groups = [
             {"params": decay_params, "weight_decay": weight_decay},
@@ -436,7 +437,7 @@ class LightningWrapperModel(L.LightningModule):
         if optimizer_target == "tace.utils.optimizer.HybridMuonOptimizer":
             optimizer = OptimizerClass(
                 params=param_groups,
-                named_parameters=all_named_params, 
+                named_parameters=all_named_params,
                 **optimizer_cfg,
             )
         else:
@@ -447,7 +448,6 @@ class LightningWrapperModel(L.LightningModule):
 
         if "scheduler" not in self.cfg:
             return {"optimizer": optimizer}
-
 
         scheduler_cfg = copy.deepcopy(self.cfg["scheduler"])
 
@@ -507,10 +507,10 @@ class LightningWrapperModel(L.LightningModule):
             for name, value in checkpoint["state_dict"].items()
             if name.startswith("model.")
         )
-        cfg = checkpoint['hyper_parameters']['cfg']
+        cfg = checkpoint["hyper_parameters"]["cfg"]
         target_property = get_target_property(cfg)
         embedding_property = get_embedding_property(cfg)
-        statistics = checkpoint['hyper_parameters']['statistics']
+        statistics = checkpoint["hyper_parameters"]["statistics"]
         with torch_default_dtype(model_dtype):
             model = create_model(
                 cfg,
@@ -520,7 +520,9 @@ class LightningWrapperModel(L.LightningModule):
             )
             model = to_lora_model(cfg.get("finetune", {}), model)
         state_dict = {
-            k[len("model.") :]: v for k, v in checkpoint["state_dict"].items() if k.startswith("model.")
+            k[len("model.") :]: v
+            for k, v in checkpoint["state_dict"].items()
+            if k.startswith("model.")
         }
         model.load_state_dict(state_dict, strict=strict)
 
@@ -528,10 +530,10 @@ class LightningWrapperModel(L.LightningModule):
         # if 'swa' in cfg['callbacks']:
         #     logging.debug("Since swa is enabled, skip trying load ema.")
         #     return model.to(map_location)
-        
+
         # === EMA ===
         if bool(use_ema) and "ema_state_dict" in checkpoint:
-            ema_params = checkpoint['ema_state_dict']['shadow_params']
+            ema_params = checkpoint["ema_state_dict"]["shadow_params"]
             for idx, (name, _) in enumerate(model.named_parameters()):
                 state_dict[name] = ema_params[idx]
             model.load_state_dict(state_dict, strict=strict)
@@ -585,7 +587,7 @@ def _load_tace(
 
             model = load_aotinductor(model_path, device)
             is_aoti = True
-        elif (model_path.endswith(".pt") or model_path.endswith(".pth")):
+        elif model_path.endswith(".pt") or model_path.endswith(".pth"):
             obj = torch.load(
                 model_path,
                 map_location=device,
@@ -612,9 +614,7 @@ def _load_tace(
         else:
             raise ValueError("Model path must end with .ckpt, .pt2, .pt or .pth")
     elif isinstance(model, torch.nn.Module):
-        is_aoti = hasattr(model, "compiled_model") and hasattr(
-            model, "compile_device"
-        )
+        is_aoti = hasattr(model, "compiled_model") and hasattr(model, "compile_device")
     else:
         raise TypeError("Model must be a path or torch.nn.Module")
 
@@ -641,7 +641,7 @@ def load_tace(
     dtype: Union[str, int, torch.dtype, None] = None,
     **kwargs: Any,
 ) -> TensorModel:
-    
+
     model = _load_tace(
         model=model,
         device=device,
@@ -668,24 +668,24 @@ def export_tace(
             "target_property": model.get_target_property(),
             "embedding_property": model.get_embedding_property(),
             "statistics": model.readout_fn.statistics,
-        }, 
-        name if name.endswith(".pt") else name + ".pt"
+        },
+        name if name.endswith(".pt") else name + ".pt",
     )
 
 
 def finetune(cfg: Dict) -> torch.nn.Module:
 
-    precision = cfg['trainer']['precision']
+    precision = cfg["trainer"]["precision"]
     dtype = DTYPE.get(precision, torch.float64)
     model = load_tace(
         cfg["finetune_from_model"],
-        device='cpu',
+        device="cpu",
         strict=True,
         use_ema=True,
         dtype=dtype,
     )
 
-    logging.info(f"Load model for Fine-tunning")
+    logging.info("Load model for Fine-tunning")
     model.train()
-    
+
     return model

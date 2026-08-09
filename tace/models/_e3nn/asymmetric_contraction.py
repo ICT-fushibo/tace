@@ -2,19 +2,17 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-'''
-Not all modules included here are ready for direct use; however, 
+"""
+Not all modules included here are ready for direct use; however,
 we have retained them for reference by the community.
-'''
+"""
 
 import math
 from typing import Union
 
-
 import torch
 
-
-from ..so2 import satisfy 
+from ..so2 import satisfy
 
 
 def so2_dim(m: int) -> int:
@@ -170,7 +168,8 @@ class SO2ASymmetricContraction(torch.nn.Module):
                             {
                                 "leaves": tuple(path["leaves"]) + (next_m,),
                                 "out_m": out_m,
-                                "steps": tuple(path["steps"]) + ((prev_m, next_m, out_m, mode),),
+                                "steps": tuple(path["steps"])
+                                + ((prev_m, next_m, out_m, mode),),
                                 "U": U,
                             }
                         )
@@ -202,7 +201,9 @@ class SO2ASymmetricContraction(torch.nn.Module):
             compact_paths = []
             for local_idx, (_path_idx, path) in enumerate(group):
                 path_name = f"{prefix}_{order}_{out_m}_{local_idx}"
-                self.register_buffer(path_name, path["U"].contiguous(), persistent=False)
+                self.register_buffer(
+                    path_name, path["U"].contiguous(), persistent=False
+                )
                 compact_path = dict(path)
                 compact_path["buffer"] = path_name
                 compact_path.pop("U", None)
@@ -259,7 +260,9 @@ class SO2ASymmetricContraction(torch.nn.Module):
         for m in range(1, self.mmax + 1):
             start = self.irrep_offsets[m]
             xm = dense[..., start : start + 2]
-            parts.append(xm.permute(0, 3, 1, 2).reshape(dense.shape[0], -1, self.num_channels))
+            parts.append(
+                xm.permute(0, 3, 1, 2).reshape(dense.shape[0], -1, self.num_channels)
+            )
         return torch.cat(parts, dim=1)
 
     def _contract_path(
@@ -282,7 +285,9 @@ class SO2ASymmetricContraction(torch.nn.Module):
 
         letters = "pqrstuvwxyzadefghijklmABCDEFGHIJKLMNOPQRSTUVWXYZ"
         if len(leaves) > len(letters):
-            raise RuntimeError("SO2ASymmetricContraction has too many leaves for einsum")
+            raise RuntimeError(
+                "SO2ASymmetricContraction has too many leaves for einsum"
+            )
         in_terms = [f"bnc{letters[i]}" for i in range(len(leaves))]
         u_term = "".join(letters[: len(leaves)]) + "o"
         expr = ",".join(in_terms + [u_term]) + "->bnco"
@@ -304,10 +309,7 @@ class SO2ASymmetricContraction(torch.nn.Module):
         B = x0.size(0)
         n = self.lmax + 1
         dtype = x0.dtype
-        blocks_by_key = {
-            key: self._to_blocks(x)
-            for key, x in input_tensors.items()
-        }
+        blocks_by_key = {key: self._to_blocks(x) for key, x in input_tensors.items()}
         output = x0.new_zeros(B, n, self.num_channels, self.irrep_dim)
 
         for order_idx, groups in enumerate(self.contractions):
@@ -319,12 +321,15 @@ class SO2ASymmetricContraction(torch.nn.Module):
                 group_weight = w_order[:, group["path_slice"]].to(dtype=dtype)
                 scale = self._path_scale(group)
                 for local_idx, path in enumerate(group["paths"]):
-                    z = self._contract_path(
-                        blocks_by_key,
-                        order_to_key,
-                        path,
-                        dtype=dtype,
-                    ) * scale
+                    z = (
+                        self._contract_path(
+                            blocks_by_key,
+                            order_to_key,
+                            path,
+                            dtype=dtype,
+                        )
+                        * scale
+                    )
                     w = group_weight[:, local_idx].view(B, n, self.num_channels, 1)
                     output[..., start:stop] = output[..., start:stop] + z * w
 
@@ -464,7 +469,7 @@ class SO2ASymmetricContraction(torch.nn.Module):
             f"channels={self.num_channels}, correlation={self.correlation}, "
             f"num_paths={self.order_num_paths}"
         )
-    
+
 
 class uuuSO2TensorProduct(torch.nn.Module):
     def __init__(
@@ -488,7 +493,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
         for m3 in range(mmax + 1):
             paths = self.enumerate_paths(m3)
             self.instructions.append(paths)
-            weight_numel += num_channels * (lmax+1) * len(paths) 
+            weight_numel += num_channels * (lmax + 1) * len(paths)
             self.num_paths += len(paths)
         self.weight_numel = weight_numel
 
@@ -496,7 +501,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
             self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
         else:
             self.register_buffer("weight", None)
-        self.internal_weights = internal_weights   
+        self.internal_weights = internal_weights
 
         output_scales = []
         n = lmax + 1
@@ -525,11 +530,11 @@ class uuuSO2TensorProduct(torch.nn.Module):
 
         return paths
 
-    def rmul(self, x, y): 
+    def rmul(self, x, y):
         # [B, n, C] * [B, n, C] =>  [B, n, C]
         z = x * y
         return z
-    
+
     def cmul(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
         a = x[:, 0]
@@ -554,37 +559,36 @@ class uuuSO2TensorProduct(torch.nn.Module):
         out = torch.stack([real, imag], dim=1)
 
         return out
-    
+
     def to_list(self, x: torch.Tensor) -> torch.Tensor:
         B = x.size(0)
         out = []
         offset = 0
         n = self.lmax + 1
         # m = 0
-        out.append(x[:, offset:offset+n])
+        out.append(x[:, offset : offset + n])
         offset += n
         # m > 0
         for m in range(1, self.mmax + 1):
-            xm = x[:, offset:offset+2*n]
+            xm = x[:, offset : offset + 2 * n]
             xm = xm.view(B, 2, n, self.num_channels)
             out.append(xm)
             offset += 2 * n
         return out
 
     def forward(
-            self, 
-            x: torch.Tensor, 
-            y: torch.Tensor, 
-            weight: Union[torch.Tensor, None] = None,
-        ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        weight: Union[torch.Tensor, None] = None,
+    ) -> torch.Tensor:
 
-        xs = self.to_list(x) #  m = 0 [B, lmax+1, C]
-        ys = self.to_list(y) #  m > 0 [B, 2, lmax+1, C]
+        xs = self.to_list(x)  #  m = 0 [B, lmax+1, C]
+        ys = self.to_list(y)  #  m > 0 [B, 2, lmax+1, C]
         if self.internal_weights:
             ws = self.weight
         else:
             ws = weight
-
 
         C = self.num_channels
 
@@ -597,7 +601,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
         w_numel = C * n
 
         for m1, m2, mode in self.instructions[0]:
-            w = ws[:, w_offset:w_offset+w_numel] # [B, C] or [1, C]
+            w = ws[:, w_offset : w_offset + w_numel]  # [B, C] or [1, C]
             w = w.view(-1, n, C)
             w_offset += w_numel
 
@@ -610,7 +614,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
             # m > 0 and m1 -m2 = 0
             elif m1 > 0 and m2 > 0:
                 z = self.cmul(xs[m1], ys[m2], "diff")
-                out = z[:, 0] * w # imag is also invariant, but nod add here
+                out = z[:, 0] * w  # imag is also invariant, but nod add here
                 m0 = m0 + out
 
         outputs.append(m0)
@@ -620,7 +624,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
             real = 0.0
             imag = 0.0
             for m1, m2, mode in self.instructions[m3]:
-                w = ws[:, w_offset:w_offset+w_numel]
+                w = ws[:, w_offset : w_offset + w_numel]
                 w_offset += w_numel
                 w = w.view(-1, 1, n, C)
 
@@ -629,7 +633,7 @@ class uuuSO2TensorProduct(torch.nn.Module):
                 elif m2 == 0:
                     z = xs[m1] * ys[m2].unsqueeze(1)
                 else:
-                    if m1 < m2 and mode == 'diff':
+                    if m1 < m2 and mode == "diff":
                         z = self.cmul(ys[m2], xs[m1], mode)
                     else:
                         z = self.cmul(xs[m1], ys[m2], mode)
@@ -644,12 +648,10 @@ class uuuSO2TensorProduct(torch.nn.Module):
         out = torch.cat(outputs, dim=1)
         out = out * self.output_scales.view(1, -1, 1)
         return out
-        
+
     def __repr__(self):
         lines = []
-        lines.append(
-            f"{self.__class__.__name__}("
-        )
+        lines.append(f"{self.__class__.__name__}(")
         # lines.append(
         #     f"  mmax={self.mmax}, "
         #     f"lmax={self.lmax}, "
@@ -669,16 +671,12 @@ class uuuSO2TensorProduct(torch.nn.Module):
                     expr = f"{m1}-{m2}"
                 path_strs.append(expr)
             joined = ", ".join(path_strs)
-            lines.append(
-                f"    m={m3:<2} : "
-                f"{len(paths):<2} paths | "
-                f"{joined}"
-            )
+            lines.append(f"    m={m3:<2} : {len(paths):<2} paths | {joined}")
         # lines.append("")
         lines.append(f"  total_paths={total_paths}")
         lines.append(")")
         return "\n".join(lines)
-    
+
 
 class ComplexProductBasis(torch.nn.Module):
     def __init__(
@@ -686,7 +684,7 @@ class ComplexProductBasis(torch.nn.Module):
         mmax: int,
         lmax: int,
         num_channel: int,
-        m1m2: Union[str, None] = '>=',
+        m1m2: Union[str, None] = ">=",
     ):
         super().__init__()
         self.mmax = mmax
@@ -694,15 +692,17 @@ class ComplexProductBasis(torch.nn.Module):
         self.num_channel = num_channel
         self.m1m2 = m1m2
         self.tp = uuuSO2TensorProduct(
-            self.mmax, 
+            self.mmax,
             self.lmax,
-            self.num_channel, 
-            m1m2=self.m1m2, 
+            self.num_channel,
+            m1m2=self.m1m2,
             internal_weights=False,
-        ) 
+        )
         self.weight_numel = self.tp.weight_numel
-            
-    def forward(self, x: torch.Tensor, y: torch.Tensor, ws: torch.Tensor) -> torch.Tensor:
+
+    def forward(
+        self, x: torch.Tensor, y: torch.Tensor, ws: torch.Tensor
+    ) -> torch.Tensor:
         return self.tp(x, y, ws)
 
 
@@ -711,11 +711,11 @@ class ComplexProductBasis(torch.nn.Module):
 #     in dev, not recommended for practical use
 #     """
 #     def __init__(
-#             self, 
-#             mmax: int, 
-#             lmax: int, 
-#             num_channel: int, 
-#             resolution: list[int],  
+#             self,
+#             mmax: int,
+#             lmax: int,
+#             num_channel: int,
+#             resolution: list[int],
 #             use_m_primary: bool = True,
 #             use_vstp: bool = False,
 #         ):
@@ -743,7 +743,7 @@ class ComplexProductBasis(torch.nn.Module):
 #         o_s = s.narrow(2, 0, 2*self.num_channel)
 #         o_s1, o_s2 = torch.chunk(o_s, chunks=2, dim=-1)
 #         o_s = torch.nn.functional.silu(o_s1) * o_s2
-#         g_s = s.narrow(2, self.num_channel*2, self.num_channel)    
+#         g_s = s.narrow(2, self.num_channel*2, self.num_channel)
 #         g_s = self.sigmoid(g_s)
 #         t1, t2 = torch.chunk(t, chunks=2, dim=-1)
 #         if self.use_vstp:
@@ -760,7 +760,7 @@ class ComplexProductBasis(torch.nn.Module):
 #         o_t = g_s * o_t
 #         o_t[:, 0:1, :] = o_t.narrow(1, 0, 1) + o_s
 #         return o_t
-    
+
 
 # class _SO2DimExpr:
 #     def __init__(self, m: int) -> None:
@@ -957,7 +957,7 @@ class ComplexProductBasis(torch.nn.Module):
 #     right_m: int,
 #     dtype: Union[torch.dtype, None] = None,
 #     device: Union[torch.device, None] = None,
-# ) -> torch.Tensor: 
+# ) -> torch.Tensor:
 #     out_m = int(out_m)
 #     left_m = int(left_m)
 #     right_m = int(right_m)
@@ -1133,8 +1133,3 @@ class ComplexProductBasis(torch.nn.Module):
 #             f"channels={self.num_channels}, correlation={self.correlation}, "
 #             f"features={self.num_features}, num_paths_by_m={self.num_paths_by_m}"
 #         )
-
-
-
-
-

@@ -25,6 +25,7 @@ SOFTWARE.
 """
 
 import math
+
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
 
@@ -145,5 +146,3 @@ class CosineAnnealingWarmupRestarts(_LRScheduler):
         self.last_epoch = math.floor(epoch)
         for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
             param_group["lr"] = lr
-
-

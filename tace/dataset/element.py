@@ -3,10 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, List, Set, Tuple, Union, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import torch
-from torch import Tensor
 import torch.nn.functional as F
 from ase.data import (  # reference_states, # stored lattice constant, bond length, etc.
     atomic_masses,
@@ -17,6 +16,7 @@ from ase.data import (  # reference_states, # stored lattice constant, bond leng
     ground_state_magnetic_moments,
     vdw_radii,
 )
+from torch import Tensor
 
 ATOMIC_SYMBOLS: List[str]
 ATOMIC_NUMBERS: Dict[str, int]
@@ -44,9 +44,7 @@ class TorchElement:
         self.zs = sorted(list(zs))
         self.num_elements = len(zs)
 
-        self.lookup_table = torch.full(
-            (max(self.zs) + 1,), -1, dtype=torch.int64
-        )
+        self.lookup_table = torch.full((max(self.zs) + 1,), -1, dtype=torch.int64)
         for idx, z in enumerate(self.zs):
             self.lookup_table[z] = idx
 
@@ -64,6 +62,7 @@ class TorchElement:
 
     def __len__(self) -> int:
         return len(self.zs)
+
 
 def build_element_lookup(atomic_numbers: Sequence[int]) -> TorchElement:
     element = TorchElement(sorted(list(atomic_numbers)))

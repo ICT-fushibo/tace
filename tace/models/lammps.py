@@ -3,13 +3,11 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from contextlib import contextmanager
 import threading
+from contextlib import contextmanager
 from typing import Any, Iterator, NamedTuple, Tuple, Union
 
-
 import torch
-
 
 AOTI_LAMMPS_GHOST_EXCHANGE = object()
 _LAMMPS_MLIAP_CONTEXT = threading.local()
@@ -102,7 +100,7 @@ class GhostExchange(torch.autograd.Function):
         gout_flat = torch.empty_like(grad_output_flat)
         ctx.lmp_data.reverse_exchange(grad_output_flat, gout_flat, gout_flat.size(-1))
         return gout_flat.view(ctx.original_shape), None
-    
+
 
 class e3nnGhostExchangeMixin:
     def handle_lammps(
@@ -111,9 +109,9 @@ class e3nnGhostExchangeMixin:
         lmp_data: Any,
         lmp_natoms: Tuple[int, int],
         layer: int,
-    ) -> Union[torch.Tensor, None]:  
+    ) -> Union[torch.Tensor, None]:
         nlocal, nghosts = lmp_natoms
-        first_layer = (layer == 0)
+        first_layer = layer == 0
         if lmp_data is None or first_layer or torch.jit.is_scripting():
             return node_feats
         node_feats = node_feats.contiguous()
@@ -142,8 +140,8 @@ class e3nnGhostExchangeMixin:
         if tensor is None:
             return tensor
         return tensor[:nlocal] if nlocal is not None else tensor
- 
- 
+
+
 class Graph(NamedTuple):
     lmp: bool
     lmp_data: Any
@@ -156,5 +154,5 @@ class Graph(NamedTuple):
     lattice: torch.Tensor
     node_fidelity: torch.Tensor
     num_atoms_arange: torch.Tensor
-    dcutoff: Union[torch.Tensor, None] # [E,]
+    dcutoff: Union[torch.Tensor, None]  # [E,]
     # node_radius: Union[torch.Tensor, None] # [N,]

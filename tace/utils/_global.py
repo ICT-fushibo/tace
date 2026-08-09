@@ -3,10 +3,10 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import packaging
-from string import ascii_letters
 from pathlib import Path
+from string import ascii_letters
 
+import packaging
 import torch
 
 CACHE_DIR = Path.home() / ".cache" / "tace"
@@ -30,10 +30,10 @@ BOOL = {
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import packaging
-from string import ascii_letters
 from pathlib import Path
+from string import ascii_letters
 
+import packaging
 import torch
 
 CACHE_DIR = Path.home() / ".cache" / "tace"
@@ -106,4 +106,3 @@ LETTERS = list(ascii_letters)[3:]
 # _TORCH_VERSION = packaging.version.parse(torch.__version__)
 # _TORCH_GE_2_9 = _TORCH_VERSION >= packaging.version.parse("2.9")
 # _GLOBAL_STATE_INITIALIZED = False
-

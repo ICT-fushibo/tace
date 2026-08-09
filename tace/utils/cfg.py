@@ -4,12 +4,10 @@
 ################################################################################
 
 import logging
+from importlib.resources import files
 from typing import Dict
 
-
 import yaml
-from importlib.resources import files
-
 
 from tace import utils
 

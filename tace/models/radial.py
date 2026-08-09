@@ -6,12 +6,12 @@
 import math
 from typing import Union
 
-
+import ase.data
 import numpy as np
 import torch
-import ase.data
 from scipy.optimize import brentq
 from scipy.special import jv
+
 from tace.utils.torch_scatter import scatter_sum
 
 
@@ -71,7 +71,9 @@ class j0SphericalBesselBasis(torch.nn.Module):
             torch.tensor(math.sqrt(2.0 / cutoff), dtype=torch.get_default_dtype()),
         )
 
-    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
+    def forward(
+        self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:  # [..., 1]
         numerator = torch.sin(self.bessel_weights * r)  # [..., num_basis]
         return self.prefactor * (numerator / r)
 
@@ -83,28 +85,31 @@ class j0SphericalBesselBasis(torch.nn.Module):
 
 
 class jnTaylorSphericalBessel(torch.nn.Module):
-    def __init__(self, n: int, K: int =6):
+    def __init__(self, n: int, K: int = 6):
         super().__init__()
         self.n = n
         self.K = K
         prefactor = []
         for k in range(self.K):
             prefactor.append(
-                ((-1)**k)
+                ((-1) ** k)
                 / (math.factorial(k) * math.gamma(k + n + 1.5))
-                * 0.5 * math.sqrt(math.pi) 
+                * 0.5
+                * math.sqrt(math.pi)
             )
-        self.register_buffer('prefactor', torch.tensor(prefactor), persistent=False)
-        self.register_buffer('powers', 2*torch.arange(self.K) + self.n, persistent=False)
+        self.register_buffer("prefactor", torch.tensor(prefactor), persistent=False)
+        self.register_buffer(
+            "powers", 2 * torch.arange(self.K) + self.n, persistent=False
+        )
 
-    def forward(self, x: torch.Tensor)  -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         orig_shape = x.shape
         x = x.view(-1)
         x = 0.5 * x
-        x_pow = x.unsqueeze(-1) ** self.powers  
+        x_pow = x.unsqueeze(-1) ** self.powers
         prefactor = self.prefactor.to(x.dtype)
         return torch.sum(prefactor * x_pow, dim=-1).reshape(orig_shape)
-    
+
 
 class jnSphericalBesselBasis(torch.nn.Module):
     "arbitrary order n >= 0"
@@ -179,7 +184,8 @@ class jnSphericalBesselBasis(torch.nn.Module):
             jnTaylorSphericalBessel(
                 n=o,
                 K=30,
-            ) for o in order
+            )
+            for o in order
         )
 
     def torch_jn(self, i, order, x):
@@ -202,25 +208,19 @@ class jnSphericalBesselBasis(torch.nn.Module):
                 945 / x**5 - 105 / x**3 + 1 / x
             ) * torch.cos(x)
         elif order == 6:
-            return (10395 / x**7 - 4725 / x**5 + 210 / x**3 - 1 / x) * torch.sin(
-                x
-            ) - (10395 / x**6 - 1260 / x**4 + 21 / x**2) * torch.cos(x)
+            return (10395 / x**7 - 4725 / x**5 + 210 / x**3 - 1 / x) * torch.sin(x) - (
+                10395 / x**6 - 1260 / x**4 + 21 / x**2
+            ) * torch.cos(x)
         elif order == 7:
-            return (
-                135135 / x**8 - 62370 / x**6 + 3150 / x**4 - 28 / x**2
-            ) * torch.sin(x) - (
-                135135 / x**7 - 17325 / x**5 + 378 / x**3 - 1 / x
-            ) * torch.cos(
+            return (135135 / x**8 - 62370 / x**6 + 3150 / x**4 - 28 / x**2) * torch.sin(
                 x
-            )
+            ) - (135135 / x**7 - 17325 / x**5 + 378 / x**3 - 1 / x) * torch.cos(x)
         elif order == 8:
             return (
                 2027025 / x**9 - 945945 / x**7 + 51975 / x**5 - 630 / x**3 + 1 / x
             ) * torch.sin(x) - (
                 2027025 / x**8 - 270270 / x**6 + 6930 / x**4 - 36 / x**2
-            ) * torch.cos(
-                x
-            )
+            ) * torch.cos(x)
         elif order == 9:
             return (
                 34459425 / x**10
@@ -230,9 +230,7 @@ class jnSphericalBesselBasis(torch.nn.Module):
                 + 45 / x**2
             ) * torch.sin(x) - (
                 34459425 / x**9 - 4729725 / x**7 + 135135 / x**5 - 990 / x**3 + 1 / x
-            ) * torch.cos(
-                x
-            )
+            ) * torch.cos(x)
         else:
             N = (
                 order + 100
@@ -261,14 +259,16 @@ class jnSphericalBesselBasis(torch.nn.Module):
         # else:
         #     return self.jn_taylor[i](x)
 
-    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
+    def forward(
+        self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:  # [..., 1]
         orig_dtype = r.dtype
         r = r.to(torch.float64)
         cutoff = self.cutoff.to(torch.float64)
         zeros = self.zeros.to(torch.float64)
         normalizer = self.normalizer.to(torch.float64)
 
-        r = zeros * (r / cutoff) #  (zeros/cutoff) · r  = k · r
+        r = zeros * (r / cutoff)  #  (zeros/cutoff) · r  = k · r
 
         basis = []
         idx = 0
@@ -317,18 +317,21 @@ class GaussianBasis(torch.nn.Module):
         self.coeff = -0.5 / (width * (offset[1] - offset[0])).item() ** 2
         self.register_buffer("offset", offset, persistent=False)
 
-    def forward(self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:  # [..., 1]
+    def forward(
+        self, r: torch.Tensor, node_attrs: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:  # [..., 1]
         r = r - self.offset.view(1, -1)
         return torch.exp(self.coeff * torch.pow(r, 2))
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__}(cutoff={self.cutoff}, width={self.width})"
-    
+
 
 class CosineCutoff(torch.nn.Module):
     """
     The fourth derivative and above are discontinuous
     """
+
     def __init__(self, cutoff: float) -> None:
         super().__init__()
         self.register_buffer(
@@ -336,19 +339,19 @@ class CosineCutoff(torch.nn.Module):
             torch.tensor(cutoff, dtype=torch.get_default_dtype()),
         )
 
-    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff)
-    
+
     @staticmethod
-    def calculate_envelope(
-        r_ij: torch.Tensor, cutoff: torch.Tensor
-    ) -> torch.Tensor:
+    def calculate_envelope(r_ij: torch.Tensor, cutoff: torch.Tensor) -> torch.Tensor:
         x = r_ij / cutoff
         envelope = (0.5 * torch.cos(torch.pi * x) + 0.5).unsqueeze(-1)
         return envelope * (r_ij < cutoff)
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__}(cutoff={self.cutoff})"
 
@@ -357,34 +360,39 @@ class MollifierCutoff(torch.nn.Module):
     """
     Derivatives of any order are continuous
     """
+
     def __init__(self, cutoff: float, eps: float = 1e-9):
         super().__init__()
         self.register_buffer(
             "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
         )
         self.eps = eps
-        
-    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+
+    def forward(
+        self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.eps)
 
     @staticmethod
     def calculate_envelope(
-        r_ij: torch.Tensor, cutoff: torch.Tensor, eps: float = 1e-9,
+        r_ij: torch.Tensor,
+        cutoff: torch.Tensor,
+        eps: float = 1e-9,
     ) -> torch.Tensor:
         x = r_ij / cutoff
-        envelope = torch.exp(1-1/(1-x**2+eps))
+        envelope = torch.exp(1 - 1 / (1 - x**2 + eps))
         return envelope * (r_ij < cutoff)
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__}(cutoff={self.cutoff})"
-    
+
 
 class C2PolynomialCutoff(torch.nn.Module):
     """
     f(1) = f'(1) = f''(1) = 0
-    Envelope function(PolynomialCutoff funciton) is proposed 
+    Envelope function(PolynomialCutoff funciton) is proposed
     in the DimeNet: https://www.cs.cit.tum.de/daml/dimenet/
     """
 
@@ -395,7 +403,9 @@ class C2PolynomialCutoff(torch.nn.Module):
             "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
         )
 
-    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.p.to(torch.int))
@@ -404,7 +414,7 @@ class C2PolynomialCutoff(torch.nn.Module):
     def calculate_envelope(
         r_ij: torch.Tensor, cutoff: torch.Tensor, p: torch.Tensor
     ) -> torch.Tensor:
-        x = r_ij / cutoff # [edge, 1]
+        x = r_ij / cutoff  # [edge, 1]
         envelope = (
             1.0
             - ((p + 1.0) * (p + 2.0) / 2.0) * torch.pow(x, p)
@@ -412,7 +422,7 @@ class C2PolynomialCutoff(torch.nn.Module):
             - (p * (p + 1.0) / 2) * torch.pow(x, p + 2)
         )
         return envelope * (r_ij < cutoff)
-    
+
     def __repr__(self):
         return f"{self.__class__.__name__}(p={self.p}, cutoff={self.cutoff})"
 
@@ -430,7 +440,9 @@ class C3PolynomialCutoff(torch.nn.Module):
             "cutoff", torch.tensor(cutoff, dtype=torch.get_default_dtype())
         )
 
-    def forward(self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, cutoff: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.cutoff
         return self.calculate_envelope(x, cutoff, self.p.to(torch.int))
@@ -443,9 +455,9 @@ class C3PolynomialCutoff(torch.nn.Module):
 
         # coefficients
         a = -((p + 1.0) * (p + 2.0) * (p + 3.0) / 6.0)
-        b = (p * (p + 2.0) * (p + 3.0) / 2.0)
+        b = p * (p + 2.0) * (p + 3.0) / 2.0
         c = -(p * (p + 1.0) * (p + 3.0) / 2.0)
-        d = (p * (p + 1.0) * (p + 2.0) / 6.0)
+        d = p * (p + 1.0) * (p + 2.0) / 6.0
 
         envelope = (
             1.0
@@ -463,6 +475,7 @@ class C3PolynomialCutoff(torch.nn.Module):
 
 class SmoothDynamicCutoff(torch.nn.Module):
     """See https://arxiv.org/abs/2601.21147"""
+
     def __init__(
         self,
         r_max: float,
@@ -489,28 +502,27 @@ class SmoothDynamicCutoff(torch.nn.Module):
     def _group_distances(self, target, edge_length, num_nodes):
         """
         (edge,) -> (node, kmax​)
-            r_grouped  # (N, k_max)  
-            mask       # (N, k_max)  actual negitbor 
+            r_grouped  # (N, k_max)
+            mask       # (N, k_max)  actual negitbor
         """
-        edge_length = edge_length.squeeze(-1) 
+        edge_length = edge_length.squeeze(-1)
         perm = torch.argsort(target)
         target = target[perm]
         edge_length = edge_length[perm]
 
         ones = torch.ones_like(target)
-        num_neighbors = scatter_sum(
-            ones, target, dim=0, dim_size=num_nodes
-        )
+        num_neighbors = scatter_sum(ones, target, dim=0, dim_size=num_nodes)
         k_max = num_neighbors.max().item()
 
         cum = torch.cumsum(num_neighbors, dim=0)
-        start = cum - num_neighbors # each node's edge start at which idx
+        start = cum - num_neighbors  # each node's edge start at which idx
 
-        edge_pos = torch.arange(len(target), device=target.device) # global edge_idx
+        edge_pos = torch.arange(len(target), device=target.device)  # global edge_idx
         local_idx = edge_pos - start[target]
 
         node_length = torch.zeros(
-            num_nodes, k_max,
+            num_nodes,
+            k_max,
             device=edge_length.device,
             dtype=edge_length.dtype,
         )
@@ -524,9 +536,13 @@ class SmoothDynamicCutoff(torch.nn.Module):
         mask = node_length > 0
         return node_length, mask, target, perm
 
-    def _soft_rank(self, node_length: torch.Tensor, mask: torch.Tensor, p: torch.Tensor)-> torch.Tensor:
+    def _soft_rank(
+        self, node_length: torch.Tensor, mask: torch.Tensor, p: torch.Tensor
+    ) -> torch.Tensor:
         k = node_length.size(1)
-        dr = node_length.unsqueeze(-1) - node_length.unsqueeze(-2)  # diff[v, u, t] = r_uv - r_tv
+        dr = node_length.unsqueeze(-1) - node_length.unsqueeze(
+            -2
+        )  # diff[v, u, t] = r_uv - r_tv
         S = torch.sigmoid(self.alpha * dr)
         eye = torch.eye(k, device=S.device).bool()
         S = S * (~eye.unsqueeze(0))
@@ -538,7 +554,12 @@ class SmoothDynamicCutoff(torch.nn.Module):
         return self.coef * torch.exp(-0.5 * ((R - self.mu) / self.sigma) ** 2)
 
     def _compute_node_cutoff(self, node_length, mask):
-        p = self.cutoff_fn.calculate_envelope(node_length, cutoff=self.cutoff_fn.cutoff, p=self.p) * mask
+        p = (
+            self.cutoff_fn.calculate_envelope(
+                node_length, cutoff=self.cutoff_fn.cutoff, p=self.p
+            )
+            * mask
+        )
         R = self._soft_rank(node_length, mask, p)
         w = self._gaussian_weight(R) * mask
         wp = w * p
@@ -549,11 +570,16 @@ class SmoothDynamicCutoff(torch.nn.Module):
         return c_node
 
     def forward(
-            self, edge_length: torch.Tensor, edge_index: torch.Tensor, num_nodes: int,
-        ) -> torch.Tensor:
+        self,
+        edge_length: torch.Tensor,
+        edge_index: torch.Tensor,
+        num_nodes: int,
+    ) -> torch.Tensor:
 
         node_length, mask, sorted_target, perm = self._group_distances(
-            edge_index[1], edge_length, num_nodes,
+            edge_index[1],
+            edge_length,
+            num_nodes,
         )
         dcutoff = self._compute_node_cutoff(node_length, mask)
         dcutoff = dcutoff[sorted_target]
@@ -561,7 +587,7 @@ class SmoothDynamicCutoff(torch.nn.Module):
         dcutoff = dcutoff[inv_perm]
 
         return dcutoff.unsqueeze(-1)
-    
+
 
 class XPLORCutoff(torch.nn.Module):
     """
@@ -578,14 +604,18 @@ class XPLORCutoff(torch.nn.Module):
         self.r_cut = cutoff
         assert self.r_on < self.r_cut
 
-    def forward(self, r: torch.Tensor, cutoff: Union[torch.Tensor, None] = None) -> torch.Tensor:
+    def forward(
+        self, r: torch.Tensor, cutoff: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         if cutoff is None:
             cutoff = self.r_cut
         return self.calculate_envelope(r, cutoff, self.r_on)
-    
+
     @staticmethod
     def calculate_envelope(
-        r: torch.Tensor, r_cut: Union[torch.Tensor, float], r_on: Union[torch.Tensor, float] = 0.0,
+        r: torch.Tensor,
+        r_cut: Union[torch.Tensor, float],
+        r_on: Union[torch.Tensor, float] = 0.0,
     ) -> torch.Tensor:
         r_sq = r * r
         r_on_sq = r_on * r_on
@@ -600,7 +630,7 @@ class XPLORCutoff(torch.nn.Module):
 
     def __repr__(self):
         return f"{self.__class__.__name__}(r_on={self.r_on}, r_cut={self.r_cut})"
-    
+
 
 class AgnesiTransform(torch.nn.Module):
     """
@@ -640,12 +670,12 @@ class AgnesiTransform(torch.nn.Module):
     ) -> torch.Tensor:
         source = edge_index[0]
         target = edge_index[1]
-        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(1) 
+        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(
+            1
+        )
         Z_u = node_atomic_numbers[source]
         Z_v = node_atomic_numbers[target]
-        r_0: torch.Tensor = 0.5 * (
-            self.covalent_radii[Z_u] + self.covalent_radii[Z_v]
-        ) 
+        r_0: torch.Tensor = 0.5 * (self.covalent_radii[Z_u] + self.covalent_radii[Z_v])
         r_over_r_0 = x / r_0
         return (
             1
@@ -709,7 +739,7 @@ class SoftTransform(torch.nn.Module):
     def __repr__(self):
         return f"{self.__class__.__name__}(a={self.a.item()}, b={self.b.item()})"
 
-   
+
 class ZBLBasis(torch.nn.Module):
     """
     Metal units
@@ -746,19 +776,19 @@ class ZBLBasis(torch.nn.Module):
             self.register_buffer("a_prefactor", torch.tensor(0.4543))
 
         self.is_polynomial_cutoff = False
-        if cutoff_fn == 'mollifier':
+        if cutoff_fn == "mollifier":
             self.cutoff_fn = MollifierCutoff.calculate_envelope
-        elif cutoff_fn == 'cosine': 
+        elif cutoff_fn == "cosine":
             self.cutoff_fn = CosineCutoff.calculate_envelope
-        elif cutoff_fn == 'xplor':
-            self.cutoff_fn = XPLORCutoff.calculate_envelope # TODO
-        elif cutoff_fn == 'c3poly': 
+        elif cutoff_fn == "xplor":
+            self.cutoff_fn = XPLORCutoff.calculate_envelope  # TODO
+        elif cutoff_fn == "c3poly":
             self.is_polynomial_cutoff = True
             self.cutoff_fn = C3PolynomialCutoff.calculate_envelope
         else:
             self.is_polynomial_cutoff = True
             self.cutoff_fn = C2PolynomialCutoff.calculate_envelope
-        
+
     def forward(
         self,
         x: torch.Tensor,
@@ -768,7 +798,9 @@ class ZBLBasis(torch.nn.Module):
     ) -> torch.Tensor:
         source = edge_index[0]
         target = edge_index[1]
-        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(-1)
+        node_atomic_numbers = atomic_numbers[torch.argmax(node_attrs, dim=1)].unsqueeze(
+            -1
+        )
         Z_u = node_atomic_numbers[source]
         Z_v = node_atomic_numbers[target]
         a = (
@@ -788,7 +820,7 @@ class ZBLBasis(torch.nn.Module):
         if self.is_polynomial_cutoff:
             envelope = self.cutoff_fn(x, r_max, self.p)
         else:
-            envelope = self.cutoff_fn(x, r_max)    
+            envelope = self.cutoff_fn(x, r_max)
         v_edges = 0.5 * v_edges * envelope
         V_ZBL = scatter_sum(v_edges, target, dim=0, dim_size=node_attrs.size(0))
         return V_ZBL.squeeze(-1)
@@ -809,7 +841,7 @@ class RadialBasis(torch.nn.Module):
         order: Union[int, list[int]] = [0],
         trainable: bool = False,
         apply_cutoff: bool = True,
-        cutoff_fn: str ='mollifier', # ['cosine', 'mollifier', 'polynomial']
+        cutoff_fn: str = "mollifier",  # ['cosine', 'mollifier', 'polynomial']
         gaussian_width: float = 2.0,
         use_dydynamic_cutoff: bool = False,
         dydynamic_cutoff_mu: float = 40,
@@ -820,13 +852,13 @@ class RadialBasis(torch.nn.Module):
         assert isinstance(trainable, bool)
         assert isinstance(apply_cutoff, bool)
 
-        if cutoff_fn == 'mollifier':
+        if cutoff_fn == "mollifier":
             self.cutoff_fn = MollifierCutoff(cutoff=cutoff)
-        elif cutoff_fn == 'cosine': 
+        elif cutoff_fn == "cosine":
             self.cutoff_fn = CosineCutoff(cutoff=cutoff)
-        elif cutoff_fn == 'c3poly':
+        elif cutoff_fn == "c3poly":
             self.cutoff_fn = C3PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
-        elif cutoff_fn == 'xplor':
+        elif cutoff_fn == "xplor":
             self.cutoff_fn = XPLORCutoff(cutoff=cutoff, cutoff_on=r_min)
         else:
             self.cutoff_fn = C2PolynomialCutoff(cutoff=cutoff, p=polynomial_cutoff)
@@ -837,15 +869,14 @@ class RadialBasis(torch.nn.Module):
                 cutoff_fn=self.cutoff_fn,
                 mu=dydynamic_cutoff_mu,
             )
-            assert (
-                isinstance(self.cutoff_fn, C2PolynomialCutoff)
-                or isinstance(self.cutoff_fn, C3PolynomialCutoff)
+            assert isinstance(self.cutoff_fn, C2PolynomialCutoff) or isinstance(
+                self.cutoff_fn, C3PolynomialCutoff
             )
 
         if radial_basis == "bessel" or radial_basis == "j0":
             self.radial_fn = j0SphericalBesselBasis(
-                cutoff=cutoff, 
-                num_basis=num_basis, 
+                cutoff=cutoff,
+                num_basis=num_basis,
                 trainable=trainable,
             )
         elif radial_basis == "jn":
@@ -868,7 +899,7 @@ class RadialBasis(torch.nn.Module):
             )
         else:
             raise ValueError(f"Unknown radial_basis: {radial_basis}")
-        
+
         if distance_transform == "Agnesi":
             self.distance_transform = AgnesiTransform()
             self.use_distance_transform = True
@@ -878,7 +909,6 @@ class RadialBasis(torch.nn.Module):
         else:
             self.use_distance_transform = False
 
-        
         if not isinstance(num_basis, int):
             num_basis = sum(num_basis)
             self.out_dim = num_basis
@@ -899,18 +929,19 @@ class RadialBasis(torch.nn.Module):
         dcutoff: torch.Tensor,
     ) -> torch.Tensor:
         cutoff = self.cutoff_fn(edge_length, dcutoff)
-        if self.use_distance_transform: # TODO, dynamic cutoff, may be BUG
+        if self.use_distance_transform:  # TODO, dynamic cutoff, may be BUG
             edge_length = self.distance_transform(
                 edge_length, node_attrs, edge_index, atomic_numbers
             )
 
         radial = self.radial_fn(edge_length, node_attrs, edge_index)
- 
+
         if self.apply_cutoff:
             return radial * cutoff, None
         else:
             return radial, cutoff
-    
+
+
 # # draw
 # import torch
 # import matplotlib.pyplot as plt

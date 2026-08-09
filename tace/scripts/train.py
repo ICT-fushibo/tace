@@ -3,39 +3,36 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import yaml
 import copy
 import logging
 import warnings
 from pathlib import Path
 
-
 import hydra
+import yaml
 from omegaconf import DictConfig, OmegaConf
 
-
-from tace.lightning.trainer import train
-from tace.lightning.lit_model import finetune, load_tace
-from tace.lightning.torch_model import create_model
 from tace.dataset.dataloader import build_atomsList, compute_statistics
 from tace.dataset.datamodule import build_datamodule
-from tace.utils.hydra_resolver import register_resolvers
-from tace.utils.logger import set_logger
-from tace.utils.utils import (
-    set_global_seed,
-    set_precision,
-    save_full_cfg,
-    deep_convert,
-)
-from tace.utils.env import set_env
 from tace.dataset.quantity import (
     KEYS,
     KeySpecification,
-    update_keyspec_from_kwargs,
+    get_embedding_property,
     get_target_property,
+    update_keyspec_from_kwargs,
 )
-from tace.dataset.quantity import get_embedding_property
-
+from tace.lightning.lit_model import finetune, load_tace
+from tace.lightning.torch_model import create_model
+from tace.lightning.trainer import train
+from tace.utils.env import set_env
+from tace.utils.hydra_resolver import register_resolvers
+from tace.utils.logger import set_logger
+from tace.utils.utils import (
+    deep_convert,
+    save_full_cfg,
+    set_global_seed,
+    set_precision,
+)
 
 register_resolvers()
 
@@ -46,7 +43,7 @@ SINGLE_LEVEL_DATA_CONFIG = [{"name": "default", "atomic_energy": None}]
 def initialize(cfg):
     cfg = deep_convert(cfg)
     set_logger(cfg["misc"].get("log_level", "info"))
-    if cfg['misc'].get('ignore_warning', True): 
+    if cfg["misc"].get("ignore_warning", True):
         try:
             warnings.simplefilter("ignore", FutureWarning)
             warnings.filterwarnings(
@@ -110,21 +107,25 @@ def _restore_loaded_model_config(cfg, model):
 
 
 def build(cfg: DictConfig):
-    cfg = initialize(OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
+    cfg = initialize(
+        OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict")
+    )
     target_property = get_target_property(cfg)
     embedding_property = get_embedding_property(cfg)
     userKeys = copy.deepcopy(KEYS)
-    userKeys.update(cfg['dataset'].get('keys', {}))
+    userKeys.update(cfg["dataset"].get("keys", {}))
     keyspec = KeySpecification()
     update_keyspec_from_kwargs(keyspec, userKeys)
     fidelity = _prepare_data_fidelity(cfg)
-        
+
     # train from scratch, calculate statistics
     statistics = None
     threeAtomsList = None
     datamodule = None
-    if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)): 
-        statistics_yaml = [Path('.') / f'statistics_{idx}.yaml' for idx in range(len(fidelity))]
+    if not (cfg.get("finetune_from_model", None) or cfg.get("resume_from_model", None)):
+        statistics_yaml = [
+            Path(".") / f"statistics_{idx}.yaml" for idx in range(len(fidelity))
+        ]
         if all(yaml_file.exists() for yaml_file in statistics_yaml):
             statistics = []
             for yaml_file in statistics_yaml:
@@ -139,7 +140,7 @@ def build(cfg: DictConfig):
                 )
             atomic_numbers = statistics[0]["atomic_numbers"]
         else:
-            logging.info(f"Computing statistics information from scratch")
+            logging.info("Computing statistics information from scratch")
             element, threeAtomsList, atomic_energies = build_atomsList(
                 cfg, target_property, embedding_property, keyspec
             )
@@ -154,10 +155,10 @@ def build(cfg: DictConfig):
             )
             datamodule.setup("fit")
             statistics = compute_statistics(
-                cfg, 
-                target_property, 
-                embedding_property, 
-                keyspec, 
+                cfg,
+                target_property,
+                embedding_property,
+                keyspec,
                 element,
                 threeAtomsList,
                 fidelity,
@@ -170,9 +171,9 @@ def build(cfg: DictConfig):
         statistics = model.readout_fn.statistics
         atomic_numbers = statistics[0]["atomic_numbers"]
         _restore_loaded_model_config(cfg, model)
-        finetune_cfg = cfg.get('finetune', {})
+        finetune_cfg = cfg.get("finetune", {})
         if finetune_cfg:
-            logging.info(f"Using finetune_config from your main train config.")
+            logging.info("Using finetune_config from your main train config.")
         else:
             yaml_path = Path("finetune_config.yaml")
             if yaml_path.exists():
@@ -182,21 +183,23 @@ def build(cfg: DictConfig):
                 except Exception as e:
                     logging.error(f"Failed to read {yaml_path}: {e}")
             else:
-                logging.warning(f"{yaml_path} not found, skipping lora and parameter freezing.")
-        cfg['finetune'] = finetune_cfg
+                logging.warning(
+                    f"{yaml_path} not found, skipping lora and parameter freezing."
+                )
+        cfg["finetune"] = finetune_cfg
     elif cfg.get("resume_from_model", None):
         model = load_tace(
-                cfg["resume_from_model"],
-                device="cpu",
-                strict=True,
-                use_ema=True,
-                dtype=cfg["trainer"]["precision"],
-            )
+            cfg["resume_from_model"],
+            device="cpu",
+            strict=True,
+            use_ema=True,
+            dtype=cfg["trainer"]["precision"],
+        )
         statistics = model.readout_fn.statistics
         atomic_numbers = statistics[0]["atomic_numbers"]
         _restore_loaded_model_config(cfg, model)
-        cfg['finetune'] = cfg.get('finetune', {})
-    else: # From scratch
+        cfg["finetune"] = cfg.get("finetune", {})
+    else:  # From scratch
         model = _create_model(cfg, statistics, target_property, embedding_property)
 
     if datamodule is None:
@@ -211,6 +214,7 @@ def build(cfg: DictConfig):
     _remove_data_fidelity(cfg)
 
     return cfg, statistics, target_property, embedding_property, model, datamodule
+
 
 @hydra.main(version_base="1.3", config_path=str(Path.cwd()), config_name="tace")
 def main(cfg: DictConfig):

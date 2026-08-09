@@ -5,10 +5,8 @@
 
 from typing import Union
 
-
 import torch
 from e3nn import o3
-
 
 try:
     import cuequivariance as cue
@@ -33,7 +31,7 @@ class e3nnCueScatterTensorProduct(torch.nn.Module):
         super().__init__()
 
         self.irreps_in1 = irreps_in1
-        self.irreps_in2 = irreps_in2 
+        self.irreps_in2 = irreps_in2
         self.irreps_out = irreps_out
 
         self.cueq_tp = cuet.SegmentedPolynomial(

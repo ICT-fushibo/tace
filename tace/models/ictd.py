@@ -3,25 +3,25 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 """
-see 
+see
 https://www.jmlr.org/papers/v26/25-0134.html for ICTD
 https://arxiv.org/abs/2509.14961 for TACE
 https://arxiv.org/abs/2512.16882 for Cartesian-3j
 """
-from typing import Tuple, List
 
+from typing import List, Tuple
 
 import torch
 from e3nn.o3 import wigner_3j
 
 
 def ICTD(
-        n_total: int, 
-        w: int = -1, # if not -1, return first rank = n_total, weight = w
-        decomposition: bool = True, 
-        dtype=None, 
-        device=None
-    ) -> Tuple[List[List[int]], List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
+    n_total: int,
+    w: int = -1,  # if not -1, return first rank = n_total, weight = w
+    decomposition: bool = True,
+    dtype=None,
+    device=None,
+) -> Tuple[List[List[int]], List[torch.Tensor], List[torch.Tensor], List[torch.Tensor]]:
     n_now = 0
     j_now = 0
     path_list = []
@@ -71,6 +71,7 @@ def ICTD(
                         stop_flag["stop"] = True
                         return
         return
+
     paths_generate(n_now, j_now, this_path, this_pathmatrix, n_total)
     decomp_list = []
     for path_matrix in pathmatrices_list:
@@ -79,5 +80,3 @@ def ICTD(
         cart2sph_list.append(path_matrix)
         sph2cart_list.append(path_matrix.T)
     return path_list, decomp_list, cart2sph_list, sph2cart_list
-
-

@@ -9,16 +9,14 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-import yaml
-
 import ase.optimize
 import ase.optimize.sciopt
+import yaml
 from ase import units
 from ase.filters import ExpCellFilter, FrechetCellFilter, StrainFilter, UnitCellFilter
 from ase.io import read, write
 
 from tace.interface.ase import TACEAseCalc, add_dispersion
-
 
 FILTER_CLS = {
     None: None,
@@ -171,7 +169,10 @@ def _check_relaxation_properties(calc, cfg: Dict[str, Any]) -> None:
         raise ValueError("TACE model must provide energy for USPEX relaxation")
     if "forces" not in properties:
         raise ValueError("TACE model must provide forces for USPEX relaxation")
-    if FILTER_CLS.get(cfg.get("filter_name")) is not None and "stress" not in properties:
+    if (
+        FILTER_CLS.get(cfg.get("filter_name")) is not None
+        and "stress" not in properties
+    ):
         raise ValueError(
             "Cell relaxation requires stress. Provide a model with stress output "
             "or set filter_name: null."

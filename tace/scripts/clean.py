@@ -6,7 +6,6 @@
 import shutil
 from pathlib import Path
 
-
 GB = 1
 MAX_SIZE_BYTES = GB * 1024**3  # 1 GB
 
@@ -61,14 +60,13 @@ def main():
         "checkpoints_step",
         "_full_config.yaml",
         "out.txt",
-        "finetune_config.yaml"
+        "finetune_config.yaml",
         # "graphCache",
     ]
     current_dir = Path.cwd()
     target_paths = [current_dir / t for t in targets]
     # extra_stats = list(current_dir.glob("statistics_*.yaml"))
     # target_paths.extend(extra_stats)
-
 
     if all_under_limit(target_paths):
         for path in target_paths:

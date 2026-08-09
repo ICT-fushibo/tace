@@ -12,7 +12,6 @@ from tace.lightning import load_tace
 from tace.models.compile import export_lammps_aotinductor
 from tace.utils.env import enable_acceleration
 
-
 ALLOWED_BACKEND = ["mliap", "aoti"]
 
 
@@ -88,9 +87,7 @@ def main():
     try:
         from tace.interface.lammps import TACEAOTILammpsCalc, TACELammpsCalc
     except (ImportError, NameError) as exc:
-        raise RuntimeError(
-            "LAMMPS export requires the LAMMPS Python package."
-        ) from exc
+        raise RuntimeError("LAMMPS export requires the LAMMPS Python package.") from exc
 
     if args.backend == "mliap":
         model.lmp = True

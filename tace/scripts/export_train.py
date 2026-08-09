@@ -15,7 +15,9 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("-m", "--model", type=str, required=True, help="Model path")
-    parser.add_argument("-o", "--output", type=str, default=None, help="Output .pt path")
+    parser.add_argument(
+        "-o", "--output", type=str, default=None, help="Output .pt path"
+    )
     parser.add_argument(
         "-f",
         "--fidelity_idx",

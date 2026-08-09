@@ -4,22 +4,25 @@
 ################################################################################
 
 import logging
-from typing import Dict
-from pathlib import Path
 from datetime import datetime
-
+from pathlib import Path
+from typing import Dict
 
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
 from hydra.utils import instantiate
+from lightning.pytorch.callbacks import (
+    ModelCheckpoint,
+    RichProgressBar,
+    StochasticWeightAveraging,
+    TQDMProgressBar,
+)
 from torch_geometric.loader import DataLoader
-from lightning.pytorch.callbacks import StochasticWeightAveraging, TQDMProgressBar, RichProgressBar
+
 # from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from ..utils.callbacks import PrintMetricsCallback
-
-
-from .lit_model import LightningWrapperModel
 from ..utils.utils import log_parameters
+from .lit_model import LightningWrapperModel
+
 
 def _maybe_start_wsd_decay_on_resume(cfg: Dict, resume_ckpt: str) -> None:
     scheduler_cfg = cfg.get("scheduler", None)
@@ -34,6 +37,7 @@ def _maybe_start_wsd_decay_on_resume(cfg: Dict, resume_ckpt: str) -> None:
     if not scheduler_extra.get("start_decay_on_resume", False):
         return
     import torch
+
     checkpoint = torch.load(resume_ckpt, map_location="cpu", weights_only=False)
     global_step = int(checkpoint.get("global_step", 0))
     num_warmup_steps = int(scheduler_cfg.get("num_warmup_steps", 0))
@@ -49,6 +53,7 @@ def _maybe_start_wsd_decay_on_resume(cfg: Dict, resume_ckpt: str) -> None:
         old_num_stable_steps,
         new_num_stable_steps,
     )
+
 
 def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     """Build and configure a PyTorch Lightning Trainer.
@@ -103,14 +108,13 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
 
     # === Built-in callbacks ===
     initialized_callbacks += [
-        PrintMetricsCallback(), 
-        TQDMProgressBar(), # not allow use hydra to build progress_bar to avoid bug
+        PrintMetricsCallback(),
+        TQDMProgressBar(),  # not allow use hydra to build progress_bar to avoid bug
     ]
 
     # === Disallow SWA callback ===
     swa_cbs = [
-        cb for cb in initialized_callbacks
-        if isinstance(cb, StochasticWeightAveraging)
+        cb for cb in initialized_callbacks if isinstance(cb, StochasticWeightAveraging)
     ]
     if swa_cbs:
         raise RuntimeError(
@@ -134,18 +138,20 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
     checkpoint_cbs = [
         cb for cb in initialized_callbacks if isinstance(cb, ModelCheckpoint)
     ]
-    initialized_callbacks = other_cbs + checkpoint_cbs     
+    initialized_callbacks = other_cbs + checkpoint_cbs
     if checkpoint_cbs:
         for cb in checkpoint_cbs:
             logging.info(f"Model checkpoints will be saved to: {cb.dirpath}")
             if not cb.monitor:
-                logging.warning(f"Checkpoint in {cb.dirpath} has no monitor metric specified")
+                logging.warning(
+                    f"Checkpoint in {cb.dirpath} has no monitor metric specified"
+                )
     else:
         raise RuntimeError(
             "No ModelCheckpoint callback configured. "
             "You must provide at least one ModelCheckpoint to save the model checkpoints."
         )
-    
+
     try:
         trainer_cfg = cfg["trainer"]
         filter_trainer_cfg = {}
@@ -168,7 +174,7 @@ def build_trainer(cfg: Dict, dataloader_valid: DataLoader = None) -> L.Trainer:
             f"Error: {str(e)}"
         )
         raise RuntimeError(error_detail) from e
-    
+
     logging.info(f"Callbacks: {list(cfg.get('callbacks', {}))}")
 
     return trainer
@@ -181,9 +187,9 @@ def train(
     model,
     datamodule,
     target_property,
-    embedding_property: list[str] = []
+    embedding_property: list[str] = [],
 ):
-    
+
     # resume_ckpt = cfg.get("resume_from_model", None)
     # if resume_ckpt:
     #     ckpt_path = Path(resume_ckpt)
@@ -192,11 +198,11 @@ def train(
     #     _maybe_start_wsd_decay_on_resume(cfg, resume_ckpt)
 
     lit_model = LightningWrapperModel(
-        cfg, 
+        cfg,
         model,
-        target_property, 
+        target_property,
         embedding_property,
-        statistics, 
+        statistics,
     )
 
     # Trainer
@@ -221,9 +227,9 @@ def train(
             lit_model,
             datamodule=datamodule,
         )
-    
+
     # TEST
-    if cfg['dataset'].get('test_files', None):
+    if cfg["dataset"].get("test_files", None):
         trainer.test(
             lit_model,
             datamodule=datamodule,
@@ -231,4 +237,3 @@ def train(
             verbose=False,
         )
     logging.info("Training completed at %s", datetime.now().strftime("%Y-%m-%d %H:%M"))
-

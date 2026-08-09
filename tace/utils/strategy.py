@@ -1,4 +1,5 @@
-'''Copy from Nequip-v0.15.0, avoid some unnecessary synchronization operations in MLIPs'''
+"""Copy from Nequip-v0.15.0, avoid some unnecessary synchronization operations in MLIPs"""
+
 import torch
 from lightning.pytorch.strategies import DDPStrategy
 
@@ -6,7 +7,7 @@ from lightning.pytorch.strategies import DDPStrategy
 class SimpleDDPStrategy(DDPStrategy):
     """
     Copy from Nequip-v0.15.0, avoid some unnecessary synchronization operations in MLIPs
-    Effectively Lightning's :class:`~lightning.pytorch.strategies.DDPStrategy`, 
+    Effectively Lightning's :class:`~lightning.pytorch.strategies.DDPStrategy`,
     but doing manual gradient syncs instead of using PyTorch's :class:`~torch.nn.parallel.DistributedDataParallel` wrapper.
 
     Example use in the config file:

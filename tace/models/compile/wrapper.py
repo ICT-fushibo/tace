@@ -129,9 +129,7 @@ class CompileTensorModel(TensorModel):
             if key in target_property
         )
         keys.extend(
-            key
-            for key in ("forces", "virials", "stress")
-            if key in target_property
+            key for key in ("forces", "virials", "stress") if key in target_property
         )
         return tuple(keys)
 
@@ -263,11 +261,7 @@ class _FlatE3nnCompileModel(torch.nn.Module):
             grad_index += 1
         if self.compute_stress or self.compute_virials:
             grad = grads[grad_index]
-            virials = (
-                torch.zeros_like(data["lattice"])
-                if grad is None
-                else -grad
-            )
+            virials = torch.zeros_like(data["lattice"]) if grad is None else -grad
             volume = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
             stress = -virials / volume.view(-1, 1, 1)
             output["virials"] = virials

@@ -12,10 +12,10 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 
+from ..utils.torch_scatter import scatter
+from ..utils.utils import log_statistics_to_yaml
 from .element import TorchElement
 from .quantity import KeySpecification
-from ..utils.utils import log_statistics_to_yaml
-from ..utils.torch_scatter import scatter
 
 
 def _canonical_atomic_energy(
@@ -79,9 +79,7 @@ class _RunningMoments:
         new_count = self.count + batch_count
         self.mean = self.mean + delta * (batch_count / new_count)
         self.m2 = (
-            self.m2
-            + batch_m2
-            + delta.square() * (self.count * batch_count / new_count)
+            self.m2 + batch_m2 + delta.square() * (self.count * batch_count / new_count)
         )
         self.count = new_count
 
@@ -189,21 +187,19 @@ def _compute_statistics(
     force_moments = [_RunningMoments() for _ in range(num_fidelities)]
     force_norm_moments = [_RunningMoments() for _ in range(num_fidelities)]
     force_by_element = [
-        [_RunningMoments() for _ in atomic_numbers]
-        for _ in range(num_fidelities)
+        [_RunningMoments() for _ in atomic_numbers] for _ in range(num_fidelities)
     ]
     force_norm_by_element = [
-        [_RunningMoments() for _ in atomic_numbers]
-        for _ in range(num_fidelities)
+        [_RunningMoments() for _ in atomic_numbers] for _ in range(num_fidelities)
     ]
 
     atomic_energy_fn = None
     if "energy" in target_property:
         if atomic_energies is None:
             raise ValueError("atomic_energies are required for energy statistics")
-        atomic_energy_fn = OneHotToAtomicEnergy(
-            atomic_energies, atomic_numbers
-        ).to(device)
+        atomic_energy_fn = OneHotToAtomicEnergy(atomic_energies, atomic_numbers).to(
+            device
+        )
 
     with torch.no_grad():
         for data in dataloader_train:
@@ -224,8 +220,7 @@ def _compute_statistics(
                     "fidelity_idx must contain exactly one value per structure"
                 )
             if fidelity_idx.numel() and (
-                int(fidelity_idx.min()) < 0
-                or int(fidelity_idx.max()) >= num_fidelities
+                int(fidelity_idx.min()) < 0 or int(fidelity_idx.max()) >= num_fidelities
             ):
                 raise ValueError(
                     "fidelity_idx values must be in "
@@ -234,17 +229,13 @@ def _compute_statistics(
                 )
 
             node_fidelity = fidelity_idx[data["batch"]]
-            graph_counts += torch.bincount(
-                fidelity_idx.cpu(), minlength=num_fidelities
-            )
-            atom_counts += torch.bincount(
-                node_fidelity.cpu(), minlength=num_fidelities
-            )
+            graph_counts += torch.bincount(fidelity_idx.cpu(), minlength=num_fidelities)
+            atom_counts += torch.bincount(node_fidelity.cpu(), minlength=num_fidelities)
 
             source = data.edge_index[0]
-            neighbor_counts = torch.bincount(
-                source, minlength=data.batch.size(0)
-            ).to(torch.float64)
+            neighbor_counts = torch.bincount(source, minlength=data.batch.size(0)).to(
+                torch.float64
+            )
             neighbor_moments.update(neighbor_counts)
             for element_id in element_idx.unique().tolist():
                 neighbor_by_element[element_id].update(
@@ -272,9 +263,7 @@ def _compute_statistics(
                 delta_per_atom = (energy - e0) / num_nodes
                 energy_weight = data.get("energy_weight")
                 if energy_weight is None:
-                    valid_energy = torch.ones_like(
-                        fidelity_idx, dtype=torch.bool
-                    )
+                    valid_energy = torch.ones_like(fidelity_idx, dtype=torch.bool)
                 else:
                     valid_energy = energy_weight.reshape(-1) > 0
                 for level in fidelity_idx.unique().tolist():
@@ -288,15 +277,15 @@ def _compute_statistics(
                 if forces is None and "direct_forces" in target_property:
                     forces = data.get("direct_forces")
                 if forces is None:
-                    raise KeyError("Force statistics requested but no forces were found")
+                    raise KeyError(
+                        "Force statistics requested but no forces were found"
+                    )
                 force_norm = torch.linalg.vector_norm(forces, dim=1)
                 force_weight = data.get("forces_weight")
                 if force_weight is None and "direct_forces" in target_property:
                     force_weight = data.get("direct_forces_weight")
                 if force_weight is None:
-                    valid_force = torch.ones_like(
-                        node_fidelity, dtype=torch.bool
-                    )
+                    valid_force = torch.ones_like(node_fidelity, dtype=torch.bool)
                 else:
                     valid_force = force_weight.reshape(-1)[data["batch"]] > 0
                 for level in node_fidelity.unique().tolist():
@@ -339,9 +328,7 @@ def _compute_statistics(
 
         if "energy" in target_property:
             energy_mean = float(energy_moments[level].mean_or_zeros().item())
-            energy_std = float(
-                energy_moments[level].std_or_zeros(unbiased=True).item()
-            )
+            energy_std = float(energy_moments[level].std_or_zeros(unbiased=True).item())
             energy_per_atom_mean = float(
                 energy_per_atom_moments[level].mean_or_zeros().item()
             )
@@ -360,13 +347,9 @@ def _compute_statistics(
                     "atomic_energy": canonical_energy,
                     "scalar_mean_energy_per_atom": energy_per_atom_mean,
                     "mean_energy": {z: energy_mean for z in atomic_numbers},
-                    "mean_energy_by_element": {
-                        z: energy_mean for z in atomic_numbers
-                    },
+                    "mean_energy_by_element": {z: energy_mean for z in atomic_numbers},
                     "std_energy": {z: energy_std for z in atomic_numbers},
-                    "std_energy_by_element": {
-                        z: energy_std for z in atomic_numbers
-                    },
+                    "std_energy_by_element": {z: energy_std for z in atomic_numbers},
                     "mean_energy_per_atom": {
                         z: energy_per_atom_mean for z in atomic_numbers
                     },
@@ -384,9 +367,7 @@ def _compute_statistics(
 
         if "forces" in target_property or "direct_forces" in target_property:
             force_mean = force_moments[level].mean_or_zeros((3,))
-            force_std = force_moments[level].std_or_zeros(
-                (3,), unbiased=True
-            )
+            force_std = force_moments[level].std_or_zeros((3,), unbiased=True)
             force_rms = force_moments[level].rms_or_zeros((3,))
             norm_mean = float(force_norm_moments[level].mean_or_zeros().item())
             norm_std = float(
@@ -408,9 +389,7 @@ def _compute_statistics(
                 mean_3d_by_element[z] = element_force.mean_or_zeros((3,)).tolist()
                 std_3d_by_element[z] = element_force.std_or_zeros((3,)).tolist()
                 rms_3d_by_element[z] = element_force.rms_or_zeros((3,)).tolist()
-                mean_1d_by_element[z] = float(
-                    element_norm.mean_or_zeros().item()
-                )
+                mean_1d_by_element[z] = float(element_norm.mean_or_zeros().item())
                 std_value = float(element_norm.std_or_zeros().item())
                 rms_value = float(element_norm.rms_or_zeros().item())
                 std_1d_by_element[z] = std_value
@@ -434,12 +413,8 @@ def _compute_statistics(
                     "__rms_forces_1d_by_element": rms_1d_by_element,
                     "mean_forces_for_normalize": norm_mean,
                     "std_forces_for_normalize": norm_std,
-                    "rms_forces": {
-                        z: _finite_scale(norm_rms) for z in atomic_numbers
-                    },
-                    "std_forces": {
-                        z: _finite_scale(norm_std) for z in atomic_numbers
-                    },
+                    "rms_forces": {z: _finite_scale(norm_rms) for z in atomic_numbers},
+                    "std_forces": {z: _finite_scale(norm_std) for z in atomic_numbers},
                     "rms_forces_by_element": scale_rms_by_element,
                     "std_forces_by_element": scale_std_by_element,
                 }

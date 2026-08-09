@@ -5,17 +5,15 @@
 
 import contextlib
 import logging
-from typing import Dict, List
-import yaml
 from pathlib import Path
-from packaging import version
-
-from torch import Tensor
-from omegaconf import DictConfig, ListConfig
-
+from typing import Dict, List
 
 import numpy as np
 import torch
+import yaml
+from omegaconf import DictConfig, ListConfig
+from packaging import version
+from torch import Tensor
 
 
 def set_global_seed(cfg: Dict) -> None:
@@ -55,6 +53,7 @@ def set_precision(cfg: Dict) -> None:
         if allow_tf32:
             torch.backends.cuda.matmul.allow_tf32 = allow_tf32
             torch.backends.cudnn.allow_tf32 = allow_tf32
+
 
 # torch 2.9
 # def set_precision(cfg: Dict) -> None:
@@ -102,7 +101,8 @@ def set_precision(cfg: Dict) -> None:
 #             if torch.backends.cuda.matmul.allow_tf32 is not allow_tf32:
 #                 torch.backends.cuda.matmul.allow_tf32 = allow_tf32
 #                 torch.backends.cudnn.allow_tf32 = allow_tf32
-    
+
+
 def num_params(model) -> None:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -203,12 +203,10 @@ def voigt_to_matrix(t: Tensor, **kwargs):
         f"Stress tensor must be of shape (6,) or (3, 3), or (9,) but has shape {t.shape}"
     )
 
+
 def calculate_cps(
-        f1: float, 
-        kappa_srme: float, 
-        rmsd: float, 
-        rmsd_baseline: float = 0.15
-    ) -> float:
+    f1: float, kappa_srme: float, rmsd: float, rmsd_baseline: float = 0.15
+) -> float:
     """Matbench discovery CPS, using default weight"""
     s_f1 = max(0.0, min(1.0, f1))
     s_kappa = max(0.0, 1.0 - kappa_srme / 2.0)
@@ -218,10 +216,5 @@ def calculate_cps(
         s_rmsd = 0.0
     else:
         s_rmsd = 1.0 - rmsd / rmsd_baseline
-    cps = (
-        0.5 * s_f1 +
-        0.4 * s_kappa +
-        0.1 * s_rmsd
-    )
+    cps = 0.5 * s_f1 + 0.4 * s_kappa + 0.1 * s_rmsd
     return cps
-

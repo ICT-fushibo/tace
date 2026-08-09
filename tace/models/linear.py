@@ -5,11 +5,9 @@
 
 import math
 
-
 import torch
 import torch.nn.functional as F
 from e3nn import o3
-
 
 from tace.utils.env import get_tace_use_matrix_weight
 
@@ -72,8 +70,8 @@ def _make_lora_path_parameters(
     lora_A = torch.nn.ParameterList()
     lora_B = torch.nn.ParameterList()
     for path_shape in module._path_shapes:
-        left_dim = int(path_shape[0]) # in
-        right_dim = int(math.prod(path_shape[1:])) # out
+        left_dim = int(path_shape[0])  # in
+        right_dim = int(math.prod(path_shape[1:]))  # out
         lora_A.append(
             _init_lora_parameter((*prefix, left_dim, r), device=device, dtype=dtype)
         )
@@ -90,7 +88,9 @@ def _make_lora_path_parameters(
 
 def _lora_path_delta(module: torch.nn.Module, path_index: int) -> torch.Tensor:
     delta = module.lora_A[path_index] @ module.lora_B[path_index]
-    return delta.reshape(*delta.shape[:-2], *module._path_shapes[path_index]) * _lora_scaling(module)
+    return delta.reshape(
+        *delta.shape[:-2], *module._path_shapes[path_index]
+    ) * _lora_scaling(module)
 
 
 def _flat_lora_delta(module: torch.nn.Module) -> torch.Tensor:
@@ -208,7 +208,6 @@ def merge_lora(module: torch.nn.Module, remove_lora: bool = True) -> torch.nn.Mo
 
 
 class torchLinear(torch.nn.Module):
-
     __constants__ = ["in_features", "out_features"]
     in_features: int
     out_features: int
@@ -268,14 +267,16 @@ class mlpLinear(torch.nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         weight = self.weight * self.alpha
         if has_lora(self):
-            weight = (self.weight + (self.lora_A @ self.lora_B) * _lora_scaling(self)) * self.alpha
+            weight = (
+                self.weight + (self.lora_A @ self.lora_B) * _lora_scaling(self)
+            ) * self.alpha
         if self.bias is None:
             return torch.mm(input, weight)
         else:
             return torch.addmm(self.bias, input, weight)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={ self.bias is not None})"
+        return f"{self.__class__.__name__}(in_dim={self.in_dim}, out_dim={self.out_dim} bias={self.bias is not None})"
 
 
 class e3nnLinear(torch.nn.Module):
@@ -286,13 +287,13 @@ class e3nnLinear(torch.nn.Module):
         *,
         bias: bool = True,
         internal_weights: bool = True,
-        use_matrix_weight: bool = get_tace_use_matrix_weight()
+        use_matrix_weight: bool = get_tace_use_matrix_weight(),
     ):
         super().__init__()
 
         self.irreps_in = o3.Irreps(irreps_in)
         self.irreps_out = o3.Irreps(irreps_out)
-        self.use_matrix_weight = use_matrix_weight == '1'
+        self.use_matrix_weight = use_matrix_weight == "1"
 
         self.linear = o3.Linear(
             irreps_in=self.irreps_in,
@@ -322,11 +323,7 @@ class e3nnLinear(torch.nn.Module):
             if internal_weights:
                 self.weight = torch.nn.ParameterList()
                 for ins in self.linear.instructions:
-                    self.weight.append(
-                        torch.nn.Parameter(
-                            torch.randn(ins.path_shape)
-                        )
-                    )
+                    self.weight.append(torch.nn.Parameter(torch.randn(ins.path_shape)))
             else:
                 self.register_parameter("weight", None)
         else:
@@ -340,7 +337,6 @@ class e3nnLinear(torch.nn.Module):
             self.bias = torch.nn.Parameter(torch.zeros(bias_acc))
         else:
             self.register_parameter("bias", None)
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         weight = self.weight
@@ -360,7 +356,7 @@ class e3nnLinear(torch.nn.Module):
             weight = weight + _flat_lora_delta(self)
 
         out = self.linear(x, weight)
-        
+
         if self.bias is not None:
             for sl, bias_sl in zip(self._0e_slices, self._bias_slices):
                 out[:, sl] = out[:, sl] + self.bias[bias_sl].unsqueeze(0)
@@ -379,14 +375,14 @@ class e3nnElementLinear(torch.nn.Module):
         *,
         bias: bool = True,
         num_elements: int,
-        use_matrix_weight: bool = get_tace_use_matrix_weight()
+        use_matrix_weight: bool = get_tace_use_matrix_weight(),
     ):
         super().__init__()
 
         self.irreps_in = o3.Irreps(irreps_in)
         self.irreps_out = o3.Irreps(irreps_out)
         self.num_elements = num_elements
-        self.use_matrix_weight = use_matrix_weight == '1'
+        self.use_matrix_weight = use_matrix_weight == "1"
 
         self.linear = o3.Linear(
             irreps_in=self.irreps_in,
@@ -415,9 +411,7 @@ class e3nnElementLinear(torch.nn.Module):
             self.weight = torch.nn.ParameterList()
             for ins in self.linear.instructions:
                 self.weight.append(
-                    torch.nn.Parameter(
-                        torch.randn(num_elements, *ins.path_shape)
-                    )
+                    torch.nn.Parameter(torch.randn(num_elements, *ins.path_shape))
                 )
             if bias and bias_acc > 0:
                 self.bias = torch.nn.Parameter(torch.zeros(num_elements * bias_acc))
@@ -437,13 +431,17 @@ class e3nnElementLinear(torch.nn.Module):
             if has_lora(self):
                 weight = torch.cat(
                     [
-                        (w + _lora_path_delta(self, path_index)).view(self.num_elements, -1)
+                        (w + _lora_path_delta(self, path_index)).view(
+                            self.num_elements, -1
+                        )
                         for path_index, w in enumerate(self.weight)
                     ],
                     dim=-1,
                 )
             else:
-                weight = torch.cat([w.view(self.num_elements, -1) for w in self.weight], dim=-1)
+                weight = torch.cat(
+                    [w.view(self.num_elements, -1) for w in self.weight], dim=-1
+                )
             bias = self.bias.view(self.num_elements, -1)
         else:
             weight = self.weight
@@ -463,7 +461,7 @@ class e3nnElementLinear(torch.nn.Module):
 
     def __repr__(self):
         return "Element" + repr(self.linear) + f"(bias={self.bias is not None})"
-    
+
 
 class e3nnMoEElementLinear(torch.nn.Module):
     def __init__(
@@ -510,16 +508,12 @@ class e3nnMoEElementLinear(torch.nn.Module):
         )
         self._input_slices = list(self.irreps_in.slices())
         self._input_dims = [ir.dim for _, ir in self.irreps_in]
-        self._input_expert_muls = [
-            mul // self.num_experts for mul, _ in self.irreps_in
-        ]
+        self._input_expert_muls = [mul // self.num_experts for mul, _ in self.irreps_in]
         self._output_dims = [ir.dim for _, ir in self.irreps_out]
         self._output_expert_muls = [
             mul // self.num_experts for mul, _ in self.irreps_out
         ]
-        self._path_shapes = [
-            tuple(ins.path_shape) for ins in self.linear.instructions
-        ]
+        self._path_shapes = [tuple(ins.path_shape) for ins in self.linear.instructions]
         self._path_metadata = [
             (ins.i_in, ins.i_out, float(ins.path_weight))
             for ins in self.linear.instructions
@@ -580,9 +574,7 @@ class e3nnMoEElementLinear(torch.nn.Module):
     def forward(self, x: torch.Tensor, attrs: torch.Tensor) -> torch.Tensor:
         node_type = attrs.argmax(dim=-1)
         inputs = [
-            x[:, tensor_slice].reshape(
-                x.shape[0], self.num_experts, expert_mul, ir_dim
-            )
+            x[:, tensor_slice].reshape(x.shape[0], self.num_experts, expert_mul, ir_dim)
             for tensor_slice, ir_dim, expert_mul in zip(
                 self._input_slices,
                 self._input_dims,
@@ -591,9 +583,7 @@ class e3nnMoEElementLinear(torch.nn.Module):
         ]
         outputs = [
             x.new_zeros(x.shape[0], self.num_experts, expert_mul, ir_dim)
-            for ir_dim, expert_mul in zip(
-                self._output_dims, self._output_expert_muls
-            )
+            for ir_dim, expert_mul in zip(self._output_dims, self._output_expert_muls)
         ]
 
         for (i_in, i_out, path_weight), weight in zip(
@@ -608,7 +598,9 @@ class e3nnMoEElementLinear(torch.nn.Module):
         if self.bias is not None:
             bias = self.bias[node_type]
             for out_idx, start, end in self._bias_out_indices:
-                outputs[out_idx] = outputs[out_idx] + bias[:, :, start:end].unsqueeze(-1)
+                outputs[out_idx] = outputs[out_idx] + bias[:, :, start:end].unsqueeze(
+                    -1
+                )
 
         return torch.cat(
             [output.reshape(output.shape[0], -1) for output in outputs],
@@ -616,10 +608,16 @@ class e3nnMoEElementLinear(torch.nn.Module):
         )
 
     def __repr__(self):
-        return "MoE" + repr(self.linear) + f"(bias={self.bias is not None}, num_experts={self.num_experts})"
-    
+        return (
+            "MoE"
+            + repr(self.linear)
+            + f"(bias={self.bias is not None}, num_experts={self.num_experts})"
+        )
 
-def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") -> torch.nn.Module:
+
+def switch_e3nn_weight_layout(
+    model: torch.nn.Module, target: str = "toggle"
+) -> torch.nn.Module:
 
     assert target in {"toggle", "flat", "matrix"}
 
@@ -658,16 +656,18 @@ def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") ->
                 for ins in m.linear.instructions:
                     size = int(torch.tensor(ins.path_shape).prod().item())
                     if has_experts:
-                        chunk = old_weight[:, :, offset:offset + size]
+                        chunk = old_weight[:, :, offset : offset + size]
                         chunk = chunk.reshape(
                             m.num_elements,
                             m.num_experts,
                             *ins.path_shape,
                         )
                     else:
-                        chunk = old_weight[:, offset:offset + size]
+                        chunk = old_weight[:, offset : offset + size]
                         chunk = chunk.reshape(m.num_elements, *ins.path_shape)
-                    matrix_weights.append(torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad))
+                    matrix_weights.append(
+                        torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad)
+                    )
                     offset += size
 
                 # bias:
@@ -683,9 +683,11 @@ def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") ->
                 # old_weight: [weight_numel]
                 for ins in m.linear.instructions:
                     size = int(torch.tensor(ins.path_shape).prod().item())
-                    chunk = old_weight[offset:offset + size]
+                    chunk = old_weight[offset : offset + size]
                     chunk = chunk.reshape(*ins.path_shape)
-                    matrix_weights.append(torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad))
+                    matrix_weights.append(
+                        torch.nn.Parameter(chunk.clone(), requires_grad=requires_grad)
+                    )
                     offset += size
 
         set_weight(m, matrix_weights)
@@ -723,7 +725,9 @@ def switch_e3nn_weight_layout(model: torch.nn.Module, target: str = "toggle") ->
                 chunks = [w.reshape(-1) for w in old_weights]
                 flat_weight = torch.cat(chunks, dim=-1)
 
-        set_weight(m, torch.nn.Parameter(flat_weight.clone(), requires_grad=requires_grad))
+        set_weight(
+            m, torch.nn.Parameter(flat_weight.clone(), requires_grad=requires_grad)
+        )
         m.use_matrix_weight = False
 
     def convert_module(m: torch.nn.Module):

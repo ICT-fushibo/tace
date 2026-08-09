@@ -17,7 +17,6 @@ from tace.lightning import export_tace, load_tace
 from tace.models.compile import export_aotinductor
 from tace.utils.env import enable_acceleration
 
-
 ALLOWED_BACKEND = ["state_dict", "full_model", "aoti"]
 
 
@@ -49,7 +48,9 @@ def parse_args():
         default=None,
         help="Model dtype",
     )
-    parser.add_argument("--device", type=str, default="cuda", help="Load or compile device")
+    parser.add_argument(
+        "--device", type=str, default="cuda", help="Load or compile device"
+    )
     parser.add_argument(
         "--sample",
         type=str,

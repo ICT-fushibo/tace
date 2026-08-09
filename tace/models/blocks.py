@@ -21,8 +21,8 @@
 #         return "[" + ", ".join(format_list(x, ndigits) for x in obj) + "]"
 #     else:
 #         return str(obj)
-  
-  
+
+
 # class OneHotToAtomicEnergy(torch.nn.Module):
 #     def __init__(self, atomic_energies: List[Dict[int, float]]) -> None:
 #         super().__init__()
@@ -40,7 +40,7 @@
 #             ),
 #         )
 
-#     def forward(self, x: torch.Tensor) -> torch.Tensor: 
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
 #         return torch.matmul(x, self.atomic_energy.T)
 
 #     def __repr__(self):
@@ -166,7 +166,7 @@
 #         s += f"all_atoms={self.all_atoms}\n"
 #         s += ")"
 #         return s
-    
+
 #     @classmethod
 #     def build_from_config(cls, statistics, cfg: Dict):
 #         required_keys = [
@@ -214,16 +214,16 @@
 # def has_no_isolated_atoms(edge_index: torch.Tensor, num_atoms: int):
 #     if torch.all(
 #         scatter_sum(
-#             torch.ones((num_atoms,))[edge_index[0]], 
-#             edge_index[1], 
-#             dim_size=num_atoms, 
+#             torch.ones((num_atoms,))[edge_index[0]],
+#             edge_index[1],
+#             dim_size=num_atoms,
 #             dim=0,
 #         )
 #     ):
 #         return True
 #     else:
 #         return False
-    
+
 ################################################################################
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
@@ -231,9 +231,7 @@
 
 from typing import Dict, List, Optional
 
-
 import torch
-
 
 from tace.utils.torch_scatter import scatter_sum
 
@@ -247,8 +245,8 @@ def format_list(obj, ndigits=4):
         return "[" + ", ".join(format_list(x, ndigits) for x in obj) + "]"
     else:
         return str(obj)
-  
-  
+
+
 class OneHotToAtomicEnergy(torch.nn.Module):
     def __init__(
         self,
@@ -259,9 +257,7 @@ class OneHotToAtomicEnergy(torch.nn.Module):
         assert atomic_energies is not None
         atomic_energy_list = []
         for atomic_energy in atomic_energies:
-            atomic_energy = {
-                int(z): float(value) for z, value in atomic_energy.items()
-            }
+            atomic_energy = {int(z): float(value) for z, value in atomic_energy.items()}
             atomic_energy_list.append(
                 [atomic_energy.get(int(z), 0.0) for z in atomic_numbers]
             )
@@ -273,7 +269,7 @@ class OneHotToAtomicEnergy(torch.nn.Module):
             ),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor: 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.matmul(x, self.atomic_energy.T)
 
     def __repr__(self):
@@ -350,7 +346,9 @@ class ScaleShift(torch.nn.Module):
                 node_energy = node_energy + node_shift
         else:
             if edge_index.numel() == 0:
-                num_edges = torch.zeros(num_graphs, dtype=torch.int64, device=node_energy.device)
+                num_edges = torch.zeros(
+                    num_graphs, dtype=torch.int64, device=node_energy.device
+                )
             else:
                 edge_batch = batch[edge_index[1]]
                 num_edges = torch.bincount(edge_batch, minlength=num_graphs)
@@ -401,7 +399,7 @@ class ScaleShift(torch.nn.Module):
         s += f"all_atoms={self.all_atoms}\n"
         s += ")"
         return s
-    
+
     @classmethod
     def build_from_config(
         cls,
@@ -415,9 +413,9 @@ class ScaleShift(torch.nn.Module):
             "scale_trainable",
             "shift_trainable",
         ]
-        assert all(
-            k in cfg for k in required_keys
-        ), f"Missing keys in scale_shift config: {required_keys}"
+        assert all(k in cfg for k in required_keys), (
+            f"Missing keys in scale_shift config: {required_keys}"
+        )
 
         scale_key = cfg["scale_type"]
         shift_key = cfg["shift_type"]
@@ -456,9 +454,9 @@ class ScaleShift(torch.nn.Module):
 def has_no_isolated_atoms(edge_index: torch.Tensor, num_atoms: int):
     if torch.all(
         scatter_sum(
-            torch.ones((num_atoms,))[edge_index[0]], 
-            edge_index[1], 
-            dim_size=num_atoms, 
+            torch.ones((num_atoms,))[edge_index[0]],
+            edge_index[1],
+            dim_size=num_atoms,
             dim=0,
         )
     ):

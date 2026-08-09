@@ -3,15 +3,16 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, Union, List, Any
-from itertools import combinations
 import math
+from itertools import combinations
+from typing import Any, Dict, List, Union
 
 import torch
-from e3nn.o3._irreps import Irreps
 from e3nn import get_optimization_defaults
-from e3nn.util.jit import compile_mode
+from e3nn.o3._irreps import Irreps
 from e3nn.o3._spherical_harmonics import _spherical_harmonics
+from e3nn.util.jit import compile_mode
+
 from .ictd import ICTD
 from .utils import expand_dims_to
 
@@ -80,8 +81,11 @@ def subtract_traces(T: torch.Tensor, n: int) -> torch.Tensor:
         result = result + coeff * corr
     return result
 
+
 # numerical
-def symmetric_traceless_outer_product(v: torch.Tensor, n: int, norm: bool = True) -> torch.Tensor:
+def symmetric_traceless_outer_product(
+    v: torch.Tensor, n: int, norm: bool = True
+) -> torch.Tensor:
     T = symmetric_outer_product(v, n, norm)
     return subtract_traces(T, n)
 
@@ -106,7 +110,7 @@ def symmetric_traceless_outer_product(v: torch.Tensor, n: int, norm: bool = True
 #         for l in range(1, self.lmax+1):
 #             T = T[..., None] * expand_dims_to(v, T.ndim + 1, dim=v.ndim - 1)
 #             edge_attrs[l] = T
-                
+
 #         if self.traceless:
 #             for l in range(1, self.lmax+1):
 #                 T = edge_attrs[l]
@@ -121,7 +125,7 @@ def symmetric_traceless_outer_product(v: torch.Tensor, n: int, norm: bool = True
 #         if self.norm:
 #             for l in range(1, self.lmax+1):
 #                 edge_attrs[l] = edge_attrs[l] * _norm(l)
-                
+
 #         for l in range(1, self.lmax+1):
 #             edge_attrs[l] = edge_attrs[l].unsqueeze(-1)
 
@@ -129,10 +133,10 @@ def symmetric_traceless_outer_product(v: torch.Tensor, n: int, norm: bool = True
 
 #     def D(self, l: int):
 #         return dict(self.named_buffers())[f"D{l}"]
-    
+
 #     def __repr__(self):
 #         return f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, traceless={self.traceless})"
-    
+
 
 class CartesianHarmonics(torch.nn.Module):
     def __init__(
@@ -143,7 +147,7 @@ class CartesianHarmonics(torch.nn.Module):
         *,
         normalize: bool = False,
         return_dict: bool = True,
-        eps: float = 1e-12, # TODO
+        eps: float = 1e-12,  # TODO
     ) -> None:
         super().__init__()
         self.lmax = lmax
@@ -194,14 +198,15 @@ class CartesianHarmonics(torch.nn.Module):
 
     def CT(self, l: int) -> torch.Tensor:
         return getattr(self, f"CT{l}")
-    
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(r={self.lmax}, norm={self.norm}, "
             f"traceless={self.traceless}, normalize={self.normalize}, "
             f"return_dict={self.return_dict})"
         )
-    
+
+
 class SphericalHarmonics(torch.nn.Module):
     """
     Copy from e3nn for torch.save
@@ -283,19 +288,27 @@ class SphericalHarmonics(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # - PROFILER - with torch.autograd.profiler.record_function(self._prof_str):
         if self.normalize:
-            x = torch.nn.functional.normalize(x, dim=-1)  # forward 0's instead of nan for zero-radius
+            x = torch.nn.functional.normalize(
+                x, dim=-1
+            )  # forward 0's instead of nan for zero-radius
 
         sh = self.sph_func(self._lmax, x[..., 0], x[..., 1], x[..., 2])
 
         if not self._is_range_lmax:
-            sh = torch.cat([sh[..., l * l : (l + 1) * (l + 1)] for l in self._ls_list], dim=-1)
+            sh = torch.cat(
+                [sh[..., l * l : (l + 1) * (l + 1)] for l in self._ls_list], dim=-1
+            )
 
         if self.normalization == "integral":
             sh.div_(math.sqrt(4 * math.pi))
         elif self.normalization == "norm":
             sh.div_(
                 torch.cat(
-                    [math.sqrt(2 * l + 1) * torch.ones(2 * l + 1, dtype=sh.dtype, device=sh.device) for l in self._ls_list]
+                    [
+                        math.sqrt(2 * l + 1)
+                        * torch.ones(2 * l + 1, dtype=sh.dtype, device=sh.device)
+                        for l in self._ls_list
+                    ]
                 )
             )
 

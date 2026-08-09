@@ -4,17 +4,15 @@
 ################################################################################
 
 import logging
-from typing import List, Dict, Union
-from pathlib import Path
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
-
+from pathlib import Path
+from typing import Dict, List, Union
 
 from ase import Atoms
 
-
+from .quantity import PROPERTY, KeySpecification, get_need_property
 from .split import random_split
-from .quantity import KeySpecification, PROPERTY, get_need_property
 
 
 class DatasetsSplit:
@@ -64,9 +62,7 @@ def check_keys(
     embedding_property: List[str] = [],
     training: bool = True,
 ):
-    need_property = get_need_property(
-        target_property, embedding_property, training
-    )
+    need_property = get_need_property(target_property, embedding_property, training)
     for atoms in atomsList:
         calc = atoms.calc
         if calc is None:
@@ -88,12 +84,13 @@ def check_keys(
             elif p in list(keyspec.arrays_keys):
                 key = keyspec.arrays_keys[p]
                 atoms.arrays[key] = value
-                
+
     return atomsList
 
 
 def ase_io_read(filename: str):
     from ase.io import read
+
     try:
         atoms_list = read(filename, index=":")
         if not atoms_list:
@@ -107,6 +104,7 @@ def ase_io_read(filename: str):
 
 def ase_db_connect(filename: str):
     from ase.db import connect
+
     try:
         atoms_list = []
         with connect(filename) as db:
@@ -124,12 +122,13 @@ def ase_db_connect(filename: str):
 
 def fair_aselmdb(filename: str):  # [only test energy, forces, stress]
     from ase.db import connect
+
     try:
         atoms_list = []
         with connect(filename) as db:
             for row in db.select():
                 atoms = row.toatoms()
-                if hasattr(row, 'data'):
+                if hasattr(row, "data"):
                     for k, v in row.data.items():
                         if not k.startswith("_"):
                             atoms.info[k] = v
@@ -142,9 +141,9 @@ def fair_aselmdb(filename: str):  # [only test energy, forces, stress]
     except Exception as e:
         logging.error(f"Failed to read {filename}: {e}")
         return []
-    
 
-def torchsim_h5(filename: str): # TODO
+
+def torchsim_h5(filename: str):  # TODO
     raise NotImplementedError("torchsim_h5 is not yet implemented")
 
 
@@ -165,14 +164,16 @@ HOW_TO_READ = {
 }
 
 
-def read_single_file(fpath: str, target_property, keyspec, embedding_property, backend="ase"):
+def read_single_file(
+    fpath: str, target_property, keyspec, embedding_property, backend="ase"
+):
     atomsList = HOW_TO_READ[backend](fpath)
     try:
         return check_keys(atomsList, target_property, keyspec, embedding_property)
     except Exception as e:
-        logging.warning(f"Failed to read when check_keys for atoms")
+        logging.warning("Failed to read when check_keys for atoms")
         return []
-    
+
 
 def read_all_files(
     filename: Union[str, List[str]],
@@ -228,9 +229,7 @@ def read_all_files(
 
         elif path.is_dir():
             all_files.extend(
-                f
-                for pattern in RGLOB[backend]
-                for f in path.rglob(pattern)
+                f for pattern in RGLOB[backend] for f in path.rglob(pattern)
             )
         else:
             raise ValueError(f"Unsupported path type: {path}")
@@ -280,20 +279,27 @@ def tace_read_all_files(
     keyspec: KeySpecification,
     in_datamodule: bool = False,
 ) -> ThreeDataset:
-    
+
     file_type = cfg["dataset"].get("type", "ase")
     no_valid_set = cfg["dataset"].get("no_valid_set", False)
     num_workers = max(1, multiprocessing.cpu_count() // 4)
     num_workers = cfg["dataset"].get("num_workers", num_workers)
 
     train_file = cfg["dataset"]["train_file"]
-    assert train_file, "No valid training dataset provided. Please check cfg.dataset.train_file"
+    assert train_file, (
+        "No valid training dataset provided. Please check cfg.dataset.train_file"
+    )
     valid_file = cfg.get("dataset", {}).get("valid_file", None)
     test_files = cfg.get("dataset", {}).get("test_files", None)
 
     try:
         tmp_train_atoms_list = read_all_files(
-            train_file, target_property, keyspec, embedding_property, num_workers, file_type
+            train_file,
+            target_property,
+            keyspec,
+            embedding_property,
+            num_workers,
+            file_type,
         )
     except Exception as e:
         raise RuntimeError(
@@ -302,7 +308,12 @@ def tace_read_all_files(
     try:
         tmp_valid_atoms_list = (
             read_all_files(
-                valid_file, target_property, keyspec, embedding_property, num_workers, file_type
+                valid_file,
+                target_property,
+                keyspec,
+                embedding_property,
+                num_workers,
+                file_type,
             )
             if valid_file is not None
             else None
@@ -316,13 +327,23 @@ def tace_read_all_files(
             if isinstance(test_files, str):
                 test_atoms_list = [
                     read_all_files(
-                        test_files, target_property, keyspec, embedding_property, num_workers, file_type
+                        test_files,
+                        target_property,
+                        keyspec,
+                        embedding_property,
+                        num_workers,
+                        file_type,
                     )
                 ]
             elif isinstance(test_files, list):
                 test_atoms_list = [
                     read_all_files(
-                        f, target_property, keyspec, embedding_property, num_workers, file_type
+                        f,
+                        target_property,
+                        keyspec,
+                        embedding_property,
+                        num_workers,
+                        file_type,
                     )
                     for f in test_files
                 ]
@@ -332,7 +353,7 @@ def tace_read_all_files(
             test_atoms_list = None
     except Exception as e:
         raise RuntimeError(f"Failed to load test file from cfg.dataset.test_files: {e}")
-    
+
     if not in_datamodule:
         if test_atoms_list is None:
             logging.info("No test file is given")
@@ -352,20 +373,20 @@ def tace_read_all_files(
                     f"Using test set from: {test_files}",
                 )
     elif cfg.get("dataset", {}).get("valid_from_index", False):
-        # In the earlier version, the order of the training set was not taken 
+        # In the earlier version, the order of the training set was not taken
         # into account, and therefore only the valid indices were saved.
         train_index_path = Path(".") / "train.index"
         valid_index_path = Path(".") / "valid.index"
-        assert (
-            valid_index_path.is_file()
-        ), f"File does not exist or is not a regular file: {valid_index_path}"
+        assert valid_index_path.is_file(), (
+            f"File does not exist or is not a regular file: {valid_index_path}"
+        )
         with valid_index_path.open("r", encoding="utf-8") as f:
             valid_indices = [int(line.strip()) for line in f if line.strip()]
         valid_atoms_list = [tmp_train_atoms_list[i] for i in valid_indices]
         if train_index_path.exists():
-            assert (
-                train_index_path.is_file()
-            ), f"File does not exist or is not a regular file: {train_index_path}"
+            assert train_index_path.is_file(), (
+                f"File does not exist or is not a regular file: {train_index_path}"
+            )
             with train_index_path.open("r", encoding="utf-8") as f:
                 train_indices = [int(line.strip()) for line in f if line.strip()]
             train_atoms_list = [tmp_train_atoms_list[i] for i in train_indices]
@@ -392,7 +413,7 @@ def tace_read_all_files(
                 f"Using training set from: {train_file}",
             )
             logging.warning(
-                f"This training has no validation set, you must use lr_scheduler not depending on validation set",
+                "This training has no validation set, you must use lr_scheduler not depending on validation set",
             )
             if test_atoms_list is not None:
                 logging.info(
@@ -405,9 +426,9 @@ def tace_read_all_files(
             raise RuntimeError(
                 "Valid_ratio must be provided if no validation file is given."
             ) from e
-        assert isinstance(
-            ratio, float
-        ), "Valid_ratio must be provided if no validation file is given"
+        assert isinstance(ratio, float), (
+            "Valid_ratio must be provided if no validation file is given"
+        )
         assert 0.0 < ratio < 1.0, "Valid_ratio must be in the range (0, 1)."
         if not in_datamodule:
             logging.info(

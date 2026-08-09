@@ -1,6 +1,6 @@
-'''
+"""
 The contents of this file are all historical artifacts from TACE development and can be completely ignored.
-'''
+"""
 # class OamACE(Product):
 #     def _setup(self):
 
@@ -17,7 +17,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             l1l2=self.l1l2,
 #             l3s=self.l3s,
 #             trainable=True,
-#         ) 
+#         )
 #         self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
 
 #         irreps_gated = self.irreps_hidden2
@@ -38,11 +38,11 @@ The contents of this file are all historical artifacts from TACE development and
 #             self.irreps_hidden2,
 #             self.irreps_out,
 #             bias=self.use_bias
-#         )    
-        
+#         )
+
 #     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
+#             self,
+#             node_feats: torch.Tensor,
 #             node_attrs: torch.Tensor,
 #             sc: torch.Tensor,
 #             batch: torch.Tensor,
@@ -52,14 +52,14 @@ The contents of this file are all historical artifacts from TACE development and
 #         ones = node_feats.new_ones(node_feats.size(0), self.num_hidden_channel)
 
 #         corr_feats = self.ace(
-#             node_feats, 
+#             node_feats,
 #             torch.cat(
 #                 [
 #                     ones,
 #                     node_feats,
 #                 ],
 #                 dim=-1,
-#             ), 
+#             ),
 #             torch.einsum('bz, zi -> bi', node_attrs, self.coef),
 #         )
 
@@ -69,8 +69,6 @@ The contents of this file are all historical artifacts from TACE development and
 #             outs = outs + sc
 
 #         return outs
-    
-
 
 
 # class SO2ScatterTensorProduct(torch.nn.Module):
@@ -119,7 +117,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         Cout = num_channel
 #         self.num_out_channel = Cout
 
-        
+
 #         if self.is_so2_layout and not self.is_scalar_tp:
 #             self.num_components, expand_index = so2_expand_index(self.mmax, self.lmax)
 #             self.weight_numel = self.num_components * Cin
@@ -143,9 +141,9 @@ The contents of this file are all historical artifacts from TACE development and
 
 #             if self.use_transformer: # TODO
 #                 self.linear_alpha = uvSO2Linear(
-#                     0, 
-#                     lmax, 
-#                     Cin, 
+#                     0,
+#                     lmax,
+#                     Cin,
 #                     num_head * num_channel_per_head,
 #                     num_components_out=[1]
 #                 )
@@ -158,8 +156,8 @@ The contents of this file are all historical artifacts from TACE development and
 
 #             if self.use_so2_edge_ace:
 #                 self.ace = SO2EdgeProductBasis(
-#                     mmax, 
-#                     lmax, 
+#                     mmax,
+#                     lmax,
 #                     self.num_hidden_channel,
 #                     num_elements=num_elements,
 #                 )
@@ -167,21 +165,21 @@ The contents of this file are all historical artifacts from TACE development and
 #                     mmax,
 #                     lmax,
 #                     Cin,
-#                     self.num_hidden_channel,     
+#                     self.num_hidden_channel,
 #                     num_components_in=None,
 #                     num_components_out=[self.num_gates + lmax+1] + [lmax+1] * (lmax),
 #                 )
 #                 self.nonlinearity = SO2Gate(
 #                     mmax,
 #                     lmax,
-#                     self.num_hidden_channel,     
+#                     self.num_hidden_channel,
 #                     channel_wise=True
 #                 )
 #                 self.linear_down = uvSO2Linear(
 #                     mmax,
 #                     lmax,
-#                     self.num_hidden_channel,     
-#                     Cout,     
+#                     self.num_hidden_channel,
+#                     Cout,
 #                     num_components_in=[lmax+1] * (lmax+1),
 #                     num_components_out=None,
 #                 )
@@ -190,36 +188,36 @@ The contents of this file are all historical artifacts from TACE development and
 #                     mmax,
 #                     lmax,
 #                     Cin,
-#                     self.num_hidden_channel,    
+#                     self.num_hidden_channel,
 #                     num_components_in=None,
 #                     num_components_out=[self.num_gates + lmax+1] + [lmax+1-m for m in range(1, mmax+1)],
 #                 )
 #                 self.nonlinearity = SO2Gate(
 #                     mmax,
 #                     lmax,
-#                     self.num_hidden_channel,    
+#                     self.num_hidden_channel,
 #                     channel_wise=False
 #                 )
 #                 self.linear_down = uvSO2Linear(
 #                     mmax,
 #                     lmax,
-#                     self.num_hidden_channel,    
-#                     Cout,     
-#                 )     
+#                     self.num_hidden_channel,
+#                     Cout,
+#                 )
 
 
 #     def forward(
-#             self, 
+#             self,
 #             x: torch.Tensor, # [B, so_m, C]
 #             y: torch.Tensor,  # node_attrs here
-#             w: torch.Tensor, 
+#             w: torch.Tensor,
 #             edge_index: torch.Tensor,
 #             cutoff: torch.Tensor,
 #         ) -> torch.Tensor:
 
 #         num_nodes = x.size(0)
 #         num_edges = w.size(0)
-#         x = self.reshape_in(x) 
+#         x = self.reshape_in(x)
 
 #         if self.use_transformer:
 #             x = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
@@ -229,7 +227,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         if self.is_scalar_tp:
 #             w = w.view(num_edges, self.num_components, -1)
 #             m_ij = torch.einsum(
-#                 'bij, bjc -> bic', 
+#                 'bij, bjc -> bic',
 #                     self.so2_angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)),
 #                     x * w
 #             ) # first so3 tp, no nonlinearity is required here
@@ -256,9 +254,9 @@ The contents of this file are all historical artifacts from TACE development and
 #             )
 #             if hasattr(self, 'ace'):
 #                 m_ij = self.ace(m_ij, y, edge_index)
-#             m_ij = self.nonlinearity(m_ij, gate) 
+#             m_ij = self.nonlinearity(m_ij, gate)
 #             m_ij = self.linear_down(m_ij)
-            
+
 #             if self.use_transformer:
 #                 alpha = alpha.reshape(-1, self.num_head, self.num_channel_per_head)
 #                 alpha = self.alpha_norm(alpha)
@@ -284,9 +282,9 @@ The contents of this file are all historical artifacts from TACE development and
 #             m_ij = self.so2_angular_basis.rotate_inv(m_ij)
 
 #         m_i = scatter_sum(
-#                 m_ij, 
-#                 edge_index[1], 
-#                 dim=0, 
+#                 m_ij,
+#                 edge_index[1],
+#                 dim=0,
 #                 dim_size=num_nodes,
 #         )
 #         return self.reshape_out.inverse(m_i)
@@ -308,17 +306,17 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.num_channel = num_channel
 
 #         self.ace = SO2TensorProduct(
-#             mmax, 
+#             mmax,
 #             lmax,
-#             num_channel, 
-#             m1m2=m1m2, 
+#             num_channel,
+#             m1m2=m1m2,
 #             internal_weights=internal_weights
 #         )
 #         self.weight_numel = self.ace.weight_numel
 
 #     def forward(self, x, y, w) -> torch.Tensor:
-#         return self.ace(x, y, w) # 
-   
+#         return self.ace(x, y, w) #
+
 
 #     def extra_repr(self) -> str:
 #         p = {
@@ -371,7 +369,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.so2_angular_basis = so2_angular_basis
 #         self.reshape_in = reshape_in
 #         self.reshape_out = reshape_out
-        
+
 
 #         Cin = num_channel if not self.use_so2_edge_ace else num_channel * 2
 #         Cout = num_channel
@@ -393,7 +391,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             Cin,
 #             Cin // 2,
 #             num_components_in=None,
-#             num_components_out=[self.num_gates], 
+#             num_components_out=[self.num_gates],
 #         )
 #         self.linear_up = uvSO2Linear(
 #             mmax,
@@ -404,8 +402,8 @@ The contents of this file are all historical artifacts from TACE development and
 #             num_components_out=[lmax+1] * (lmax+1),
 #         )
 #         self.ace = SO2EdgeProductBasis(
-#             mmax, 
-#             lmax, 
+#             mmax,
+#             lmax,
 #             Cin // 2,
 #             m1m2='<=',
 #             internal_weights=False,
@@ -414,30 +412,30 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.nonlinearity = SO2Gate(
 #             mmax,
 #             lmax,
-#             Cin // 2, 
+#             Cin // 2,
 #             channel_wise=True
 #         )
 #         self.linear_down = uvSO2Linear(
 #             mmax,
 #             lmax,
 #             Cin // 2,
-#             Cout,     
+#             Cout,
 #             num_components_in=[lmax+1] * (lmax+1),
 #             num_components_out=None,
 #         )
 
 #     def forward(
-#             self, 
+#             self,
 #             x: torch.Tensor, # [B, so_m, C]
 #             y: torch.Tensor,  # node_attrs here
-#             w: torch.Tensor, 
+#             w: torch.Tensor,
 #             edge_index: torch.Tensor,
 #             cutoff: torch.Tensor,
 #         ) -> torch.Tensor:
 
 #         num_nodes = x.size(0)
 #         num_edges = w.size(0)
-#         x = self.reshape_in(x) 
+#         x = self.reshape_in(x)
 
 #         if self.use_so2_edge_ace:
 #             x = torch.cat((x[edge_index[0]], x[edge_index[1]]), dim=-1)
@@ -447,7 +445,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         if self.is_scalar_tp:
 #             w = w.view(num_edges, self.num_components, -1)
 #             m_ij = torch.einsum(
-#                 'bij, bjc -> bic', 
+#                 'bij, bjc -> bic',
 #                     self.so2_angular_basis.wigner_inv.narrow(2, 0, (self.lmax + 1)),
 #                     x * w
 #             ) # first so3 tp, no nonlinearity is required here
@@ -456,10 +454,10 @@ The contents of this file are all historical artifacts from TACE development and
 #             gate = self.linear_gate(m_ij)
 #             m_ij = self.linear_up(m_ij)
 #             m_ij_1, m_ij_2 = torch.split(m_ij, self.num_channel, dim=-1)
-        
+
 #             m_ij = self.ace(m_ij_1, m_ij_2, w) + (m_ij_1 + m_ij_2) * 0.5
 
-#             m_ij = self.nonlinearity(m_ij, gate) 
+#             m_ij = self.nonlinearity(m_ij, gate)
 
 #             m_ij = self.linear_down(m_ij)
 #             m_ij = self.so2_angular_basis.rotate_inv(m_ij)
@@ -470,15 +468,14 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         if self.scatter is None:
 #             return m_ij
-        
+
 #         m_i = scatter_sum(
-#                 m_ij, 
-#                 edge_index[1], 
-#                 dim=0, 
+#                 m_ij,
+#                 edge_index[1],
+#                 dim=0,
 #                 dim_size=num_nodes,
 #         )
 #         return self.reshape_out.inverse(m_i)
-
 
 
 # class ChannelWiseFullyConnectedSO2TensorProduct(torch.nn.Module):
@@ -503,7 +500,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         for m3 in range(mmax + 1):
 #             paths = self.enumerate_paths(m3)
 #             self.instructions.append(paths)
-#             n3 = lmax + 1 - m3 
+#             n3 = lmax + 1 - m3
 #             for m1, m2, mode in paths:
 #                 n1 = lmax + 1 - m1
 #                 n2 = lmax + 1 - m2
@@ -558,13 +555,13 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         return paths
 
-#     def rmul(self, x, y): 
+#     def rmul(self, x, y):
 #         # [B, n1, C] * [B, n2, C] =>  [B, n1*n2, C]
 #         z = x.unsqueeze(2) * y.unsqueeze(1)
 #         B, n1, n2, C = z.shape
 #         z = z.reshape(B, n1 * n2, C)
 #         return z
-    
+
 #     def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         '''Layout damei, should be 2 in last dim'''
 #         # [B, 2, n1, C] * [B, 2, n2, C] => [B, 2, n1*n2, C]
@@ -576,7 +573,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             y = y.conj()
 
 #         z = x.unsqueeze(2) * y.unsqueeze(1)
-        
+
 #         B = z.size(0)
 #         C = self.num_channels
 
@@ -586,7 +583,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         z = z.permute(0,3,1,2)
 
 #         return z
-    
+
 #     def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         # [B, 2, n1, C] * [B, 2, n2, C] => [B, 2, n1*n2, C]
 #         a = x[:, 0]
@@ -614,7 +611,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         out = torch.stack([real, imag], dim=1)
 
 #         return out
-    
+
 #     def to_list(self, x: torch.Tensor) -> torch.Tensor:
 #         B = x.size(0)
 #         out = []
@@ -639,10 +636,10 @@ The contents of this file are all historical artifacts from TACE development and
 #     def complex_channel_wise_fc(self, z: torch.Tensor, w: torch.Tensor):
 #         out = torch.einsum("btpc, bcop->btoc", z, w)
 #         return out
-    
+
 #     def forward(
-#             self, x: torch.Tensor, 
-#             y: torch.Tensor, 
+#             self, x: torch.Tensor,
+#             y: torch.Tensor,
 #             ws: torch.Tensor | None = None,
 #         ) -> torch.Tensor:
 
@@ -668,7 +665,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             if m1 == 0 and m2 == 0:
 #                 z = self.rmul(xs[0], ys[0])
 #                 out = self.real_channel_wise_fc(z, w)
-                
+
 #                 m0 = m0 + out
 
 #             # m > 0 and m1 -m2 = 0
@@ -693,7 +690,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                 w = w.view(-1, C, n3, n1 * n2)
 #                 if m1 == 0 or m2 == 0:
 #                     continue
-                
+
 #                 if m1 < m2 and mode == 'diff':
 #                     z = self.cmul(ys[m2], xs[m1], mode)
 #                 else:
@@ -719,7 +716,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         out = torch.cat(outputs, dim=1)
 #         out = out * self.output_scales.view(1, -1, 1)
 #         return out
-        
+
 #     def __repr__(self):
 #         lines = []
 #         lines.append(
@@ -816,7 +813,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             )
 #         else:
 #             self.register_parameter("bias", None)
-    
+
 #         self.reset_parameters()
 
 #     def reset_parameters(self):
@@ -831,7 +828,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         weight2 = torch.einsum("bz,zi->bi", y, self.weight2)
 #         gated = self.linear(x, weight2)
 #         out = self.mul(gated, gate)
-        
+
 #         if self.bias is not None:
 #             bias = torch.einsum("bz,zi->bi", y, self.bias)
 #             for sl, bias_sl in zip(self._0e_slices, self._bias_slices):
@@ -859,7 +856,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.norm_fn = o3.Norm(self.irreps_in, squared=True)
 #         with torch.no_grad():
 #             self.weight = torch.nn.Parameter(
-#                 torch.randn(self.irreps_in.num_irreps) 
+#                 torch.randn(self.irreps_in.num_irreps)
 #                 / torch.tensor([2*l+1 for l in self.irreps_in.ls])
 #             ) # TODO
 #         self.bias = torch.nn.Parameter(torch.zeros(self.irreps_in.num_irreps))
@@ -901,25 +898,25 @@ The contents of this file are all historical artifacts from TACE development and
 #         )
 
 #         to_s2 = o3.ToS2Grid(
-#             self.truncation, 
-#             (self.num_latitude, self.num_longitude), 
+#             self.truncation,
+#             (self.num_latitude, self.num_longitude),
 #             normalization="component",
 #         )
 #         from_s2 = o3.FromS2Grid(
-#             (self.num_latitude, self.num_longitude), 
-#             self.truncation, 
+#             (self.num_latitude, self.num_longitude),
+#             self.truncation,
 #             normalization="component",
 #         )
 
 #         self.register_buffer(
-#             "to_grid", 
+#             "to_grid",
 #             torch.einsum(
 #                 "mbi, am -> bai", to_s2.shb, to_s2.sha
 #             ).detach(),
 #             persistent=False,
 #         )
 #         self.register_buffer(
-#             "from_grid", 
+#             "from_grid",
 #             torch.einsum(
 #                 "am, mbi -> bai", from_s2.sha, from_s2.shb
 #             ).detach(),
@@ -928,12 +925,12 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         self.transform = LayoutTransform(irreps)
 
-#     def _to_grid(self, x: torch.Tensor) -> torch.Tensor:           
+#     def _to_grid(self, x: torch.Tensor) -> torch.Tensor:
 #         return torch.einsum("bai, Bic -> Bbac", self.to_grid, x)
 
-#     def _from_grid(self, x: torch.Tensor) -> torch.Tensor:       
+#     def _from_grid(self, x: torch.Tensor) -> torch.Tensor:
 #         return torch.einsum("bai, Bbac -> Bic", self.from_grid, x)
-    
+
 #     def forward(self, x: torch.Tensor):
 #         x = self.transform(x)
 #         grid = self._to_grid(x)
@@ -941,7 +938,6 @@ The contents of this file are all historical artifacts from TACE development and
 #         freq = self._from_grid(self.mlp(grid.reshape(-1, C)).reshape(B, b, a, C))
 #         freq = self.transform.inverse(freq)
 #         return freq
-
 
 
 # from ..mlp import MLP, ScaledSigmoid, SmoothLeakyReLU
@@ -982,7 +978,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.gate = torch.nn.Sequential(
 #             MLP(
 #                 [
-#                     self.norm_fn.irreps_out.num_irreps + self.num_channel, 
+#                     self.norm_fn.irreps_out.num_irreps + self.num_channel,
 #                     self.num_channel * 2,
 #                     self.num_channel,
 #                 ],
@@ -994,11 +990,10 @@ The contents of this file are all historical artifacts from TACE development and
 #         )
 
 
-
 #         # self.gate = torch.nn.Sequential(
 #         #     MLP(
 #         #         [
-#         #             self.norm_fn.irreps_out.num_irreps, 
+#         #             self.norm_fn.irreps_out.num_irreps,
 #         #             # self.num_channel * 2,
 #         #             self.num_channel,
 #         #         ],
@@ -1016,7 +1011,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         x: torch.Tensor,
 #         y: Union[torch.Tensor, None] = None,
 #     ) -> torch.Tensor:
-        
+
 #         B = x.size(0)
 
 #         norm = self.norm_fn(x)
@@ -1025,7 +1020,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         norm = norm.view(B, -1)
 #         norm = torch.cat([norm, self.target_embedding(y)], dim=-1)
 #         gate = self.gate(norm)
-    
+
 #         x = self.reshape(x)
 #         x = x * gate.view(-1, self.num_channel, 1)
 #         x = x.view(B, -1)
@@ -1037,10 +1032,10 @@ The contents of this file are all historical artifacts from TACE development and
 
 # class O3ElementGate(torch.nn.Module):
 #     def __init__(
-#             self, 
-#             irreps_gates: o3.Irreps, 
-#             act_gates: o3.Irreps, 
-#             irreps_gated: o3.Irreps, 
+#             self,
+#             irreps_gates: o3.Irreps,
+#             act_gates: o3.Irreps,
+#             irreps_gated: o3.Irreps,
 #             num_elements: int,
 #         ) -> None:
 #         super().__init__()
@@ -1104,7 +1099,6 @@ The contents of this file are all historical artifacts from TACE development and
 #         return self._irreps_out
 
 
-
 # class uuuSO2TensorProduct(torch.nn.Module):
 #     """
 #     The results of all paths are directly summed.
@@ -1130,14 +1124,14 @@ The contents of this file are all historical artifacts from TACE development and
 #         for m3 in range(mmax + 1):
 #             paths = self.enumerate_paths(m3)
 #             self.instructions.append(paths)
-#             weight_numel += num_channels * (lmax+1) * len(paths) 
-            
+#             weight_numel += num_channels * (lmax+1) * len(paths)
+
 #         self.weight_numel = weight_numel
 #         if internal_weights:
 #             self.weight = torch.nn.Parameter(torch.randn(1, self.weight_numel))
 #         else:
 #             self.register_buffer("weight", None)
-#         self.internal_weights = internal_weights   
+#         self.internal_weights = internal_weights
 
 #         output_scales = []
 #         n = lmax + 1
@@ -1171,11 +1165,11 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         return paths
 
-#     def rmul(self, x, y): 
+#     def rmul(self, x, y):
 #         # [B, n, C] * [B, n, C] =>  [B, n, C]
 #         z = x * y
 #         return z
-    
+
 #     def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         '''Layout damei, should be 2 in last dim'''
 #         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
@@ -1193,7 +1187,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         z = z.permute(0,3,1,2)
 
 #         return z
-    
+
 #     def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
 #         a = x[:, 0]
@@ -1217,7 +1211,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         out = torch.stack([real, imag], dim=1)
 
 #         return out
-    
+
 #     def to_list(self, x: torch.Tensor) -> torch.Tensor:
 #         B = x.size(0)
 #         out = []
@@ -1235,9 +1229,9 @@ The contents of this file are all historical artifacts from TACE development and
 #         return out
 
 #     def forward(
-#             self, 
-#             x: torch.Tensor, 
-#             y: torch.Tensor, 
+#             self,
+#             x: torch.Tensor,
+#             y: torch.Tensor,
 #             weight: Union[torch.Tensor, None] = None,
 #         ) -> torch.Tensor:
 
@@ -1288,7 +1282,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                 w = w.view(-1, 1, n, C)
 #                 if m1 == 0 or m2 == 0:
 #                     continue
-                
+
 #                 if m1 < m2 and mode == 'diff':
 #                     z = self.cmul(ys[m2], xs[m1], mode)
 #                 else:
@@ -1304,7 +1298,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         out = torch.cat(outputs, dim=1)
 #         out = out * self.output_scales.view(1, -1, 1)
 #         return out
-        
+
 #     def __repr__(self):
 #         lines = []
 #         lines.append(
@@ -1340,8 +1334,6 @@ The contents of this file are all historical artifacts from TACE development and
 #         return "\n".join(lines)
 
 
-
-
 # from tace.models.so2.so2 import uvSO2Linear, SO2MLinear
 # from ..linear import torchLinear
 
@@ -1365,26 +1357,26 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.agnostic = agnostic
 
 #         self.tp = SO2TensorProduct(
-#             mmax, 
+#             mmax,
 #             lmax,
-#             num_channels, 
-#             m1m2=m1m2, 
+#             num_channels,
+#             m1m2=m1m2,
 #         )
 
 #         self.linear = uvSO2Linear(
 #             mmax,
 #             lmax,
-#             self.num_channel,     
-#             self.num_channel,     
+#             self.num_channel,
+#             self.num_channel,
 #             num_components_in=[lmax+1 + count for count in self.tp.num_paths_for_m3],
 #             num_components_out=None,
 #         )
-        
+
 #         # self.linear = torch.nn.ModuleList()
 #         # self.linear.append(
 #         #     torchLinear(
-#         #         self.num_channel * (lmax+1) + self.num_channel * (lmax+1), 
-#         #         self.num_channel * (lmax+1), 
+#         #         self.num_channel * (lmax+1) + self.num_channel * (lmax+1),
+#         #         self.num_channel * (lmax+1),
 #         #         bias=True,
 #         #     )
 #         # )
@@ -1394,8 +1386,8 @@ The contents of this file are all historical artifacts from TACE development and
 #         #             m,
 #         #             self.num_channel,
 #         #             self.num_channel*(lmax+1),
-#         #             1 + self.ace.num_paths_for_m3[m], 
-#         #             1, 
+#         #             1 + self.ace.num_paths_for_m3[m],
+#         #             1,
 #         #         )
 #         #     )
 
@@ -1458,9 +1450,9 @@ The contents of this file are all historical artifacts from TACE development and
 #         #         xi = xi.view(B, -1, self.num_channel)
 #         #         outputs.append(xr)
 #         #         outputs.append(xi)
-        
+
 #         return self.linear(outs2)
-        
+
 #     def extra_repr(self) -> str:
 #         p = {
 #             0: 'e',
@@ -1477,8 +1469,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             f"({'+'.join(irreps)} x {'+'.join(irreps)} -> "
 #             f"{'+'.join(irreps)} | "
 #             f"{num_weights} weights)"
-        # )
-
+# )
 
 
 # class SO2uuuTensorProduct(torch.nn.Module):
@@ -1520,11 +1511,11 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         return paths
 
-#     def rmul(self, x, y): 
+#     def rmul(self, x, y):
 #         # [B, n, C] * [B, n, C] =>  [B, n, C]
 #         z = x * y
 #         return z
-    
+
 #     def cmul1(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         '''Layout damei, should be 2 in last dim'''
 #         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
@@ -1542,7 +1533,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         z = z.permute(0,3,1,2)
 
 #         return z
-    
+
 #     def cmul2(self, x: torch.Tensor, y: torch.Tensor, mode: str) -> torch.Tensor:
 #         # [B, 2, n, C] * [B, 2, n, C] => [B, 2, n, C]
 #         a = x[:, 0]
@@ -1566,7 +1557,7 @@ The contents of this file are all historical artifacts from TACE development and
 #         out = torch.stack([real, imag], dim=1)
 
 #         return out
-    
+
 #     def to_list(self, x: torch.Tensor) -> torch.Tensor:
 #         B = x.size(0)
 #         out = []
@@ -1623,7 +1614,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                 outputs[m3].append(z)
 
 #         return outputs
-        
+
 #     def __repr__(self):
 #         lines = []
 #         lines.append(
@@ -1663,9 +1654,9 @@ The contents of this file are all historical artifacts from TACE development and
 # from e3nn.o3 import FullyConnectedTensorProduct
 # class GeneralizedSphericalHarmonics(torch.nn.Module):
 #     def __init__(
-#             self, 
-#             irreps_in: Irreps, 
-#             irreps_out: Irreps, 
+#             self,
+#             irreps_in: Irreps,
+#             irreps_out: Irreps,
 #         ):
 #         super().__init__()
 
@@ -1674,15 +1665,15 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.tp = FullyConnectedTensorProduct(irreps_in, irreps_in, irreps_out)
 
 #     def forward(
-#             self, 
+#             self,
 #             node_attrs: torch.Tensor,
-#             edge_attrs: torch.Tensor, 
+#             edge_attrs: torch.Tensor,
 #             edge_index: torch.Tensor,
 #         ):
 
 #         device = node_attrs.device
-#         row, col = edge_index 
-    
+#         row, col = edge_index
+
 #         sorted_idx = torch.argsort(col)
 #         edge_attrs = edge_attrs[sorted_idx]
 #         row = row[sorted_idx]
@@ -1770,7 +1761,7 @@ The contents of this file are all historical artifacts from TACE development and
 #     ):
 #         super().__init__()
 
-    
+
 #         self.num_channel = num_channel
 
 #         for l1 in range(Lmax + 1):
@@ -1866,7 +1857,7 @@ The contents of this file are all historical artifacts from TACE development and
 #             sl = irrep_slice(l)
 #             feats_by_l[l] = node_feats[:, sl]
 #             sh_by_l[l] = node_sh[:, sl].unsqueeze(-1)
-    
+
 #         # ====================================================
 #         # LEFT TREE:
 #         # f_j ⊗ (Yi⊗Yj)_l23
@@ -1976,7 +1967,7 @@ The contents of this file are all historical artifacts from TACE development and
 #                                     right,
 #                                 )
 #                                 recoupled += coeff * tmpagg
-                            
+
 #                             # LEFT == RIGHT
 #                             sl = irrep_slice(L)
 
@@ -2037,21 +2028,21 @@ The contents of this file are all historical artifacts from TACE development and
 #             irreps_out=self.irreps_coefs_out,
 #             l1l2=self.l1l2,
 #             trainable=True,
-#         ) 
+#         )
 #         self.coef = torch.nn.Parameter(torch.randn(self.num_elements, self.ace.weight_numel))
 
 #         self.linear = e3nnLinear(
 #             self.ace.irreps_out.simplify(),
 #             self.irreps_out,
 #             bias=self.use_bias
-#         )    
+#         )
 
 #         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
-        
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
+
 #     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
+#             self,
+#             node_feats: torch.Tensor,
 #             node_attrs: torch.Tensor,
 #             sc: torch.Tensor,
 #             batch: torch.Tensor,
@@ -2061,14 +2052,14 @@ The contents of this file are all historical artifacts from TACE development and
 #         ones = node_feats.new_ones(node_feats.size(0), self.num_hidden_channel)
 
 #         outs = self.ace(
-#             node_feats, 
+#             node_feats,
 #             torch.cat(
 #                 [
 #                     ones,
 #                     node_feats,
 #                 ],
 #                 dim=-1,
-#             ), 
+#             ),
 #             torch.einsum('bz, zi -> bi', node_attrs, self.coef),
 #         )
 
@@ -2104,11 +2095,11 @@ The contents of this file are all historical artifacts from TACE development and
 #             self.lmax,
 #             self.lmax,
 #             self.num_channel,
-#             self.num_channel,    
+#             self.num_channel,
 #             num_components_out=[self.num_gates + self.lmax+1] + [self.lmax+1 for m in range(1, self.lmax+1)],
 #         )
 #         self.split_list = [self.num_gates, (self.lmax+1) + (self.lmax+1) * self.lmax * 2]
- 
+
 #         self.ace = ComplexProductBasis(
 #             self.lmax,
 #             self.lmax,
@@ -2119,29 +2110,29 @@ The contents of this file are all historical artifacts from TACE development and
 #         self.nonlinearity = SO2Gate(
 #             self.lmax,
 #             self.lmax,
-#             self.num_channel, 
+#             self.num_channel,
 #             channel_wise=True,
 #         )
 #         self.linear_down = uvSO2Linear(
 #             self.lmax,
 #             self.lmax,
-#             self.num_channel,   
-#             self.num_channel,     
+#             self.num_channel,
+#             self.num_channel,
 #             num_components_in=[self.lmax+1] * (self.lmax+1),
-#         ) 
+#         )
 
 #         self.linear = e3nnLinear(
 #             self.irreps_hidden,
 #             self.irreps_out,
 #             bias=self.use_bias
-#         )    
+#         )
 
 #         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
-        
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
+
 #     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
+#             self,
+#             node_feats: torch.Tensor,
 #             node_attrs: torch.Tensor,
 #             sc: torch.Tensor,
 #             batch: torch.Tensor,
@@ -2150,11 +2141,11 @@ The contents of this file are all historical artifacts from TACE development and
 #         node_feats = self.linear_up(node_feats)
 #         node_feats = self.reshape(node_feats)
 #         node_feats = self.node_rotate.rotate(node_feats)
-#         node_feats = self.so2_linear_up(node_feats) 
+#         node_feats = self.so2_linear_up(node_feats)
 #         gate = node_feats.narrow(1, 0, self.split_list[0])
 #         node_feats = node_feats.narrow(1, self.split_list[0], self.split_list[1])
 #         node_feats = self.ace(node_feats, node_attrs, None)
-#         node_feats = self.nonlinearity(node_feats, gate) 
+#         node_feats = self.nonlinearity(node_feats, gate)
 #         node_feats = self.linear_down(node_feats)
 #         node_feats = self.node_rotate.rotate_inv(node_feats)
 
@@ -2164,7 +2155,7 @@ The contents of this file are all historical artifacts from TACE development and
 
 #         if hasattr(self, "stochastic_depth"):
 #             outs = self.stochastic_depth(outs, batch)
-        
+
 #         if sc is not None:
 #             outs = outs + sc
 

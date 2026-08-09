@@ -5,21 +5,19 @@
 
 from typing import Dict, Union
 
-
 import torch
 from e3nn import o3
 
-
 from tace.utils.torch_scatter import scatter_sum
+
+from ..layout import LayoutTransform
 from ..linear import e3nnLinear
 from ..mlp import FFN, ScaledSigmoid, ScaledSiLU
-from ..layout import LayoutTransform
 from .base import Interaction
 from .fused import O3ScatterTensorProduct, uuSO2ScatterTensorProduct, uvSO2TensorProduct
+from .layer_norm import get_normalization_layer
 from .nonlinear import get_nonlinear_layer
 from .residual import get_resnet_layer
-from .layer_norm import get_normalization_layer
-
 
 
 class CgtpInteraction(Interaction):
@@ -39,7 +37,7 @@ class CgtpInteraction(Interaction):
             self.irreps_in,
             self.irreps_in,
             bias=self.use_bias,
-        )    
+        )
 
         self.rejector = O3ScatterTensorProduct(
             self.irreps_in,
@@ -47,7 +45,7 @@ class CgtpInteraction(Interaction):
             self.irreps_out,
             l1l2=self.l1l2,
         )
-        
+
         (
             self.nonlinearity,
             self.linear_nonlinearity,
@@ -60,7 +58,7 @@ class CgtpInteraction(Interaction):
             scalar_act=self.scalar_act,
             tensor_act=self.tensor_act,
         )
-        
+
         self.linear_down = e3nnLinear(
             self.rejector.irreps_out.simplify(),
             linear_down_irreps_out,
@@ -74,28 +72,28 @@ class CgtpInteraction(Interaction):
             act=self.radial_act,
         )
 
-        if self.scatter_norm == 'density' or self.scatter_norm == 'no_cutoff_density': 
+        if self.scatter_norm == "density" or self.scatter_norm == "no_cutoff_density":
             self.edge_density = FFN[self.edge_info_type](
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
                 layer_norm=self.radial_layer_norm,
                 act=self.radial_act,
-            ) # From MACE
+            )  # From MACE
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BB":
             self.resnetBB = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BAB":
             self.resnetBA = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_out,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
@@ -105,26 +103,32 @@ class CgtpInteraction(Interaction):
                 self.layer > 0 or self.use_first_dropout
             ) and self.stochastic_depth_p > 0.0:
                 from .dropout import GraphDropPath
+
                 self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in [
+            "AB",
+            "BAB",
+        ]:
             self.resnetAB = get_resnet_layer(
-                self.irreps_out, 
+                self.irreps_out,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
+        if (
+            self.use_first_pre_norm or self.layer > 0
+        ) and self.pre_norm_type is not None:
+            if self.resnet_type in ["BB", "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
+            if self.resnet_type in ["AB", "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_out.lmax,
@@ -157,19 +161,19 @@ class CgtpInteraction(Interaction):
         resBA = None
         resAB = None
 
-        if hasattr(self, 'resnetBB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBB"):
+            if self.resnet_linear_type == "aware":
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
-                resBB = self.resnetBB(node_feats) 
+                resBB = self.resnetBB(node_feats)
 
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBA"):
+            if self.resnet_linear_type == "aware":
                 resBA = self.resnetBA(node_feats, node_attrs_slice)
             else:
                 resBA = self.resnetBA(node_feats)
 
-        if hasattr(self, 'norm1'):
+        if hasattr(self, "norm1"):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
 
         node_feats = self.linear_up(node_feats)
@@ -181,8 +185,7 @@ class CgtpInteraction(Interaction):
 
         m_i = self.linear_down(
             self.truncate_ghosts(
-                self.rejector(node_feats, edge_attrs, conv_weights, edge_index), 
-                nlocal
+                self.rejector(node_feats, edge_attrs, conv_weights, edge_index), nlocal
             )
         )
 
@@ -191,14 +194,16 @@ class CgtpInteraction(Interaction):
             if cutoff is not None and self.apply_density_cutoff:
                 density = density * cutoff
             # density = density * cutoff
-            density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
-            density  = self.truncate_ghosts(density , nlocal)
+            density = scatter_sum(
+                density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0)
+            )
+            density = self.truncate_ghosts(density, nlocal)
             density = density * self.beta + self.alpha
             density = density.masked_fill(density == 0, 1e-9)
 
         if self.scatter_norm is None:
             pass
-        elif self.scatter_norm == 'avg_num_neighbors':
+        elif self.scatter_norm == "avg_num_neighbors":
             m_i = m_i / self.avg_num_neighbors
         else:
             m_i = m_i / density
@@ -210,13 +215,13 @@ class CgtpInteraction(Interaction):
                 m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetAB"):
+            if self.resnet_linear_type == "aware":
                 resAB = self.resnetAB(m_i, node_attrs_slice)
             else:
                 resAB = self.resnetAB(m_i)
 
-        if hasattr(self, 'norm2'):
+        if hasattr(self, "norm2"):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
         if resBB is not None:
@@ -227,13 +232,13 @@ class CgtpInteraction(Interaction):
             sc = None
 
         return m_i, self.truncate_ghosts(sc, nlocal)
-    
+
 
 class uuSO2Interaction(Interaction):
     """
     An interaction module based on uuSO2Linear.
 
-    It achieves the same accuracy and extrapolation capability as CGTP. 
+    It achieves the same accuracy and extrapolation capability as CGTP.
     Set `export TACE_USE_TRITON=1` to reduce memory.
 
     This interaction block does not directly add nonlinearity to the message.
@@ -241,7 +246,9 @@ class uuSO2Interaction(Interaction):
 
     def _setup(self) -> None:
 
-        assert self.parity == False, "uuSO2InteractionArchitecture1 not support O(3) group"
+        assert self.parity == False, (
+            "uuSO2InteractionArchitecture1 not support O(3) group"
+        )
         assert self.irreps_in.lmax > 0, (
             "uuSO2InteractionArchitecture1's irreps_in.lmax must > 0, "
             "use uuSO2InteractionArchitecture1 from the second layer or use other node_embedding with l > 0"
@@ -252,7 +259,7 @@ class uuSO2Interaction(Interaction):
             self.irreps_in,
             self.irreps_in,
             bias=self.use_bias,
-        )    
+        )
 
         self.rejector = uuSO2ScatterTensorProduct(
             mmax=self.mmax,
@@ -291,29 +298,28 @@ class uuSO2Interaction(Interaction):
         )
 
         self.apply_density_cutoff = True
-        if self.scatter_norm == 'density': 
+        if self.scatter_norm == "density":
             self.edge_density = FFN[self.edge_info_type](
                 [self.edge_feats_channel, 64, 1],
                 bias=self.radial_bias,
                 layer_norm=self.radial_layer_norm,
                 act=self.radial_act,
-            ) # From MACE
+            )  # From MACE
             self.alpha = torch.nn.Parameter(torch.tensor(self.avg_num_neighbors))
             self.beta = torch.nn.Parameter(torch.tensor(0.0))
 
-
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BB":
             self.resnetBB = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BAB":
             self.resnetBA = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_out,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
@@ -323,26 +329,32 @@ class uuSO2Interaction(Interaction):
                 self.layer > 0 or self.use_first_dropout
             ) and self.stochastic_depth_p > 0.0:
                 from .dropout import GraphDropPath
+
                 self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in [
+            "AB",
+            "BAB",
+        ]:
             self.resnetAB = get_resnet_layer(
-                self.irreps_out, 
+                self.irreps_out,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
+        if (
+            self.use_first_pre_norm or self.layer > 0
+        ) and self.pre_norm_type is not None:
+            if self.resnet_type in ["BB", "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
+            if self.resnet_type in ["AB", "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_out.lmax,
@@ -375,39 +387,39 @@ class uuSO2Interaction(Interaction):
         resBA = None
         resAB = None
 
-        if hasattr(self, 'resnetBB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBB"):
+            if self.resnet_linear_type == "aware":
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
-                resBB = self.resnetBB(node_feats) 
+                resBB = self.resnetBB(node_feats)
 
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBA"):
+            if self.resnet_linear_type == "aware":
                 resBA = self.resnetBA(node_feats, node_attrs_slice)
             else:
                 resBA = self.resnetBA(node_feats)
 
-        if hasattr(self, 'norm1'):
+        if hasattr(self, "norm1"):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
 
         node_feats = self.linear_up(node_feats)
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
 
         conv_weights = self.edge_info(edge_feats)
-        
+
         if cutoff is not None:
             conv_weights = conv_weights * cutoff
 
         m_i = self.linear_down(
             self.truncate_ghosts(
                 self.rejector(
-                    node_feats, 
-                    conv_weights, 
+                    node_feats,
+                    conv_weights,
                     edge_index,
                     wigner,
                     wigner_inv,
-                ), 
-                nlocal
+                ),
+                nlocal,
             )
         )
 
@@ -415,14 +427,16 @@ class uuSO2Interaction(Interaction):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
             if cutoff is not None and self.apply_density_cutoff:
                 density = density * cutoff
-            density = scatter_sum(density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0))
-            density  = self.truncate_ghosts(density , nlocal)
+            density = scatter_sum(
+                density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0)
+            )
+            density = self.truncate_ghosts(density, nlocal)
             density = density * self.beta + self.alpha
             density = density.masked_fill(density == 0, 1e-9)
 
         if self.scatter_norm is None:
             pass
-        elif self.scatter_norm == 'avg_num_neighbors':
+        elif self.scatter_norm == "avg_num_neighbors":
             m_i = m_i / self.avg_num_neighbors
         else:
             m_i = m_i / density
@@ -434,13 +448,13 @@ class uuSO2Interaction(Interaction):
                 m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetAB"):
+            if self.resnet_linear_type == "aware":
                 resAB = self.resnetAB(m_i, node_attrs_slice)
             else:
                 resAB = self.resnetAB(m_i)
 
-        if hasattr(self, 'norm2'):
+        if hasattr(self, "norm2"):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
         if resBB is not None:
@@ -451,18 +465,19 @@ class uuSO2Interaction(Interaction):
             sc = None
 
         return m_i, self.truncate_ghosts(sc, nlocal)
-    
+
 
 # A little BUG
 class uvSO2Interaction(Interaction):
     """
-    An interaction module based on uvSO2Linear, 
+    An interaction module based on uvSO2Linear,
     Edge Cluster Expansion and Radial Rotary Attention.
 
     It achieves highest accuracy at the expanse of computational efficiency.
 
     This interaction block add nonlinearity to the message.
     """
+
     def _setup(self) -> None:
 
         assert self.parity == False, "uvSO2Interaction not support O(3) group"
@@ -470,7 +485,10 @@ class uvSO2Interaction(Interaction):
             "uvSO2Interaction's irreps_in.lmax must > 0, "
             "use uvSO2Interaction from the second layer or use other node_embedding with l > 0"
         )
-        assert self.edge_nonlinear == 'so2_sigmoid_gate' or self.edge_nonlinear == 'so2_silu_gate'
+        assert (
+            self.edge_nonlinear == "so2_sigmoid_gate"
+            or self.edge_nonlinear == "so2_silu_gate"
+        )
         edge_act = self.edge_nonlinear.split("_")[1]
         scalar_act = self.scalar_act or edge_act
         tensor_act = self.tensor_act or edge_act
@@ -480,7 +498,7 @@ class uvSO2Interaction(Interaction):
             self.irreps_in,
             self.irreps_in,
             bias=self.use_bias,
-        )    
+        )
         self.rejector = uvSO2TensorProduct(
             mmax=self.mmax,
             lmax=self.lmax,
@@ -495,9 +513,11 @@ class uvSO2Interaction(Interaction):
             use_so2_edge_ace=self.use_so2_edge_ace,
             use_graph_softmax=self.use_graph_softmax,
             reshape_in=LayoutTransform(self.irreps_in),
-            reshape_out=LayoutTransform(o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])), 
-            scalar_act=ScaledSigmoid() if scalar_act == 'sigmoid' else ScaledSiLU(),
-            tensor_act=ScaledSigmoid() if tensor_act == 'sigmoid' else ScaledSiLU(),
+            reshape_out=LayoutTransform(
+                o3.Irreps([(self.edge_wise_hidden, ir) for _, ir in self.irreps_out])
+            ),
+            scalar_act=ScaledSigmoid() if scalar_act == "sigmoid" else ScaledSiLU(),
+            tensor_act=ScaledSigmoid() if tensor_act == "sigmoid" else ScaledSiLU(),
             use_radial_phase=self.use_radial_phase,
         )
 
@@ -526,19 +546,19 @@ class uvSO2Interaction(Interaction):
             layer_norm=self.radial_layer_norm,
             act=self.radial_act,
         )
-        
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BB':
+
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BB":
             self.resnetBB = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == 'BAB':
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type == "BAB":
             self.resnetBA = get_resnet_layer(
-                self.irreps_in, 
+                self.irreps_in,
                 self.irreps_out,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
@@ -548,26 +568,32 @@ class uvSO2Interaction(Interaction):
                 self.layer > 0 or self.use_first_dropout
             ) and self.stochastic_depth_p > 0.0:
                 from .dropout import GraphDropPath
+
                 self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
-        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in ['AB', 'BAB']:
+        if (self.use_first_resnet or self.layer > 0) and self.resnet_type in [
+            "AB",
+            "BAB",
+        ]:
             self.resnetAB = get_resnet_layer(
-                self.irreps_out, 
+                self.irreps_out,
                 self.irreps_sc,
                 bias=self.use_bias,
                 num_elements=self.num_elements,
                 resnet_type=self.resnet_linear_type,
             )
 
-        if (self.use_first_pre_norm or self.layer > 0) and self.pre_norm_type is not None:
-            if self.resnet_type in ['BB', "BAB"]:
+        if (
+            self.use_first_pre_norm or self.layer > 0
+        ) and self.pre_norm_type is not None:
+            if self.resnet_type in ["BB", "BAB"]:
                 self.norm1 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_in.lmax,
                     num_channels=self.num_channel,
                 )
                 self.reshape1 = LayoutTransform(self.irreps_in)
-            if self.resnet_type in ['AB', "BAB"]:
+            if self.resnet_type in ["AB", "BAB"]:
                 self.norm2 = get_normalization_layer(
                     self.pre_norm_type,
                     ls=self.irreps_out.lmax,
@@ -590,7 +616,7 @@ class uvSO2Interaction(Interaction):
         wigner_inv: Union[torch.Tensor, None],
         batch,
     ):
-    
+
         lmp_data = graph.lmp_data
         lmp_natoms = graph.lmp_natoms
         nlocal = lmp_natoms[0] if lmp_data is not None else None
@@ -599,34 +625,34 @@ class uvSO2Interaction(Interaction):
         resBA = None
         resAB = None
 
-        if hasattr(self, 'resnetBB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBB"):
+            if self.resnet_linear_type == "aware":
                 resBB = self.resnetBB(node_feats, node_attrs_slice)
             else:
-                resBB = self.resnetBB(node_feats) 
+                resBB = self.resnetBB(node_feats)
 
-        if hasattr(self, 'resnetBA'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetBA"):
+            if self.resnet_linear_type == "aware":
                 resBA = self.resnetBA(node_feats, node_attrs_slice)
             else:
                 resBA = self.resnetBA(node_feats)
 
-        if hasattr(self, 'norm1'):
+        if hasattr(self, "norm1"):
             node_feats = self.reshape1.inverse(self.norm1(self.reshape1(node_feats)))
 
         node_feats = self.linear_up(node_feats)
         node_feats = self.handle_lammps(node_feats, lmp_data, lmp_natoms, self.layer)
         m_i = self.truncate_ghosts(
             self.rejector(
-                node_feats, 
-                self.edge_info(edge_feats), 
-                edge_index, 
+                node_feats,
+                self.edge_info(edge_feats),
+                edge_index,
                 cutoff,
                 wigner,
                 wigner_inv,
                 radial_basis,
-            ), 
-            nlocal
+            ),
+            nlocal,
         )
         m_i = self.linear_down(m_i)
         m_i = self.linear_nonlinearity(self.nonlinearity(m_i))
@@ -636,13 +662,13 @@ class uvSO2Interaction(Interaction):
                 m_i = self.stochastic_depth(m_i, batch)
             m_i = m_i + resBA
 
-        if hasattr(self, 'resnetAB'):
-            if self.resnet_linear_type == 'aware':
+        if hasattr(self, "resnetAB"):
+            if self.resnet_linear_type == "aware":
                 resAB = self.resnetAB(m_i, node_attrs_slice)
             else:
                 resAB = self.resnetAB(m_i)
 
-        if hasattr(self, 'norm2'):
+        if hasattr(self, "norm2"):
             m_i = self.reshape2.inverse(self.norm2(self.reshape2(m_i)))
 
         if resBB is not None:
@@ -653,8 +679,8 @@ class uvSO2Interaction(Interaction):
             sc = None
 
         return m_i, self.truncate_ghosts(sc, nlocal)
-    
-    
+
+
 # def _cgtp_interaction(*args, **kwargs):
 #     import os
 
@@ -662,7 +688,7 @@ class uvSO2Interaction(Interaction):
 #         from .._sobek import SobekCgtpInteraction
 
 #         return SobekCgtpInteraction(*args, **kwargs)
-    
+
 #     return CgtpInteraction(*args, **kwargs)
 
 
@@ -670,14 +696,10 @@ INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
     "cgtp": CgtpInteraction,
-
     "uu_so2": uuSO2Interaction,
-
     "so2": uvSO2Interaction,
     "uv_so2": uvSO2Interaction,
     "attn": uvSO2Interaction,
-
     # "w6j": Wigner6jInteraction,
     # "wigner6j": Wigner6jInteraction,
-
 }

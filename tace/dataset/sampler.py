@@ -4,9 +4,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import math
 import heapq
-from typing import List, Iterator, Optional
+import math
+from typing import Iterator, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -89,7 +89,9 @@ class EdgeBalancedBatchSampler(BatchSampler):
             elif hasattr(graph, "num_edges"):
                 w = int(graph.num_edges)
             else:
-                raise AttributeError(f"Sample {idx} has no `edge_index` or `num_edges` attribute")
+                raise AttributeError(
+                    f"Sample {idx} has no `edge_index` or `num_edges` attribute"
+                )
             self._edge_counts_cache[idx] = w
         return self._edge_counts_cache[idx]
 
@@ -124,7 +126,9 @@ class EdgeBalancedBatchSampler(BatchSampler):
 
     def _partition_lpt(self, batch_indices: List[int]) -> List[List[int]]:
         """Partition a global batch into per-rank sub-batches using LPT greedy algorithm."""
-        batch_indices_sorted = sorted(batch_indices, key=lambda i: self._edge_count(i), reverse=True)
+        batch_indices_sorted = sorted(
+            batch_indices, key=lambda i: self._edge_count(i), reverse=True
+        )
 
         # Heap: (load, rank_index)
         heap = [(0, i) for i in range(self.world_size)]

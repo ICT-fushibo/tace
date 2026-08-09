@@ -4,14 +4,13 @@
 ################################################################################
 
 import math
-from typing import Union, NamedTuple, Iterator
-
+from typing import Iterator, NamedTuple, Union
 
 import torch
 
-
 from ..linear import torchLinear
-from .utils import so2_expand_index, satisfy
+from .utils import satisfy, so2_expand_index
+
 
 class uuLinearInstruction(NamedTuple):
     i_in: int
@@ -30,7 +29,7 @@ class uuSO2Linear(torch.nn.Module):
         lmax: int,
         num_channel: int,
         weight_type: str = "w1",
-        path_mode: str = "sum", # TODO, concat may be have bug
+        path_mode: str = "sum",  # TODO, concat may be have bug
         path_norm: bool = True,
         l1l3: Union[str, None] = None,
     ) -> None:
@@ -62,7 +61,9 @@ class uuSO2Linear(torch.nn.Module):
         def add_instruction(lin: int, lout: int, m: int, path_weight: float) -> int:
             nonlocal weight_offset, output_offset
             weight_mode = "real" if m == 0 or self.weight_type != "w1_w2" else "complex"
-            path_shape = (self.num_channel,) if weight_mode == "real" else (2, self.num_channel)
+            path_shape = (
+                (self.num_channel,) if weight_mode == "real" else (2, self.num_channel)
+            )
             output_width = 1 if m == 0 else 2
             output_slice = slice(output_offset, output_offset + output_width)
             instructions.append(
@@ -94,26 +95,32 @@ class uuSO2Linear(torch.nn.Module):
                         if m == 0:
                             path_weight = (
                                 1.0 / math.sqrt(path_count[(lout, 0)])
-                                if self.path_norm else 1.0
+                                if self.path_norm
+                                else 1.0
                             )
                             weight_index = add_instruction(lin, lout, m, path_weight)
                             concat_out = instructions[-1].output_slice.start
-                            path_specs.append((
-                                self._component_index(lout, 0, False),
-                                self._component_index(lin, 0, False),
-                                weight_index,
-                                path_weight,
-                            ))
-                            concat_path_specs.append((
-                                concat_out,
-                                self._component_index(lin, 0, False),
-                                weight_index,
-                                path_weight,
-                            ))
+                            path_specs.append(
+                                (
+                                    self._component_index(lout, 0, False),
+                                    self._component_index(lin, 0, False),
+                                    weight_index,
+                                    path_weight,
+                                )
+                            )
+                            concat_path_specs.append(
+                                (
+                                    concat_out,
+                                    self._component_index(lin, 0, False),
+                                    weight_index,
+                                    path_weight,
+                                )
+                            )
                         elif self.weight_type == "w1_w2":
                             path_weight = (
                                 1.0 / math.sqrt(2 * path_count[(lout, m)])
-                                if self.path_norm else 1.0
+                                if self.path_norm
+                                else 1.0
                             )
                             weight_index = add_instruction(lin, lout, m, path_weight)
                             concat_out = instructions[-1].output_slice.start
@@ -123,22 +130,27 @@ class uuSO2Linear(torch.nn.Module):
                             out_i = self._component_index(lout, m, True)
                             in_r = self._component_index(lin, m, False)
                             in_i = self._component_index(lin, m, True)
-                            path_specs.extend([
-                                (out_r, in_r, w_real, path_weight),
-                                (out_i, in_i, w_real, path_weight),
-                                (out_r, in_i, w_imag, -path_weight),
-                                (out_i, in_r, w_imag, path_weight),
-                            ])
-                            concat_path_specs.extend([
-                                (concat_out, in_r, w_real, path_weight),
-                                (concat_out + 1, in_i, w_real, path_weight),
-                                (concat_out, in_i, w_imag, -path_weight),
-                                (concat_out + 1, in_r, w_imag, path_weight),
-                            ])
+                            path_specs.extend(
+                                [
+                                    (out_r, in_r, w_real, path_weight),
+                                    (out_i, in_i, w_real, path_weight),
+                                    (out_r, in_i, w_imag, -path_weight),
+                                    (out_i, in_r, w_imag, path_weight),
+                                ]
+                            )
+                            concat_path_specs.extend(
+                                [
+                                    (concat_out, in_r, w_real, path_weight),
+                                    (concat_out + 1, in_i, w_real, path_weight),
+                                    (concat_out, in_i, w_imag, -path_weight),
+                                    (concat_out + 1, in_r, w_imag, path_weight),
+                                ]
+                            )
                         elif self.weight_type == "w1_w1":
                             path_weight = (
                                 1.0 / math.sqrt(2 * path_count[(lout, m)])
-                                if self.path_norm else 1.0
+                                if self.path_norm
+                                else 1.0
                             )
                             weight_index = add_instruction(lin, lout, m, path_weight)
                             concat_out = instructions[-1].output_slice.start
@@ -146,22 +158,27 @@ class uuSO2Linear(torch.nn.Module):
                             out_i = self._component_index(lout, m, True)
                             in_r = self._component_index(lin, m, False)
                             in_i = self._component_index(lin, m, True)
-                            path_specs.extend([
-                                (out_r, in_r, weight_index, path_weight),
-                                (out_i, in_i, weight_index, path_weight),
-                                (out_r, in_i, weight_index, -path_weight),
-                                (out_i, in_r, weight_index, path_weight),
-                            ])
-                            concat_path_specs.extend([
-                                (concat_out, in_r, weight_index, path_weight),
-                                (concat_out + 1, in_i, weight_index, path_weight),
-                                (concat_out, in_i, weight_index, -path_weight),
-                                (concat_out + 1, in_r, weight_index, path_weight),
-                            ])
+                            path_specs.extend(
+                                [
+                                    (out_r, in_r, weight_index, path_weight),
+                                    (out_i, in_i, weight_index, path_weight),
+                                    (out_r, in_i, weight_index, -path_weight),
+                                    (out_i, in_r, weight_index, path_weight),
+                                ]
+                            )
+                            concat_path_specs.extend(
+                                [
+                                    (concat_out, in_r, weight_index, path_weight),
+                                    (concat_out + 1, in_i, weight_index, path_weight),
+                                    (concat_out, in_i, weight_index, -path_weight),
+                                    (concat_out + 1, in_r, weight_index, path_weight),
+                                ]
+                            )
                         else:
                             path_weight = (
                                 1.0 / math.sqrt(path_count[(lout, m)])
-                                if self.path_norm else 1.0
+                                if self.path_norm
+                                else 1.0
                             )
                             weight_index = add_instruction(lin, lout, m, path_weight)
                             concat_out = instructions[-1].output_slice.start
@@ -169,14 +186,18 @@ class uuSO2Linear(torch.nn.Module):
                             out_i = self._component_index(lout, m, True)
                             in_r = self._component_index(lin, m, False)
                             in_i = self._component_index(lin, m, True)
-                            path_specs.extend([
-                                (out_r, in_r, weight_index, path_weight),
-                                (out_i, in_i, weight_index, path_weight),
-                            ])
-                            concat_path_specs.extend([
-                                (concat_out, in_r, weight_index, path_weight),
-                                (concat_out + 1, in_i, weight_index, path_weight),
-                            ])
+                            path_specs.extend(
+                                [
+                                    (out_r, in_r, weight_index, path_weight),
+                                    (out_i, in_i, weight_index, path_weight),
+                                ]
+                            )
+                            concat_path_specs.extend(
+                                [
+                                    (concat_out, in_r, weight_index, path_weight),
+                                    (concat_out + 1, in_i, weight_index, path_weight),
+                                ]
+                            )
 
         self.instructions = instructions
         self.num_weights = weight_offset
@@ -192,7 +213,9 @@ class uuSO2Linear(torch.nn.Module):
         )
         self.path_out = torch.tensor([p[0] for p in path_specs], dtype=torch.long)
         self.path_in = torch.tensor([p[1] for p in path_specs], dtype=torch.long)
-        self.path_weight_index = torch.tensor([p[2] for p in path_specs], dtype=torch.long)
+        self.path_weight_index = torch.tensor(
+            [p[2] for p in path_specs], dtype=torch.long
+        )
         self.path_weight = torch.tensor(
             [p[3] for p in path_specs],
             dtype=torch.get_default_dtype(),
@@ -213,6 +236,7 @@ class uuSO2Linear(torch.nn.Module):
             [p[3] for p in concat_path_specs],
             dtype=torch.get_default_dtype(),
         )
+
     def _num_so2_components(self) -> int:
         return (self.lmax + 1) + sum(
             2 * (self.lmax + 1 - m) for m in range(1, self.mmax + 1)
@@ -241,8 +265,7 @@ class uuSO2Linear(torch.nn.Module):
     def forward(self, x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
         if x.size(-1) != self.num_channel:
             raise ValueError(
-                f"uuSO2Linear expected {self.num_channel} channels, "
-                f"got {x.size(-1)}"
+                f"uuSO2Linear expected {self.num_channel} channels, got {x.size(-1)}"
             )
         batch = x.size(0)
         shared_weight = weight.dim() == 1
@@ -304,7 +327,9 @@ class uuSO2Linear(torch.nn.Module):
         instruction: int,
         weight: torch.Tensor,
     ) -> torch.Tensor:
-        offset = sum(math.prod(ins.path_shape) for ins in self.instructions[:instruction])
+        offset = sum(
+            math.prod(ins.path_shape) for ins in self.instructions[:instruction]
+        )
         ins = self.instructions[instruction]
         weight = self._get_weights(weight)
         batchshape = weight.shape[:-1]
@@ -341,21 +366,22 @@ class uuSO2Linear(torch.nn.Module):
             # f"num_output_components={self.num_output_components}}"
             f"weight_numel={self.weight_numel}"
         )
-    
+
 
 class uvSO2MLinear(torch.nn.Module):
     """
     Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
     Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
     """
+
     def __init__(
         self,
-        m: int, 
+        m: int,
         num_channel_in: int,
         num_channel_out: int,
         num_components_in: int,
         num_components_out: int,
-        weight_type: str = 'w1_w2',
+        weight_type: str = "w1_w2",
     ):
         super().__init__()
 
@@ -368,14 +394,14 @@ class uvSO2MLinear(torch.nn.Module):
         assert self.num_components_in > 0
         assert self.num_components_out > 0
 
-        if weight_type == 'w1_w2':
+        if weight_type == "w1_w2":
             self.fc = torchLinear(
                 self.num_components_in * self.num_channel_in,
                 self.num_components_out * self.num_channel_out * 2,
                 bias=False,
             )
             self.fc.weight.data.mul_(1 / math.sqrt(2))
-        elif weight_type == 'w1_w1':
+        elif weight_type == "w1_w1":
             self.fc = torchLinear(
                 self.num_components_in * self.num_channel_in,
                 self.num_components_out * self.num_channel_out,
@@ -390,23 +416,24 @@ class uvSO2MLinear(torch.nn.Module):
             )
         self._Cout = self.num_components_out * self.num_channel_out
 
-
     def forward(self, x, concat_outputs=True):
         # [batch, 2, -1]
-        if self.weight_type == 'w1_w2':
+        if self.weight_type == "w1_w2":
             return self.w1_w2_forward(x, concat_outputs)
-        elif self.weight_type == 'w1_w1':
+        elif self.weight_type == "w1_w1":
             return self.w1_w1_forward(x, concat_outputs)
         else:
             return self.w1_forward(x, concat_outputs)
-    
-    def w1_w2_forward(self, x, concat_outputs=True) -> Union[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+
+    def w1_w2_forward(
+        self, x, concat_outputs=True
+    ) -> Union[tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
 
         x = self.fc(x)
         w1_x = x.narrow(2, 0, self._Cout)
         w2_x = x.narrow(2, self._Cout, self._Cout)
-        xr = w1_x.narrow(1, 0, 1) - w2_x.narrow(1, 1, 1) # w1_x+m - w2x-m
-        xi = w1_x.narrow(1, 1, 1) + w2_x.narrow(1, 0, 1) # w1_x-m + w2x+m
+        xr = w1_x.narrow(1, 0, 1) - w2_x.narrow(1, 1, 1)  # w1_x+m - w2x-m
+        xi = w1_x.narrow(1, 1, 1) + w2_x.narrow(1, 0, 1)  # w1_x-m + w2x+m
         x_out = (xr, xi)
         if concat_outputs:
             x_out = torch.cat(x_out, dim=1)
@@ -425,7 +452,7 @@ class uvSO2MLinear(torch.nn.Module):
         if concat_outputs:
             x_out = torch.cat(x_out, dim=1)
         return x_out
-    
+
     def w1_forward(self, x, concat_outputs=True):
         x = self.fc(x)
         if concat_outputs:
@@ -438,6 +465,7 @@ class uvSO2Linear(torch.nn.Module):
     Based on https://github.com/atomicarchitects/equiformer_v3/blob/main/experimental/models/equiformer_v3/so2_ops.py
     Original Paper: https://proceedings.mlr.press/v202/passaro23a.html
     """
+
     def __init__(
         self,
         mmax: int,
@@ -446,7 +474,7 @@ class uvSO2Linear(torch.nn.Module):
         num_channel_out: int,
         num_components_in: Union[None, list[int]] = None,
         num_components_out: Union[None, list[int]] = None,
-        weight_type: str = 'w1_w2' # [w1_w2, w1_w1, w1]
+        weight_type: str = "w1_w2",  # [w1_w2, w1_w1, w1]
     ):
         super().__init__()
 
@@ -457,20 +485,19 @@ class uvSO2Linear(torch.nn.Module):
         self.weight_type = weight_type
 
         if num_components_in is None:
-            self.num_components_in = [lmax + 1 -m for m in range(mmax + 1)]
+            self.num_components_in = [lmax + 1 - m for m in range(mmax + 1)]
         else:
             self.num_components_in = num_components_in
         assert isinstance(self.num_components_in, list)
         if num_components_out is None:
-            self.num_components_out = [lmax + 1 -m for m in range(mmax + 1)]
+            self.num_components_out = [lmax + 1 - m for m in range(mmax + 1)]
         else:
             self.num_components_out = num_components_out
         assert isinstance(self.num_components_out, list)
 
-
         self.m0_rlinear = torchLinear(
-            self.num_channel_in * self.num_components_in[0], 
-            self.num_channel_out * self.num_components_out[0], 
+            self.num_channel_in * self.num_components_in[0],
+            self.num_channel_out * self.num_components_out[0],
             bias=True,
         )
         self.ms_clinear = torch.nn.ModuleList()
@@ -480,8 +507,8 @@ class uvSO2Linear(torch.nn.Module):
                     m,
                     self.num_channel_in,
                     self.num_channel_out,
-                    self.num_components_in[m], 
-                    self.num_components_out[m], 
+                    self.num_components_in[m],
+                    self.num_components_out[m],
                     weight_type=weight_type,
                 )
             )
@@ -525,18 +552,16 @@ class uvSO2Linear(torch.nn.Module):
         outputs = torch.cat(outputs, dim=1)
 
         return outputs
-        
+
     def __repr__(self) -> str:
         ins = []
         outs = []
         for m in range(self.mmax + 1):
-            n1 = self.num_components_in[m] 
-            n2 = self.num_components_out[m] 
+            n1 = self.num_components_in[m]
+            n2 = self.num_components_out[m]
             ins.append(f"{self.num_channel_in * n1}x{m}m")
             outs.append(f"{self.num_channel_out * n2}x{m}m")
-        num_weights = sum(
-            p.numel() for p in self.parameters() if p.requires_grad
-        )
+        num_weights = sum(p.numel() for p in self.parameters() if p.requires_grad)
         return (
             f"{self.__class__.__name__}"
             f"({'+'.join(ins)} -> "
@@ -585,7 +610,7 @@ class SO2Gate(torch.nn.Module):
                 index = index + offset
                 expand_index.append(index)
                 if m > 0:
-                    expand_index.append(index)    # +- m
+                    expand_index.append(index)  # +- m
                 offset = offset + len(index)
             if expand_index:
                 expand_index = torch.cat(expand_index, dim=0).long()
@@ -593,7 +618,7 @@ class SO2Gate(torch.nn.Module):
                 expand_index = torch.empty(0, dtype=torch.long)
             self.num_components = offset
 
-        self.register_buffer('expand_index', expand_index, persistent=False)
+        self.register_buffer("expand_index", expand_index, persistent=False)
 
         self.scalar_act = scalar_act
         self.tensor_act = tensor_act
@@ -604,10 +629,10 @@ class SO2Gate(torch.nn.Module):
         g = torch.index_select(g, dim=1, index=self.expand_index)
         if self.gate_m0:
             return g * x
-        x_m0 = self.scalar_act(x[:, :self.num_m0_components])
-        x_m = g * x[:, self.num_m0_components:]
+        x_m0 = self.scalar_act(x[:, : self.num_m0_components])
+        x_m = g * x[:, self.num_m0_components :]
         return torch.cat((x_m0, x_m), dim=1)
-    
+
     # def __repr__(self) -> str:
     #     return (
     #         f"{self.__class__.__name__} + "
@@ -699,14 +724,14 @@ class SO2Gate(torch.nn.Module):
 #             out.append(z)
 
 #         return torch.cat(out, dim=1)
-    
+
 #     def complex_forward(
 #         self,
 #         xs: torch.Tensor,
 #         ys: torch.Tensor,
 #         scale: bool = True,
 #     ) -> torch.Tensor:
-        
+
 #         x_list = self.to_complex(xs)
 #         y_list = self.to_complex(ys)
 #         z_list = []
@@ -719,7 +744,7 @@ class SO2Gate(torch.nn.Module):
 #             z_list.append(x * y)
 
 #         return self.from_complex(z_list, scale)
-    
+
 #     def to_complex(
 #         self,
 #         xs: torch.Tensor
@@ -731,7 +756,7 @@ class SO2Gate(torch.nn.Module):
 #             n = self.ns[m]
 #             if m == 0:
 #                 xc = torch.complex(
-#                     x, 
+#                     x,
 #                     torch.zeros_like(x),
 #                 )
 #             else:
@@ -770,7 +795,7 @@ class SO2Gate(torch.nn.Module):
 #                     x = x * self.scale
 #                 out.append(x)
 #         return torch.cat(out, dim=1)
- 
+
 
 # class SO2Rot90(torch.nn.Module):
 
@@ -827,7 +852,7 @@ class SO2Gate(torch.nn.Module):
 #             out.append(z)
 
 #         return torch.cat(out, dim=1)
-    
+
 
 # class uuSO2TensorProductInstruction(NamedTuple):
 #     i_in1: int
@@ -1118,5 +1143,3 @@ class SO2Gate(torch.nn.Module):
 #             f"num_components_per_m={self.num_components_per_m}, "
 #             f"weight_numel={self.weight_numel}"
 #         )
-
-

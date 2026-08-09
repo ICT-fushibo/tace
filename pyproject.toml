@@ -29,6 +29,11 @@ dependencies = [
 
 [project.optional-dependencies]
 
+dev = [
+    "pytest",
+    "ruff>=0.16,<0.17",
+]
+
 oeq = [
     "openequivariance>=0.5.4",
 ]
@@ -102,3 +107,28 @@ include = [
 
 [tool.setuptools.package-data]
 "tace.utils" = ["*.yaml"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+extend-exclude = [
+    "tace/models/_eqt/equitorch",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+ignore = [
+    "E402",  # Intentional optional and delayed imports.
+    "E711",  # Preserve existing equality semantics.
+    "E712",  # Preserve existing equality semantics.
+    "E741",  # Mathematical code conventionally uses l, I, and O.
+    "F401",  # Public APIs currently rely on import-based re-exports.
+    "F811",  # Keep compatibility fallbacks and optional definitions unchanged.
+    "F841",  # Do not remove potentially intentional intermediate values.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tace"]
+
+[tool.ruff.format]
+line-ending = "lf"

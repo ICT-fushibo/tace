@@ -4,8 +4,8 @@
 ################################################################################
 
 import argparse
-import torch
 
+import torch
 
 from tace.lightning import load_tace
 
@@ -13,7 +13,7 @@ from tace.lightning import load_tace
 def average_models(model_paths, ema=False):
     assert len(model_paths) > 0, "No model paths provided."
     model_avg = load_tace(
-        model_paths[0], 
+        model_paths[0],
         device="cpu",
         strict=True,
         use_ema=ema,
@@ -25,7 +25,7 @@ def average_models(model_paths, ema=False):
 
     for path in model_paths:
         model = load_tace(
-            path, 
+            path,
             device="cpu",
             strict=True,
             use_ema=ema,
@@ -45,13 +45,11 @@ def average_models(model_paths, ema=False):
 def main():
     parser = argparse.ArgumentParser(description="SWA average TACE models")
     parser.add_argument(
-        "-m", "--models",
-        nargs="+",
-        required=True,
-        help="Paths to model checkpoints"
+        "-m", "--models", nargs="+", required=True, help="Paths to model checkpoints"
     )
     parser.add_argument(
-        "-e", "--ema",
+        "-e",
+        "--ema",
         type=int,
         choices=[0, 1],
         default=0,
@@ -68,8 +66,8 @@ def main():
             "target_property": model_avg.readout_fn.target_property,
             "embedding_property": model_avg.readout_fn.embedding_property,
             "statistics": model_avg.readout_fn.statistics,
-        }, 
-        output_path
+        },
+        output_path,
     )
     print(f"Averaged model saved to {output_path}")
 

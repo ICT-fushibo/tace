@@ -7,17 +7,15 @@
 
 from typing import Dict, List
 
-
 import torch
 from torch import Tensor
 from torchmetrics import Metric
 
-
 from ..dataset.quantity import (
-    MAE_PROPERTY,
-    RMSE_PROPERTY,
     MAE_PER_ATOM_PROPERTY,
+    MAE_PROPERTY,
     RMSE_PER_ATOM_PROPERTY,
+    RMSE_PROPERTY,
 )
 
 SCALE = 1000.0  # for example, metric units from eV to meV
@@ -27,6 +25,7 @@ def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
     while T.ndim < n_dim:
         T = T.unsqueeze(dim)
     return T
+
 
 class MAE(Metric):
     def __init__(self, scale: float = SCALE):
@@ -213,9 +212,9 @@ class DirectDiagonalHessianMetric(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, pred: Tensor, label: Tensor):
-        batch = label['batch']
-        key = 'direct_diagonal_hessian'
-        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        batch = label["batch"]
+        key = "direct_diagonal_hessian"
+        total_weight = (label["entropy"] * label[key + "_weight"])[batch]
         mask = total_weight != 0
         error = pred[key] - label[key]
         error = error * total_weight.unsqueeze(-1).unsqueeze(-1)
@@ -237,7 +236,7 @@ class DirectDiagonalHessianMetric(Metric):
             return self.sum_abs_error / self.count * self.scale
         else:  # rmse
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
-        
+
 
 class DirectForcesMetric(Metric):
     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
@@ -263,9 +262,9 @@ class DirectForcesMetric(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, pred: Tensor, label: Tensor):
-        batch = label['batch']
-        key = 'direct_forces'
-        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        batch = label["batch"]
+        key = "direct_forces"
+        total_weight = (label["entropy"] * label[key + "_weight"])[batch]
         mask = total_weight != 0
         error = pred[key] - label[key]
         error = error * total_weight.unsqueeze(-1)
@@ -287,7 +286,7 @@ class DirectForcesMetric(Metric):
             return self.sum_abs_error / self.count * self.scale
         else:  # rmse
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
-        
+
 
 class ForcesMetric(Metric):
     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
@@ -313,14 +312,14 @@ class ForcesMetric(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, pred: Tensor, label: Tensor):
-        batch = label['batch']
-        key = 'forces'
-        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        batch = label["batch"]
+        key = "forces"
+        total_weight = (label["entropy"] * label[key + "_weight"])[batch]
         mask = total_weight != 0
         error = pred[key] - label[key]
 
-        if 'noise_mask' in label:
-            noise_mask = label['noise_mask'].bool()
+        if "noise_mask" in label:
+            noise_mask = label["noise_mask"].bool()
             mask = mask & (~noise_mask)
 
         error = error * total_weight.unsqueeze(-1)
@@ -406,14 +405,15 @@ class ForcesMetric(Metric):
 #         else:  # rmse
 #             squared_error = errors**2
 #             self.sum_squared_error += squared_error.sum()
-#         self.count += errors.numel() 
-   
+#         self.count += errors.numel()
+
 #     def compute(self):
 #         if self.metric_type == "mae":
 #             return self.sum_abs_error / self.count * self.scale
 #         else:  # rmse
 #             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
-        
+
+
 def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
     metrics = {}
 
@@ -428,21 +428,36 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
             metrics[f"{prefix}/{property_name}_per_atom_rmse"] = PerAtomRMSE()
         if property_name == "polarization":
             metrics[f"{prefix}/{property_name}_mae"] = PolarizationMetric("mae", False)
-            metrics[f"{prefix}/{property_name}_rmse"] = PolarizationMetric("rmse", False)
-            metrics[f"{prefix}/{property_name}_per_atom_mae"] = PolarizationMetric("mae", True)
-            metrics[f"{prefix}/{property_name}_per_atom_rmse"] = PolarizationMetric("rmse", True)
+            metrics[f"{prefix}/{property_name}_rmse"] = PolarizationMetric(
+                "rmse", False
+            )
+            metrics[f"{prefix}/{property_name}_per_atom_mae"] = PolarizationMetric(
+                "mae", True
+            )
+            metrics[f"{prefix}/{property_name}_per_atom_rmse"] = PolarizationMetric(
+                "rmse", True
+            )
         if property_name == "abs_final_collinear_magmoms":
-            metrics[f"{prefix}/{property_name}_mae"] = AbsFinalCollinearMagmomsMetric("mae")
-            metrics[f"{prefix}/{property_name}_rmse"] = AbsFinalCollinearMagmomsMetric("rmse")
+            metrics[f"{prefix}/{property_name}_mae"] = AbsFinalCollinearMagmomsMetric(
+                "mae"
+            )
+            metrics[f"{prefix}/{property_name}_rmse"] = AbsFinalCollinearMagmomsMetric(
+                "rmse"
+            )
         if property_name == "direct_diagonal_hessian":
-            metrics[f"{prefix}/{property_name}_mae"] = DirectDiagonalHessianMetric("mae")
-            metrics[f"{prefix}/{property_name}_rmse"] = DirectDiagonalHessianMetric("rmse")
+            metrics[f"{prefix}/{property_name}_mae"] = DirectDiagonalHessianMetric(
+                "mae"
+            )
+            metrics[f"{prefix}/{property_name}_rmse"] = DirectDiagonalHessianMetric(
+                "rmse"
+            )
         if property_name == "direct_forces":
             metrics[f"{prefix}/{property_name}_mae"] = DirectForcesMetric("mae")
             metrics[f"{prefix}/{property_name}_rmse"] = DirectForcesMetric("rmse")
         if property_name == "forces":
             metrics[f"{prefix}/{property_name}_mae"] = ForcesMetric("mae")
             metrics[f"{prefix}/{property_name}_rmse"] = ForcesMetric("rmse")
+
     for p in loss_property:
         add_metrics(p)
 
@@ -451,7 +466,6 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
 
 def update_metrics(metrics, prefix, pred, label, loss_property):
     for p in loss_property:
-
         if p not in pred:
             continue
 

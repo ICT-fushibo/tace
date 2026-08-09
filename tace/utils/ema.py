@@ -1,4 +1,4 @@
-'''
+"""
 From torch_ema
 It's not a completely official implementation. We made a few modifications.
 https://github.com/fadel/pytorch_ema
@@ -22,11 +22,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-'''
+"""
 
-import weakref
-import copy
 import contextlib
+import copy
+import weakref
 from typing import Iterable, Optional
 
 import torch
@@ -238,27 +238,27 @@ class ExponentialMovingAverage:
         if self.decay < 0.0 or self.decay > 1.0:
             raise ValueError("Decay must be between 0 and 1")
         self.num_updates = state_dict["num_updates"]
-        assert self.num_updates is None or isinstance(
-            self.num_updates, int
-        ), "Invalid num_updates"
+        assert self.num_updates is None or isinstance(self.num_updates, int), (
+            "Invalid num_updates"
+        )
 
         self.shadow_params = state_dict["shadow_params"]
         assert isinstance(self.shadow_params, list), "shadow_params must be a list"
-        assert all(
-            isinstance(p, torch.Tensor) for p in self.shadow_params
-        ), "shadow_params must all be Tensors"
+        assert all(isinstance(p, torch.Tensor) for p in self.shadow_params), (
+            "shadow_params must all be Tensors"
+        )
 
         self.collected_params = state_dict["collected_params"]
         if self.collected_params is not None:
-            assert isinstance(
-                self.collected_params, list
-            ), "collected_params must be a list"
-            assert all(
-                isinstance(p, torch.Tensor) for p in self.collected_params
-            ), "collected_params must all be Tensors"
-            assert len(self.collected_params) == len(
-                self.shadow_params
-            ), "collected_params and shadow_params had different lengths"
+            assert isinstance(self.collected_params, list), (
+                "collected_params must be a list"
+            )
+            assert all(isinstance(p, torch.Tensor) for p in self.collected_params), (
+                "collected_params must all be Tensors"
+            )
+            assert len(self.collected_params) == len(self.shadow_params), (
+                "collected_params and shadow_params had different lengths"
+            )
 
         if len(self.shadow_params) == len(self._params_refs):
             # Consistant with torch.optim.Optimizer, cast things to consistant

@@ -3,14 +3,15 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Union
 import itertools
+from typing import Union
 
 from e3nn import o3
+
 try:
     import cuequivariance as cue
-    from cuequivariance.group_theory.irreps_array.irrep_utils import into_list_of_irrep
     from cuequivariance.group_theory.experimental.e3nn import O3_e3nn
+    from cuequivariance.group_theory.irreps_array.irrep_utils import into_list_of_irrep
 except Exception:
     pass
 
@@ -32,8 +33,8 @@ def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
         return l1 != l2
     else:
         raise ValueError(f"Unknown restriction: {restriction}")
-    
-    
+
+
 def generate_cueq_paths(
     irreps_out: o3.Irreps,
     irreps_in1: o3.Irreps,

@@ -5,9 +5,8 @@
 import math
 from pathlib import Path
 
-
-from omegaconf import OmegaConf
 from hydra.utils import to_absolute_path
+from omegaconf import OmegaConf
 
 
 def _resolve_path(path_str: str, expect: str = "file") -> str:

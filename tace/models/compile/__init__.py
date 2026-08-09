@@ -1,5 +1,3 @@
-from .tace import e3nnTACE
-from .wrapper import CompileTensorModel
 from .aot import (
     AOTICompiledLammpsModel,
     AOTICompiledTensorModel,
@@ -10,6 +8,8 @@ from .aot import (
     load_ase_aotinductor,
     load_lammps_aotinductor,
 )
+from .tace import e3nnTACE
+from .wrapper import CompileTensorModel
 
 __all__ = [
     "e3nnTACE",

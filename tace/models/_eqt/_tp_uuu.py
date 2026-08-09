@@ -5,13 +5,10 @@
 
 from typing import Union
 
-
 import torch
 from e3nn import o3
 
-
 from ..layout import LayoutTransform
-
 
 
 class e3nnEqtTensorProduct(torch.nn.Module):
@@ -31,6 +28,7 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         self.reshap3 = LayoutTransform(irreps_out)
 
         from .equitorch.nn import TensorProduct
+
         self.eqt_tp = TensorProduct(
             irreps_in1="+".join(str(ir) for _, ir in irreps_in1),
             irreps_in2="+".join(str(ir) for _, ir in irreps_in2),
@@ -45,7 +43,6 @@ class e3nnEqtTensorProduct(torch.nn.Module):
         )
 
     def forward(
-            self, x: torch.Tensor, y: torch.Tensor, w: Union[torch.Tensor, None] = None
-        ) -> torch.Tensor:
+        self, x: torch.Tensor, y: torch.Tensor, w: Union[torch.Tensor, None] = None
+    ) -> torch.Tensor:
         return self.reshap3.inverse(self.eqt_tp(self.reshap1(x), self.reshap2(y), w))
-

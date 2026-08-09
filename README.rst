@@ -167,6 +167,20 @@ Contact
 For bugs or feature requests, please use the
 `TACE issue <https://github.com/xvzemin/tace/issues>`_.
 
+Development
+-----------
+
+Install the development tools and run the same formatting and lint checks used by
+pre-commit:
+
+.. code-block:: bash
+
+   pip install -e ".[dev]"
+   ruff check --fix tace
+   ruff format tace
+   ruff check tace
+   ruff format --check tace
+
 License
 -------
 

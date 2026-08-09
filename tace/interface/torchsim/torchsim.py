@@ -7,8 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Union
 
-
 import torch
+
 try:
     import torch_sim as ts
     from torch_sim.models.interface import ModelInterface
@@ -24,7 +24,7 @@ from tace.lightning import load_tace
 from tace.utils._global import DEVICE
 from tace.utils.env import enable_acceleration
 
-  
+
 class TACETorchSimCalc(ModelInterface):
     """Computes energies for multiple systems using a TACE model.
 
@@ -89,7 +89,7 @@ class TACETorchSimCalc(ModelInterface):
             compute_forces (bool): Whether to compute forces. Defaults to True.
             compute_stress (bool): Whether to compute stress. Defaults to True.
             fidelity_idx : int
-                Specify which fidelity fidelity_idx to use. 
+                Specify which fidelity fidelity_idx to use.
             target_property: list(str)
                 Extra caculate hessian, atomic_virials, Conservative polarizability, etc,
                 If you want to use this parameter, you must provide all the required physical quantities.
@@ -128,13 +128,15 @@ class TACETorchSimCalc(ModelInterface):
             use_ema=True,
             target_property=target_property,
             dtype=dtype,
-        ) 
+        )
         self._dtype = model.get_model_dtype()
         if hasattr(model, "flags"):
             model.flags.compute_forces = self._compute_forces
             model.flags.compute_stress = self._compute_stress
-            model.compute_first_derivative = self._compute_forces or self._compute_stress
-        model.reset_fidelity_idx(fidelity_idx) 
+            model.compute_first_derivative = (
+                self._compute_forces or self._compute_stress
+            )
+        model.reset_fidelity_idx(fidelity_idx)
         model.eval()
         for param in model.parameters():
             param.requires_grad = False
@@ -191,9 +193,7 @@ class TACETorchSimCalc(ModelInterface):
         """
         self.node_attrs = self.torch_element.z2onehot(atomic_numbers).to(self._dtype)
 
-    def forward(
-        self, state: ts.SimState, **_kwargs: object
-    ) -> dict[str, torch.Tensor]:
+    def forward(self, state: ts.SimState, **_kwargs: object) -> dict[str, torch.Tensor]:
         """Compute energies, forces, and stresses for the given atomic systems.
 
         Processes the provided state information and computes energies, forces, and
@@ -240,9 +240,7 @@ class TACETorchSimCalc(ModelInterface):
                     f"got {state.system_idx.shape[0]}."
                 )
         else:
-            system_idx = state.system_idx.to(
-                device=self.device, dtype=torch.int64
-            )
+            system_idx = state.system_idx.to(device=self.device, dtype=torch.int64)
             if not hasattr(self, "system_idx") or not torch.equal(
                 system_idx, self.system_idx
             ):

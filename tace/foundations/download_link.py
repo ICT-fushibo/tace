@@ -4,34 +4,26 @@
 ################################################################################
 
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlparse
-from collections.abc import Mapping
-
 
 from huggingface_hub import hf_hub_download
 
-
 from ..utils._global import CACHE_DIR
-
 
 OAM_SERIES = {
     "TACE-OMat24-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-L.pt",
     "TACE-OAM-L": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-L.pt",
-
     "TACE-OMat24-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA-1.0.pt",
     "TACE-OMat24-RRA-Preview": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-RRA-Preview.pt",
-
     "TECE-OMat24-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OMat24-RRA-1.0.pt",
     "TECE-OAM-RRA-1.0": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TECE-OAM-RRA-1.0.pt",
-
     "TACE-OMat24-7M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OMat24-7M.pt",
     "TACE-OAM-7M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-OAM-7M.pt",
 }
 
-REICO_SERIES = {
-
-}
+REICO_SERIES = {}
 
 LEGACY = {
     "TACE-v1-OMat24-M": "https://huggingface.co/xvzemin/tace-foundations/resolve/main/TACE-v1-OMat24-M.pt",
@@ -58,7 +50,7 @@ def _parse_hf_resolve_url(url: str) -> tuple[str, str, str]:
 
     repo_id = "/".join(parts[:resolve_idx])
     revision = parts[resolve_idx + 1]
-    filename = "/".join(parts[resolve_idx + 2:])
+    filename = "/".join(parts[resolve_idx + 2 :])
 
     if not repo_id or not revision or not filename:
         raise ValueError(f"Malformed Hugging Face resolve URL: {url}")
@@ -77,7 +69,7 @@ class CachedModelRegistry(Mapping):
             print(f"[ERROR], Legacy pretrained model: {key}")
             self.print_models()
             raise KeyError(key)
-        
+
         if key not in self._registry:
             print(f"[ERROR], Unknown pretrained model: {key}")
             self.print_models()
@@ -85,10 +77,10 @@ class CachedModelRegistry(Mapping):
 
         url = self._registry[key]
         target = Path(CACHE_DIR) / Path(urlparse(url).path).name
-        
+
         if target.exists():
             return Path(target)
-        
+
         # download
         try:
             repo_id, revision, filename = _parse_hf_resolve_url(url)
@@ -106,7 +98,7 @@ class CachedModelRegistry(Mapping):
                 f"Please manually download and place it at:\n"
                 f"  {target}"
             ) from e
-        
+
         # copy
         shutil.copy2(path, target)
 
@@ -128,6 +120,5 @@ class CachedModelRegistry(Mapping):
 
 
 tace_foundations = CachedModelRegistry(
-    registry=OAM_SERIES | REICO_SERIES,
-    legacy=LEGACY
+    registry=OAM_SERIES | REICO_SERIES, legacy=LEGACY
 )

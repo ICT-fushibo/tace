@@ -49,7 +49,7 @@
 #         prev_feats = prev_feats[-self.window:]
 #         key = torch.stack([feats[:, :self.num_channel] for feats in prev_feats], dim=0)
 #         logits = torch.einsum('c, lbc -> lb', self.query.squeeze(0), key) * self.alpha
-#         attn = F.softmax(logits, dim=0) 
+#         attn = F.softmax(logits, dim=0)
 #         new_feats = []
 #         for idx in range(self.window):
 #             if self.linear_type == 'aware':
@@ -59,12 +59,12 @@
 #             else:
 #                 new_feats.append(
 #                     self.reshape(self.linear[idx](prev_feats[idx]))
-#                 )     
+#                 )
 #         value = torch.stack(new_feats, dim=0)
 
 #         return self.reshape.inverse(torch.einsum('lb, lbmc -> bmc', attn, value))
 
-    
+
 # class AttentionResidual_AB(Residual):
 #     def _setup(self):
 
@@ -97,7 +97,7 @@
 #         prev_feats = prev_feats[-self.window:]
 #         key = torch.stack([feats[:, :self.num_channel] for feats in prev_feats], dim=0)
 #         logits = torch.einsum('c, lbc -> lb', self.query.squeeze(0), key) * self.alpha
-#         attn = F.softmax(logits, dim=0) 
+#         attn = F.softmax(logits, dim=0)
 #         new_feats = []
 #         for idx in range(self.window):
 #             if self.linear_type == 'aware':
@@ -107,11 +107,10 @@
 #             else:
 #                 new_feats.append(
 #                     self.reshape(self.linear[idx](prev_feats[idx]))
-#                 )     
+#                 )
 #         value = torch.stack(new_feats, dim=0)
 
 #         return self.reshape.inverse(torch.einsum('lb, lbmc -> bmc', attn, value))
-
 
 
 # class AttentionResidual(Residual):
@@ -126,7 +125,7 @@
 #         prev_feats = prev_feats[-self.window:]
 #         key = torch.stack([feats[:, :self.num_channel] for feats in prev_feats], dim=0)
 #         logits = torch.einsum('c, lbc -> lb', self.query.squeeze(0), key) * self.alpha
-#         attn = F.softmax(logits, dim=0)     
+#         attn = F.softmax(logits, dim=0)
 #         value = torch.stack(prev_feats[-self.window:], dim=0)
 
 #         return self.reshape.inverse(torch.einsum('lb, lbmc -> bmc', attn, value))
@@ -140,8 +139,8 @@
 import torch
 from e3nn import o3
 
-
 from ..linear import e3nnElementLinear, e3nnLinear
+
 
 def get_resnet_layer(
     irreps_in,
@@ -172,6 +171,7 @@ def get_resnet_layer(
 
 class ProjectUp(torch.nn.Module):
     """From https://github.com/SamsungDS/GGNN/blob/main/GGNN/model/EquFlashV2/nn/skip.py"""
+
     def __init__(
         self,
         irreps_in: o3.Irreps,
@@ -211,6 +211,7 @@ class ProjectUp(torch.nn.Module):
 
 class ProjectDown(torch.nn.Module):
     """From https://github.com/SamsungDS/GGNN/blob/main/GGNN/model/EquFlashV2/nn/skip.py"""
+
     def __init__(
         self,
         irreps_in: o3.Irreps,
@@ -225,7 +226,7 @@ class ProjectDown(torch.nn.Module):
 
     def forward(self, x):
         return x[:, self.idx]
-    
+
 
 class SkipIdentity(torch.nn.Module):
     def __init__(
@@ -247,5 +248,3 @@ class SkipIdentity(torch.nn.Module):
 
     def forward(self, x):
         return self.proj(x)
-
-

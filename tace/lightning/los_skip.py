@@ -4,9 +4,10 @@
 ################################################################################
 
 
+import logging
+
 import torch
 import torch.distributed as dist
-import logging
 
 
 class LossSkipController:
@@ -24,8 +25,8 @@ class LossSkipController:
         start_step=50000,
         ema_window=None,
         multiplier=None,
-        skip_nan=True,   
-        skip_large=True,   
+        skip_nan=True,
+        skip_large=True,
     ):
         self.manual_threshold = manual_threshold
         self.start_step = start_step
@@ -99,8 +100,7 @@ class LossSkipController:
         # (2) Large loss
         elif self.skip_large:
             enable_large = (
-                self.start_step is not None
-                and global_step >= self.start_step
+                self.start_step is not None and global_step >= self.start_step
             )
 
             if enable_large and threshold is not None:
@@ -111,9 +111,7 @@ class LossSkipController:
         # ---- DDP sync ----
         if dist.is_available() and dist.is_initialized():
             device = loss.device
-            reason_tensor = torch.tensor(
-                reason_code, device=device, dtype=torch.int32
-            )
+            reason_tensor = torch.tensor(reason_code, device=device, dtype=torch.int32)
             dist.all_reduce(reason_tensor, op=dist.ReduceOp.MAX)
 
             reason_code = int(reason_tensor.item())
@@ -147,4 +145,3 @@ class LossSkipController:
             f"dyn={dyn:.4f}, eff={eff:.4f}, "
             f"skip_large={self.skip_large}"
         )
-

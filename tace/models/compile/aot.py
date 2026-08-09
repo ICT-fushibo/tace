@@ -1,21 +1,21 @@
-from contextlib import nullcontext
 import importlib
 import json
-from pathlib import Path
 import shutil
 import zipfile
+from contextlib import nullcontext
+from pathlib import Path
 from typing import Dict, Sequence, Set, Union
 
 import torch
 
 from tace.dataset.element import TorchElement
+
 from .compile import trace_to_fx
 from .wrapper import (
     CompileTensorModel,
     _FlatE3nnCompileModel,
     _FlatE3nnLammpsCompileModel,
 )
-
 
 TACE_AOTI_FORMAT = "tace_graph_v1"
 ASE_AOTI_FORMAT = "tace_ase_v1"
@@ -59,8 +59,12 @@ class AOTICompiledTensorModel(torch.nn.Module):
             _metadata_json(metadata, "tace_target_property")
         )
         self.target_property = list(self.exported_target_property)
-        self.embedding_property = list(_metadata_json(metadata, "tace_embedding_property"))
-        self.atomic_numbers = [int(z) for z in _metadata_json(metadata, "tace_atomic_numbers")]
+        self.embedding_property = list(
+            _metadata_json(metadata, "tace_embedding_property")
+        )
+        self.atomic_numbers = [
+            int(z) for z in _metadata_json(metadata, "tace_atomic_numbers")
+        ]
         self.cutoff = float(metadata["tace_cutoff"])
         self.max_neighbors = _metadata_json(metadata, "tace_max_neighbors")
         self.fidelity_idx = int(metadata["tace_fidelity_idx"])
@@ -630,15 +634,9 @@ def _custom_ops_libs_from_model(model: torch.nn.Module) -> Set[str]:
     libs: Set[str] = set()
     for module in model.modules():
         module_name = type(module).__module__.lower()
-        if (
-            module_name.startswith("openequivariance")
-            or ".models._oeq" in module_name
-        ):
+        if module_name.startswith("openequivariance") or ".models._oeq" in module_name:
             libs.add("openequivariance")
-        if (
-            module_name.startswith("cuequivariance")
-            or ".models._cue" in module_name
-        ):
+        if module_name.startswith("cuequivariance") or ".models._cue" in module_name:
             libs.update({"cuequivariance", "cuequivariance_torch"})
     return libs
 

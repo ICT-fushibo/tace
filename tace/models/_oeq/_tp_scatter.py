@@ -5,9 +5,9 @@
 
 from typing import Tuple
 
-
 import torch
 from e3nn import o3
+
 try:
     import openequivariance as oeq
 except Exception:
@@ -36,16 +36,18 @@ class e3nnOeqTensorProduct(torch.nn.Module):
             weight_dtype=dtype,
         )
         self.oeq_tp = oeq.TensorProduct(
-            tpp, 
-            torch_op=True, 
+            tpp,
+            torch_op=True,
             use_opaque=False,
         )
         self.weight_numel = self.oeq_tp.weight_numel
         self.irreps_out = irreps_out
 
-    def forward(self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
-        return self.oeq_tp(x, y, w) 
-    
+    def forward(
+        self, x: torch.Tensor, y: torch.Tensor, w: torch.Tensor
+    ) -> torch.Tensor:
+        return self.oeq_tp(x, y, w)
+
 
 class e3nnOeqScatterTensorProduct(torch.nn.Module):
     def __init__(
@@ -69,22 +71,22 @@ class e3nnOeqScatterTensorProduct(torch.nn.Module):
             weight_dtype=dtype,
         )
         self.oeq_tp = oeq.TensorProductConv(
-            tpp, 
-            deterministic=False, 
-            kahan=False, 
-            torch_op=True, 
+            tpp,
+            deterministic=False,
+            kahan=False,
+            torch_op=True,
             use_opaque=False,
         )
         self.weight_numel = self.oeq_tp.weight_numel
         self.irreps_out = irreps_out
 
     def forward(
-            self, 
-            node_feats: torch.Tensor,
-            edge_attrs: torch.Tensor,
-            conv_weights: torch.Tensor,
-            edge_index: torch.Tensor,
-        ) -> torch.Tensor:
+        self,
+        node_feats: torch.Tensor,
+        edge_attrs: torch.Tensor,
+        conv_weights: torch.Tensor,
+        edge_index: torch.Tensor,
+    ) -> torch.Tensor:
         return self.oeq_tp(
             node_feats, edge_attrs, conv_weights, edge_index[1], edge_index[0]
-        ) # target, source
+        )  # target, source

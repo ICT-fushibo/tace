@@ -3,9 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import random
 import argparse
-
+import random
 
 from ase import Atoms
 from ase.io import read, write

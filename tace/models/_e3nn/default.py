@@ -5,9 +5,7 @@
 
 from typing import Any
 
-
 from ...dataset.quantity import PROPERTY
-
 
 DEFAULT_MODEL_CONFIG = {
     "mmax": 2,
@@ -37,18 +35,17 @@ DEFAULT_MODEL_CONFIG = {
         "radial_basis": "j0",
         "num_radial_basis": 8,
         "distance_transform": None,
-        "cutoff_fn": 'c2poly',
+        "cutoff_fn": "c2poly",
         "polynomial_cutoff": 5,
         "order": 0,
         "trainable": False,
         "apply_cutoff": True,
         "hidden": [64, 64, 64],
         "gaussian_width": 2.0,
-        'use_dydynamic_cutoff': False,
-        'dydynamic_cutoff_mu': 40,
+        "use_dydynamic_cutoff": False,
+        "dydynamic_cutoff_mu": 40,
     },
-    "angular_basis": {
-    },
+    "angular_basis": {},
     "atomic_basis": {
         "type": "cgtp",
         "edge_info_type": "mlp",
@@ -57,7 +54,7 @@ DEFAULT_MODEL_CONFIG = {
         "edge_nonlinear": "so2_sigmoid_gate",
         "l1l2": None,
         "so2_l1l3": None,
-        "so2_linear_type": 'w1_w2',
+        "so2_linear_type": "w1_w2",
         "use_so2_edge_ace": False,
         "so2_agnostic": True,
         "num_head": None,
@@ -73,7 +70,7 @@ DEFAULT_MODEL_CONFIG = {
     },
     "resnet": {
         "type": "BB",
-        "linear_type": 'aware',
+        "linear_type": "aware",
         "use_first_resnet": False,
     },
     "layer_norm": {
@@ -86,7 +83,6 @@ DEFAULT_MODEL_CONFIG = {
         "l1l2": None,
         "correlation": 2,
         "return_components": None,
-
         "num_expert": None,
         "num_channel_per_expert": None,
         "use_shared_expert": False,
@@ -100,7 +96,7 @@ DEFAULT_MODEL_CONFIG = {
         "use_uie": False,
     },
     "scale_shift": {
-        'enable': True,
+        "enable": True,
         "scale_type": "rms_forces",
         "shift_type": None,
         "scale_trainable": False,
@@ -172,10 +168,10 @@ DEFAULT_MODEL_CONFIG = {
 
 
 def recursive_update(
-        cfg: dict[str, Any], 
-        *, 
-        default: dict[str, Any] = DEFAULT_MODEL_CONFIG,
-    ) -> dict[str, Any]:
+    cfg: dict[str, Any],
+    *,
+    default: dict[str, Any] = DEFAULT_MODEL_CONFIG,
+) -> dict[str, Any]:
     """
     Recursively update `default` with `cfg`.
 
@@ -209,7 +205,7 @@ def recursive_update(
 def get_invariant_property(ue: dict) -> list[str]:
     invariant_property = []
     for p, v in ue.items():
-        if v['enable'] and PROPERTY[p]['rank'] == 0:
+        if v["enable"] and PROPERTY[p]["rank"] == 0:
             invariant_property.append(p)
     return invariant_property
 
@@ -217,7 +213,7 @@ def get_invariant_property(ue: dict) -> list[str]:
 def get_equivariant_property(ue: dict) -> list[str]:
     equivariant_property = []
     for p, v in ue.items():
-        if v['enable'] and PROPERTY[p]['rank'] > 0:
+        if v["enable"] and PROPERTY[p]["rank"] > 0:
             equivariant_property.append(p)
     return equivariant_property
 
@@ -235,49 +231,53 @@ def check_model_config(cfg: dict[str, Any]):
         )
 
     # Update statistics info
-    cfg['atomic_numbers'] = sorted(
-        {z for s in cfg['statistics'] for z in s['atomic_numbers']}
+    cfg["atomic_numbers"] = sorted(
+        {z for s in cfg["statistics"] for z in s["atomic_numbers"]}
     )
-    cfg["avg_num_neighbors"] = (
-        sum(s["avg_num_neighbors"] for s in cfg['statistics']) / len(cfg['statistics'])
-    )
-    cfg['atomic_energies'] = (
-        [stats['atomic_energy'] for stats in cfg['statistics']]
-        if 'energy' in cfg['target_property']
+    cfg["avg_num_neighbors"] = sum(
+        s["avg_num_neighbors"] for s in cfg["statistics"]
+    ) / len(cfg["statistics"])
+    cfg["atomic_energies"] = (
+        [stats["atomic_energy"] for stats in cfg["statistics"]]
+        if "energy" in cfg["target_property"]
         else None
     )
 
     # Universal_embedding
-    cfg['invariant_property'] = get_invariant_property(cfg['universal_embedding'])
-    cfg['equivariant_property'] = get_equivariant_property(cfg['universal_embedding'])
+    cfg["invariant_property"] = get_invariant_property(cfg["universal_embedding"])
+    cfg["equivariant_property"] = get_equivariant_property(cfg["universal_embedding"])
 
     # Update to list use num_layers
     def _to_list(x):
         if isinstance(x, int) or isinstance(x, str) or x is None:
-            return [x for _ in range(cfg['num_layers'])]
+            return [x for _ in range(cfg["num_layers"])]
         assert isinstance(x, list)
         return x
 
     # cfg['Lmax'] = _to_list(cfg['Lmax'])
-    cfg['product_basis']['correlation'] = _to_list(cfg['product_basis']['correlation'])
-    cfg['atomic_basis']['type'] = _to_list(cfg['atomic_basis']['type'])
-    cfg['product_basis']['type'] = _to_list(cfg['product_basis']['type'])
-    cfg['atomic_basis']['nonlinear'] = _to_list(cfg['atomic_basis']['nonlinear'])
-    cfg['atomic_basis']['edge_nonlinear'] = _to_list(cfg['atomic_basis']['edge_nonlinear'])
-    cfg['atomic_basis']['use_graph_softmax'] = _to_list(cfg['atomic_basis']['use_graph_softmax'])
+    cfg["product_basis"]["correlation"] = _to_list(cfg["product_basis"]["correlation"])
+    cfg["atomic_basis"]["type"] = _to_list(cfg["atomic_basis"]["type"])
+    cfg["product_basis"]["type"] = _to_list(cfg["product_basis"]["type"])
+    cfg["atomic_basis"]["nonlinear"] = _to_list(cfg["atomic_basis"]["nonlinear"])
+    cfg["atomic_basis"]["edge_nonlinear"] = _to_list(
+        cfg["atomic_basis"]["edge_nonlinear"]
+    )
+    cfg["atomic_basis"]["use_graph_softmax"] = _to_list(
+        cfg["atomic_basis"]["use_graph_softmax"]
+    )
     # cfg['product_basis']['nonlinear'] = _to_list(cfg['product_basis']['nonlinear'])
 
     # if cfg['parity']: assert 'so2' not in cfg['atomic_basis']['type'], "When using SO(2) Interaction, set parity: false"
-    components = cfg['product_basis']['return_components']
+    components = cfg["product_basis"]["return_components"]
     if isinstance(components, list):
-        for idx ,int_or_irrep in enumerate(components):
+        for idx, int_or_irrep in enumerate(components):
             if isinstance(int_or_irrep, int):
                 parity = "e" if int_or_irrep % 2 == 0 else "o"
                 components[idx] = f"{int_or_irrep}{parity}"
-            else: 
+            else:
                 assert isinstance(int_or_irrep, str)
     else:
         assert components is None
-    cfg['product_basis']['return_components'] = components
+    cfg["product_basis"]["return_components"] = components
 
     return cfg

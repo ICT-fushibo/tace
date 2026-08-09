@@ -404,9 +404,7 @@ def _check_inputs(
     if any(tensor.device != x.device for tensor in tensors):
         raise ValueError("All Triton uuSO2 scatter inputs must share a device")
     if weight.dim() != 2 or weight.size(0) != source.numel():
-        raise ValueError(
-            "Triton uuSO2 scatter requires one weight vector per edge"
-        )
+        raise ValueError("Triton uuSO2 scatter requires one weight vector per edge")
 
 
 class _UUSO2ScatterBackwardFunction(torch.autograd.Function):
@@ -507,21 +505,19 @@ class _UUSO2ScatterBackwardFunction(torch.autograd.Function):
                     num_weights,
                 ),
             )
-            _, dw, d_wigner, d_wigner_inv = (
-                _streaming_uu_so2_scatter_backward(
-                    grad_output,
-                    grad_grad_x,
-                    weight,
-                    source,
-                    target,
-                    wigner,
-                    wigner_inv,
-                    path_out,
-                    path_in,
-                    path_weight_index,
-                    path_weight,
-                    num_weights,
-                )
+            _, dw, d_wigner, d_wigner_inv = _streaming_uu_so2_scatter_backward(
+                grad_output,
+                grad_grad_x,
+                weight,
+                source,
+                target,
+                wigner,
+                wigner_inv,
+                path_out,
+                path_in,
+                path_weight_index,
+                path_weight,
+                num_weights,
             )
             grad_weight = add(grad_weight, dw)
             grad_wigner = add(grad_wigner, d_wigner)
@@ -544,21 +540,19 @@ class _UUSO2ScatterBackwardFunction(torch.autograd.Function):
                     num_weights,
                 ),
             )
-            dx, _, d_wigner, d_wigner_inv = (
-                _streaming_uu_so2_scatter_backward(
-                    grad_output,
-                    x,
-                    grad_grad_weight,
-                    source,
-                    target,
-                    wigner,
-                    wigner_inv,
-                    path_out,
-                    path_in,
-                    path_weight_index,
-                    path_weight,
-                    num_weights,
-                )
+            dx, _, d_wigner, d_wigner_inv = _streaming_uu_so2_scatter_backward(
+                grad_output,
+                x,
+                grad_grad_weight,
+                source,
+                target,
+                wigner,
+                wigner_inv,
+                path_out,
+                path_in,
+                path_weight_index,
+                path_weight,
+                num_weights,
             )
             grad_x = add(grad_x, dx)
             grad_wigner = add(grad_wigner, d_wigner)
@@ -581,21 +575,19 @@ class _UUSO2ScatterBackwardFunction(torch.autograd.Function):
                     num_weights,
                 ),
             )
-            dx, dw, _, d_wigner_inv = (
-                _streaming_uu_so2_scatter_backward(
-                    grad_output,
-                    x,
-                    weight,
-                    source,
-                    target,
-                    grad_grad_wigner,
-                    wigner_inv,
-                    path_out,
-                    path_in,
-                    path_weight_index,
-                    path_weight,
-                    num_weights,
-                )
+            dx, dw, _, d_wigner_inv = _streaming_uu_so2_scatter_backward(
+                grad_output,
+                x,
+                weight,
+                source,
+                target,
+                grad_grad_wigner,
+                wigner_inv,
+                path_out,
+                path_in,
+                path_weight_index,
+                path_weight,
+                num_weights,
             )
             grad_x = add(grad_x, dx)
             grad_weight = add(grad_weight, dw)
@@ -618,21 +610,19 @@ class _UUSO2ScatterBackwardFunction(torch.autograd.Function):
                     num_weights,
                 ),
             )
-            dx, dw, d_wigner, _ = (
-                _streaming_uu_so2_scatter_backward(
-                    grad_output,
-                    x,
-                    weight,
-                    source,
-                    target,
-                    wigner,
-                    grad_grad_wigner_inv,
-                    path_out,
-                    path_in,
-                    path_weight_index,
-                    path_weight,
-                    num_weights,
-                )
+            dx, dw, d_wigner, _ = _streaming_uu_so2_scatter_backward(
+                grad_output,
+                x,
+                weight,
+                source,
+                target,
+                wigner,
+                grad_grad_wigner_inv,
+                path_out,
+                path_in,
+                path_weight_index,
+                path_weight,
+                num_weights,
             )
             grad_x = add(grad_x, dx)
             grad_weight = add(grad_weight, dw)
@@ -764,17 +754,15 @@ def uu_so2_scatter(
     num_weights: int,
 ) -> torch.Tensor:
     if edge_index.size(1) == 0:
-        zero = (
-            x.sum()
-            + weight.sum()
-            + wigner.sum()
-            + wigner_inv.sum()
-        ) * 0.0
-        return x.new_zeros(
-            x.size(0),
-            wigner_inv.size(1),
-            x.size(2),
-        ) + zero
+        zero = (x.sum() + weight.sum() + wigner.sum() + wigner_inv.sum()) * 0.0
+        return (
+            x.new_zeros(
+                x.size(0),
+                wigner_inv.size(1),
+                x.size(2),
+            )
+            + zero
+        )
     return _UUSO2ScatterFunction.apply(
         x,
         weight,

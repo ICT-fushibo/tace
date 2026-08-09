@@ -5,10 +5,8 @@
 
 from typing import List, Union
 
-
 import torch
 from omegaconf import ListConfig
-
 
 from .mse_fn import LOSS_FN
 from .registry import validate_loss_function_names
@@ -25,21 +23,25 @@ class NormalLoss(torch.nn.Module):
         **kwargs,
     ):
         super().__init__()
-        assert isinstance(
-            loss_property, (list, ListConfig)
-        ), f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
-        assert isinstance(
-            loss_function_name, (list, ListConfig)
-        ), f"cfg.loss.loss_function_name should be a list, got {type(loss_function_name)}"
-        assert isinstance(
-            loss_property_weights, (list, ListConfig)
-        ), f"cfg.loss.loss_property_weights should be a list, got {type(loss_property_weights)}"
+        assert isinstance(loss_property, (list, ListConfig)), (
+            f"cfg.loss.loss_property should be a list, got {type(loss_property)}"
+        )
+        assert isinstance(loss_function_name, (list, ListConfig)), (
+            f"cfg.loss.loss_function_name should be a list, got {type(loss_function_name)}"
+        )
+        assert isinstance(loss_property_weights, (list, ListConfig)), (
+            f"cfg.loss.loss_property_weights should be a list, got {type(loss_property_weights)}"
+        )
         if isinstance(loss_huber_delta, float) or loss_huber_delta is None:
             loss_huber_delta = [loss_huber_delta] * len(loss_function_name)
-        assert isinstance(
-            loss_huber_delta, (list, ListConfig)
-        ), f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
-        assert len(loss_function_name) == len(loss_property_weights) == len(loss_huber_delta)
+        assert isinstance(loss_huber_delta, (list, ListConfig)), (
+            f"cfg.loss.loss_huber_delta should be a list, got {type(loss_huber_delta)}"
+        )
+        assert (
+            len(loss_function_name)
+            == len(loss_property_weights)
+            == len(loss_huber_delta)
+        )
         assert len(loss_property) <= len(loss_function_name)
         validate_loss_function_names(loss_function_name)
         self.loss_property = loss_property
@@ -61,8 +63,7 @@ class NormalLoss(torch.nn.Module):
 
     def __repr__(self):
         task_strs = [
-            f"  - {p:<12} | "
-            f"weight={w:>7.3f} | delta={d:.3f} | fn={fn}"
+            f"  - {p:<12} | weight={w:>7.3f} | delta={d:.3f} | fn={fn}"
             for p, fn, w, d in zip(
                 self.loss_property,
                 self.loss_function_name,
@@ -72,5 +73,3 @@ class NormalLoss(torch.nn.Module):
         ]
         tasks_info = "\n".join(task_strs)
         return f"{self.__class__.__name__}(\n{tasks_info}\n)"
-
-

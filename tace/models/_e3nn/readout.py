@@ -5,49 +5,46 @@
 
 from typing import List, Union
 
-
 import torch
 from e3nn import o3
 from e3nn.nn import Activation
 
-
-from ..mlp import ACTIVATION
 from ..linear import e3nnLinear
+from ..mlp import ACTIVATION
 from .base import ReadOut
 from .nonlinear import O3Gate
 
 
 def mh_mask(
-        x: torch.Tensor, 
-        node_fidelity: torch.Tensor, 
-        num_fidelities: int,
-        l: int,
-    ) -> torch.Tensor:    
+    x: torch.Tensor,
+    node_fidelity: torch.Tensor,
+    num_fidelities: int,
+    l: int,
+) -> torch.Tensor:
     B = x.size(0)
     fid_mul_ir = x.size(-1)
-    ir = 2*l+1
+    ir = 2 * l + 1
     fid_mul = fid_mul_ir // ir
     mul = fid_mul // num_fidelities
     mask = torch.zeros(B, num_fidelities, mul, device=x.device, dtype=x.dtype)
     mask[torch.arange(B, device=x.device), node_fidelity, :] = 1
     mask = mask.reshape(B, fid_mul, 1)
     x = x.reshape(B, fid_mul, ir)
-    return  (x * mask).view(B, -1)
+    return (x * mask).view(B, -1)
 
 
 class ScalarReadOut(ReadOut):
     def _setup(self):
 
-        if self.layer == self.num_layers-1: 
+        if self.layer == self.num_layers - 1:
             self.linear2 = torch.nn.ModuleList()
             self.acts = torch.nn.ModuleList(
-                Activation(
-                    irreps_in=hidden, acts=[ACTIVATION[self.scalar_act]()]
-                ) for hidden in self.irreps_hidden
+                Activation(irreps_in=hidden, acts=[ACTIVATION[self.scalar_act]()])
+                for hidden in self.irreps_hidden
             )
             for irreps_in, irreps_out in zip(
                 ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[:-1],
-                ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:]
+                ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:],
             ):
                 self.linear2.append(
                     e3nnLinear(
@@ -68,7 +65,7 @@ class ScalarReadOut(ReadOut):
                 ]
             )
             self.last_layer = False
-        
+
     def forward(
         self, x: torch.Tensor, node_fidelity: Union[torch.Tensor, None] = None
     ) -> torch.Tensor:
@@ -84,11 +81,12 @@ class ScalarReadOut(ReadOut):
 class TensorReadOut(ReadOut):
     def _setup(self):
 
-        if self.layer == self.num_layers-1: 
-
+        if self.layer == self.num_layers - 1:
             self.linear2 = torch.nn.ModuleList()
             self.acts = torch.nn.ModuleList()
-            for irreps_gates, irreps_gated in zip(self.irreps_gates, self.irreps_hidden):
+            for irreps_gates, irreps_gated in zip(
+                self.irreps_gates, self.irreps_hidden
+            ):
                 self.acts.append(
                     O3Gate(
                         irreps_gates=irreps_gates,
@@ -99,7 +97,7 @@ class TensorReadOut(ReadOut):
             for idx, (irreps_in, irreps_out) in enumerate(
                 zip(
                     ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[:-2],
-                    ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:-1]
+                    ([self.irreps_in] + self.irreps_hidden + [self.irreps_out])[1:-1],
                 )
             ):
                 self.linear2.append(
@@ -128,7 +126,7 @@ class TensorReadOut(ReadOut):
                 ]
             )
             self.last_layer = False
-        
+
     def forward(
         self, x: torch.Tensor, node_fidelity: Union[torch.Tensor, None] = None
     ) -> torch.Tensor:
@@ -139,11 +137,11 @@ class TensorReadOut(ReadOut):
             if self.num_fidelities > 1:
                 x = mh_mask(x, node_fidelity, self.num_fidelities, self.l)
         return self.linear2[-1](x)
-    
-    
+
+
 def build_scalar_readout(
     num_layers: int,
-    hidden_channel: List[int], 
+    hidden_channel: List[int],
     bias: bool,
     num_fidelities: int,
     use_alllayer: bool,
@@ -170,9 +168,10 @@ def build_scalar_readout(
     else:
         return torch.nn.ModuleList([readouts[-1]])
 
+
 def build_tensor_readout(
     num_layers: int,
-    hidden_channel: int, 
+    hidden_channel: int,
     bias: bool,
     num_fidelities: int,
     use_alllayer: bool,

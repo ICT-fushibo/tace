@@ -3,22 +3,21 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import Dict, List, Any, Union
-
+from typing import Any, Dict, List, Union
 
 import torch
 from e3nn import o3
+
 from tace.utils.torch_scatter import scatter_sum
 
-
-from ..radial import ZBLBasis
 from ..blocks import OneHotToAtomicEnergy, ScaleShift
-from ..utils import get_target_irreps, compute_fixed_charge_dipole
+from ..linear import e3nnLinear
+from ..radial import ZBLBasis
+from ..utils import compute_fixed_charge_dipole, get_target_irreps
+from .basis_change import PropertyBasisChange
+from .default import check_model_config
 from .readout import build_scalar_readout, build_tensor_readout
 from .representation import Representation
-from .default import check_model_config
-from .basis_change import PropertyBasisChange
-from ..linear import e3nnLinear
 
 
 class e3nnTACE(torch.nn.Module):
@@ -51,165 +50,200 @@ class e3nnTACE(torch.nn.Module):
         parity: bool = False,
         mmax: int = 2,
         dropout: Dict = {},
-        embedding_property = [],
-        atomic_numbers = None,
+        embedding_property=[],
+        atomic_numbers=None,
         **kwargs,
     ):
         cfg = {
-            k: v for k, v in locals().items()
-            if k == "_target_"
-            or (k != "self" and not k.startswith('_'))
+            k: v
+            for k, v in locals().items()
+            if k == "_target_" or (k != "self" and not k.startswith("_"))
         }
-        # self.model_config = locals()           
-        # del self.config['self']    
+        # self.model_config = locals()
+        # del self.config['self']
         self.model_config = cfg
         cfg = check_model_config(cfg)
         super().__init__()
 
         # === Will be called by other module ===
-        self.fidelity = cfg['fidelity']
-        self.num_fidelities = len(cfg['fidelity'])
-        self.max_neighbors = cfg['max_neighbors']
-        self.target_property = cfg['target_property']
-        self.num_layers = cfg['num_layers']
-        self.statistics = cfg['statistics']
-        self.special = cfg['special']
-        self.embedding_property = cfg['invariant_property'] + cfg['equivariant_property']
-        self.register_buffer('cutoff', torch.tensor(cfg['cutoff'], dtype=torch.get_default_dtype()))
-        self.register_buffer('atomic_numbers', torch.tensor(cfg['atomic_numbers'], dtype=torch.int64))
+        self.fidelity = cfg["fidelity"]
+        self.num_fidelities = len(cfg["fidelity"])
+        self.max_neighbors = cfg["max_neighbors"]
+        self.target_property = cfg["target_property"]
+        self.num_layers = cfg["num_layers"]
+        self.statistics = cfg["statistics"]
+        self.special = cfg["special"]
+        self.embedding_property = (
+            cfg["invariant_property"] + cfg["equivariant_property"]
+        )
+        self.register_buffer(
+            "cutoff", torch.tensor(cfg["cutoff"], dtype=torch.get_default_dtype())
+        )
+        self.register_buffer(
+            "atomic_numbers", torch.tensor(cfg["atomic_numbers"], dtype=torch.int64)
+        )
 
         # === Will be called by in this module ===
-        self.use_alllayer = cfg['readout_emlp']['use_alllayer']
-        self.num_channel = cfg['num_channel']
-        self.scale_zbl = cfg['scale_shift']['scale_zbl']
+        self.use_alllayer = cfg["readout_emlp"]["use_alllayer"]
+        self.num_channel = cfg["num_channel"]
+        self.scale_zbl = cfg["scale_shift"]["scale_zbl"]
 
         # === Will be used in __init__ ===
         target_irreps = get_target_irreps(self.target_property)
-        if cfg['product_basis']['return_components'] is not None:
-            target_irreps =  list(set(target_irreps + cfg['product_basis']['return_components']))
+        if cfg["product_basis"]["return_components"] is not None:
+            target_irreps = list(
+                set(target_irreps + cfg["product_basis"]["return_components"])
+            )
         self.target_irreps = o3.Irreps(target_irreps).regroup()
 
         # === Representation/Descriptor ===
         self.representation = Representation(
-            num_layers=cfg['num_layers'],
-            atomic_numbers=cfg['atomic_numbers'],
-            cutoff=cfg['cutoff'],
-            avg_num_neighbors=cfg['avg_num_neighbors'],
-            mmax=cfg['mmax'],
-            Lmax=cfg['Lmax'],
-            lmax=cfg['lmax'],
-            num_channel=cfg['num_channel'],
+            num_layers=cfg["num_layers"],
+            atomic_numbers=cfg["atomic_numbers"],
+            cutoff=cfg["cutoff"],
+            avg_num_neighbors=cfg["avg_num_neighbors"],
+            mmax=cfg["mmax"],
+            Lmax=cfg["Lmax"],
+            lmax=cfg["lmax"],
+            num_channel=cfg["num_channel"],
             node_embedding=cfg["node_embedding"],
             edge_embedding=cfg["edge_embedding"],
-            edge_update=cfg['edge_update'],
-            radial_basis=cfg['radial_basis'],
-            atomic_basis=cfg['atomic_basis'],
-            product_basis=cfg['product_basis'],
+            edge_update=cfg["edge_update"],
+            radial_basis=cfg["radial_basis"],
+            atomic_basis=cfg["atomic_basis"],
+            product_basis=cfg["product_basis"],
             target_irreps=self.target_irreps,
-            invariant_property=cfg['invariant_property'],
-            equivariant_property=cfg['equivariant_property'],
-            universal_embedding=cfg['universal_embedding'],
-            resnet=cfg['resnet'],
-            layer_norm=cfg['layer_norm'],
-            dropout=cfg['dropout'],
-            parity=cfg['parity'],
+            invariant_property=cfg["invariant_property"],
+            equivariant_property=cfg["equivariant_property"],
+            universal_embedding=cfg["universal_embedding"],
+            resnet=cfg["resnet"],
+            layer_norm=cfg["layer_norm"],
+            dropout=cfg["dropout"],
+            parity=cfg["parity"],
         )
 
         # === Readout ===
-        if self.representation.use_dens: assert self.use_alllayer == False
+        if self.representation.use_dens:
+            assert self.use_alllayer == False
         for_scalar_readout = {
-            'num_layers': cfg['num_layers'],
-            'hidden_channel': cfg['readout_emlp']['hidden'],
-            'bias': cfg['readout_emlp']['bias'],
-            'num_fidelities': len(cfg['fidelity']),
-            'use_alllayer': self.use_alllayer,
-            'parity': cfg['parity'],
-            'irreps_in': [prod.irreps_out for prod in self.representation.products],
+            "num_layers": cfg["num_layers"],
+            "hidden_channel": cfg["readout_emlp"]["hidden"],
+            "bias": cfg["readout_emlp"]["bias"],
+            "num_fidelities": len(cfg["fidelity"]),
+            "use_alllayer": self.use_alllayer,
+            "parity": cfg["parity"],
+            "irreps_in": [prod.irreps_out for prod in self.representation.products],
         }
         for_tensor_readout = {
-            'num_layers': cfg['num_layers'],
-            'hidden_channel': cfg['readout_emlp']['hidden'],   
-            'bias': cfg['readout_emlp']['bias'],
-            'num_fidelities': len(cfg['fidelity']),
-            'use_alllayer': self.use_alllayer,
-            'parity': cfg['parity'],
-            'irreps_in': [prod.irreps_out for prod in self.representation.products],
+            "num_layers": cfg["num_layers"],
+            "hidden_channel": cfg["readout_emlp"]["hidden"],
+            "bias": cfg["readout_emlp"]["bias"],
+            "num_fidelities": len(cfg["fidelity"]),
+            "use_alllayer": self.use_alllayer,
+            "parity": cfg["parity"],
+            "irreps_in": [prod.irreps_out for prod in self.representation.products],
         }
 
         # === Energy ===
         if "energy" in self.target_property:
-            self.energy_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+            self.energy_readouts = build_scalar_readout(
+                irreps_out="0e", **for_scalar_readout
+            )
             self.atomic_energy_layer = OneHotToAtomicEnergy(
                 cfg["atomic_energies"], cfg["atomic_numbers"]
             )
-            if cfg['scale_shift']['enable']:
+            if cfg["scale_shift"]["enable"]:
                 self.scale_shift = ScaleShift.build_from_config(
                     cfg["statistics"],
                     cfg["scale_shift"],
                     atomic_numbers=cfg["atomic_numbers"],
                 )
             # uie base
-            if cfg['readout_emlp']['use_uie'] and len(cfg['invariant_property']) > 0:
+            if cfg["readout_emlp"]["use_uie"] and len(cfg["invariant_property"]) > 0:
                 self.uie_readout = e3nnLinear(
                     f"{cfg['num_channel']}x0e",
-                    f"1x0e",
+                    "1x0e",
                     1,
                     bias=False,
                 )
 
-        # === Short range ===
-            if cfg['short_range']['zbl']['enable']:
+            # === Short range ===
+            if cfg["short_range"]["zbl"]["enable"]:
                 self.zbl = ZBLBasis(
-                    cfg['radial_basis']['cutoff_fn'],
-                    cfg['short_range']['zbl']['trainable'],
-                    cfg['radial_basis']["polynomial_cutoff"],
+                    cfg["radial_basis"]["cutoff_fn"],
+                    cfg["short_range"]["zbl"]["trainable"],
+                    cfg["radial_basis"]["polynomial_cutoff"],
                 )
 
-       # === Long range ===
-        if cfg['long_range']['les']['enable']:
+        # === Long range ===
+        if cfg["long_range"]["les"]["enable"]:
             try:
                 from les import Les
             except ImportError as e:
                 raise ImportError(
                     "Please install les from https://github.com/ChengUCB/les."
                 ) from e
-            les_arguments = cfg['long_range']['les']['les_arguments']
+            les_arguments = cfg["long_range"]["les"]["les_arguments"]
             if les_arguments is None:
                 les_arguments = {"use_atomwise": False}
             self.compute_bec = les_arguments.get("compute_bec", False)
             self.bec_output_index = les_arguments.get("bec_output_index", None)
             self.les = Les(les_arguments=les_arguments)
-            self.les_readouts = build_scalar_readout(irreps_out='0e', **for_scalar_readout)
+            self.les_readouts = build_scalar_readout(
+                irreps_out="0e", **for_scalar_readout
+            )
 
-
-        # === Direct Dipolet === 
+        # === Direct Dipolet ===
         if "direct_dipole" in self.target_property:
-            self.dipole_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
-            
+            self.dipole_readouts = build_tensor_readout(
+                irreps_out="1o", **for_tensor_readout
+            )
+
         # === Direct Forces Readout ===
         if "direct_forces" in self.target_property:
-            self.direct_forces_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
-       
+            self.direct_forces_readouts = build_tensor_readout(
+                irreps_out="1o", **for_tensor_readout
+            )
+
         # === Direct Polarizability ===
         if "direct_polarizability" in self.target_property:
-            self.direct_polarizability_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-            self.direct_polarizability_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
-            self.direct_polarizability_basis_change = PropertyBasisChange["direct_polarizability"]() 
+            self.direct_polarizability_readout0s = build_scalar_readout(
+                irreps_out="0e", **for_scalar_readout
+            )
+            self.direct_polarizability_readout2s = build_tensor_readout(
+                irreps_out="2e", **for_tensor_readout
+            )
+            self.direct_polarizability_basis_change = PropertyBasisChange[
+                "direct_polarizability"
+            ]()
 
         # === Direct Virials ===
-        if 'direct_virials' in self.target_property or 'direct_stress' in self.target_property:
-            self.direct_virials_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-            self.direct_virials_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
-            self.direct_virials_basis_change = PropertyBasisChange["direct_virials"]() 
+        if (
+            "direct_virials" in self.target_property
+            or "direct_stress" in self.target_property
+        ):
+            self.direct_virials_readout0s = build_scalar_readout(
+                irreps_out="0e", **for_scalar_readout
+            )
+            self.direct_virials_readout2s = build_tensor_readout(
+                irreps_out="2e", **for_tensor_readout
+            )
+            self.direct_virials_basis_change = PropertyBasisChange["direct_virials"]()
 
         # === Charges ===
         if "charges" in self.target_property:
-            self.predict_charges_method = cfg['special']['charges']['method']
-            if self.predict_charges_method == 'lagrangian':
-                self.chi_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-                self.eta_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
-            elif self.predict_charges_method == 'uniform_distribution':
-                self.charges_readouts = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
+            self.predict_charges_method = cfg["special"]["charges"]["method"]
+            if self.predict_charges_method == "lagrangian":
+                self.chi_readouts = build_scalar_readout(
+                    irreps_out="0e", **for_scalar_readout
+                )
+                self.eta_readouts = build_scalar_readout(
+                    irreps_out="0e", **for_scalar_readout
+                )
+            elif self.predict_charges_method == "uniform_distribution":
+                self.charges_readouts = build_scalar_readout(
+                    irreps_out="0e", **for_scalar_readout
+                )
             else:
                 raise ValueError(
                     f"Unknown predict_charges_method: {self.predict_charges_method}. "
@@ -220,21 +254,25 @@ class e3nnTACE(torch.nn.Module):
         # if "direct_diagonal_hessian" in self.target_property:
         #     self.direct_diagonal_hessian_readout0s = build_scalar_readout(irreps_out='0e',**for_scalar_readout)
         #     self.direct_diagonal_hessian_readout2s = build_tensor_readout(irreps_out='2e',**for_tensor_readout)
-        #     self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]() 
+        #     self.direct_diagonal_hessian_basis_change = PropertyBasisChange["direct_diagonal_hessian"]()
 
         # # # === Direct Hessian ===
         # # if "direct_hessian" in self.target_property:
         # #     self.direct_hessian_readout0s = build_scalar_readout(l=0,**for_scalar_readout)
         # #     self.direct_hessian_readout2s = build_tensor_readout(l=2,**for_tensor_readout)
-        # #     self.direct_hessian_basis_change = PropertyBasisChange["direct_hessian"]() 
+        # #     self.direct_hessian_basis_change = PropertyBasisChange["direct_hessian"]()
 
         # === abs_final_collinear_magmoms ===
         if "abs_final_collinear_magmoms" in self.target_property:
-            self.abs_final_collinear_magmoms_readouts = build_scalar_readout(irreps_out='0e', **for_scalar_readout) # TODO, check
+            self.abs_final_collinear_magmoms_readouts = build_scalar_readout(
+                irreps_out="0e", **for_scalar_readout
+            )  # TODO, check
 
         # === DeNs noise ===
         if self.representation.use_dens:
-            self.dens_noise_readouts = build_tensor_readout(irreps_out='1o', **for_tensor_readout)
+            self.dens_noise_readouts = build_tensor_readout(
+                irreps_out="1o", **for_tensor_readout
+            )
 
         # self.normalizers = torch.nn.ModuleDict()
         # for p in self.target_property:
@@ -242,65 +280,68 @@ class e3nnTACE(torch.nn.Module):
         #         cfg['normalizer'][p].get('mean', 0.0),
         #         cfg['normalizer'][p].get('rmsd', 1.0),
         #     )
-        
+
     def readout_fn(
         self,
         data: Dict[str, torch.Tensor],
         graph,
-        from_representation: Dict[str, Union[torch.Tensor, None]]
+        from_representation: Dict[str, Union[torch.Tensor, None]],
     ) -> Dict[str, Union[torch.Tensor, None]]:
 
         batch = data["batch"]
-        descriptors = from_representation['descriptors']
+        descriptors = from_representation["descriptors"]
 
         nlocal, _ = graph.lmp_natoms
         num_graphs = graph.num_graphs
         node_fidelity = graph.node_fidelity
         num_atoms_arange = graph.num_atoms_arange
-        dtype = data['node_attrs'].dtype
-        device = data['node_attrs'].device
+        dtype = data["node_attrs"].dtype
+        device = data["node_attrs"].device
 
         # === Energy ===
         E = None
         e_node = None
         e_base_graph = None
         if "energy" in self.target_property:
-            e_base_node = self.atomic_energy_layer(data['node_attrs'])[num_atoms_arange, node_fidelity]
+            e_base_node = self.atomic_energy_layer(data["node_attrs"])[
+                num_atoms_arange, node_fidelity
+            ]
             e_base_graph = scatter_sum(e_base_node, batch, dim=-1, dim_size=num_graphs)
             e_list = []
             for ii, energy_readout in enumerate(self.energy_readouts):
                 if not self.use_alllayer:
                     ii = -1
-                e_list.append(energy_readout(
-                    descriptors[ii], node_fidelity
-                    )[num_atoms_arange, node_fidelity]
+                e_list.append(
+                    energy_readout(descriptors[ii], node_fidelity)[
+                        num_atoms_arange, node_fidelity
+                    ]
                 )
             e_node = torch.sum(torch.stack(e_list, dim=0), dim=0)
-            # === ZBL === 
+            # === ZBL ===
             if hasattr(self, "zbl"):
                 e_zbl_node = self.zbl(
-                    graph.edge_length, 
-                    data['node_attrs'], 
+                    graph.edge_length,
+                    data["node_attrs"],
                     data["edge_index"],
                     self.atomic_numbers,
                 )[num_atoms_arange]
                 if self.scale_zbl:
                     e_node = e_node + e_zbl_node
             # === scale and shift ===
-            if hasattr(self, 'scale_shift'):
+            if hasattr(self, "scale_shift"):
                 e_node = self.scale_shift(
-                    e_node, 
-                    data['node_attrs'][num_atoms_arange], 
-                    data['ptr'], 
-                    data['edge_index'], 
-                    data['batch'],
+                    e_node,
+                    data["node_attrs"][num_atoms_arange],
+                    data["ptr"],
+                    data["edge_index"],
+                    data["batch"],
                     node_fidelity,
-                )    
+                )
             if hasattr(self, "zbl") and not self.scale_zbl:
                 e_node = e_node + e_zbl_node
             # === uie ===
             if hasattr(self, "uie_readout"):
-                e_uie_node = self.uie_readout(from_representation['uie_feats'])
+                e_uie_node = self.uie_readout(from_representation["uie_feats"])
                 e_node = e_node + e_uie_node[num_atoms_arange, 0, 0]
             e_graph = scatter_sum(e_node, batch, dim=-1, dim_size=num_graphs)
             e_node = e_base_node + e_node
@@ -309,8 +350,8 @@ class e3nnTACE(torch.nn.Module):
 
         # === Direct Forces ===
         D_F = None
-        if 'direct_forces' in self.target_property:
-            if from_representation['decouple_node_feats1'] is None:
+        if "direct_forces" in self.target_property:
+            if from_representation["decouple_node_feats1"] is None:
                 d_f_list = []
                 for ii, direct_forces_readout in enumerate(self.direct_forces_readouts):
                     if not self.use_alllayer:
@@ -319,7 +360,9 @@ class e3nnTACE(torch.nn.Module):
                         direct_forces_readout(
                             descriptors[ii],
                             node_fidelity,
-                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                        ).reshape(-1, self.num_fidelities, 3)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 D_F = torch.sum(torch.stack(d_f_list, dim=-1), dim=-1)
             else:
@@ -329,15 +372,17 @@ class e3nnTACE(torch.nn.Module):
                         ii = -1
                     d_f_list.append(
                         direct_forces_readout(
-                            from_representation['decouple_node_feats1'],
+                            from_representation["decouple_node_feats1"],
                             node_fidelity,
-                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                        ).reshape(-1, self.num_fidelities, 3)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 D_F = torch.sum(torch.stack(d_f_list, dim=-1), dim=-1)
 
         # === Direct Dipole ===
         D = None
-        if 'direct_dipole' in self.target_property:
+        if "direct_dipole" in self.target_property:
             d_base = compute_fixed_charge_dipole(
                 charges=data["charges"],
                 positions=data["positions"],
@@ -352,7 +397,9 @@ class e3nnTACE(torch.nn.Module):
                     dipole_readout(
                         descriptors[ii],
                         node_fidelity,
-                    ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                    ).reshape(-1, self.num_fidelities, 3)[
+                        num_atoms_arange, node_fidelity, :
+                    ]
                 )
             d_node = torch.sum(torch.stack(d_list, dim=-1), dim=-1)
             d_graph = scatter_sum(d_node, batch, dim=0, dim_size=num_graphs)
@@ -360,10 +407,14 @@ class e3nnTACE(torch.nn.Module):
 
         # === Direct Polarizability ===
         ALPHA = None
-        if 'direct_polarizability' in self.target_property:
-            alpha0_list = []; alpha2_list = []
+        if "direct_polarizability" in self.target_property:
+            alpha0_list = []
+            alpha2_list = []
             for ii, (polarizability_readout0, polarizability_readout2) in enumerate(
-                zip(self.direct_polarizability_readout0s, self.direct_polarizability_readout2s)
+                zip(
+                    self.direct_polarizability_readout0s,
+                    self.direct_polarizability_readout2s,
+                )
             ):
                 if not self.use_alllayer:
                     ii = -1
@@ -376,7 +427,9 @@ class e3nnTACE(torch.nn.Module):
                     polarizability_readout2(
                         descriptors[ii],
                         node_fidelity,
-                    ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                    ).reshape(-1, self.num_fidelities, 5)[
+                        num_atoms_arange, node_fidelity, :
+                    ]
                 )
             alpha0_node = torch.sum(torch.stack(alpha0_list, dim=-1), dim=-1)
             alpha2_node = torch.sum(torch.stack(alpha2_list, dim=-1), dim=-1)
@@ -387,9 +440,13 @@ class e3nnTACE(torch.nn.Module):
         # === Direct Virials and Stress ===
         D_V = None
         D_S = None
-        if 'direct_virials' in self.target_property or 'direct_stress' in self.target_property:
-            if from_representation['decouple_node_feats1'] is None:
-                d_v0_list = []; d_v2_list = []
+        if (
+            "direct_virials" in self.target_property
+            or "direct_stress" in self.target_property
+        ):
+            if from_representation["decouple_node_feats1"] is None:
+                d_v0_list = []
+                d_v2_list = []
                 for ii, (direct_virials_readout0, direct_virials_readout2) in enumerate(
                     zip(self.direct_virials_readout0s, self.direct_virials_readout2s)
                 ):
@@ -403,18 +460,21 @@ class e3nnTACE(torch.nn.Module):
                     d_v2_list.append(
                         direct_virials_readout2(
                             descriptors[ii],
-                        ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                        ).reshape(-1, self.num_fidelities, 5)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 d_v0_node = torch.sum(torch.stack(d_v0_list, dim=-1), dim=-1)
                 d_v2_node = torch.sum(torch.stack(d_v2_list, dim=-1), dim=-1)
                 d_v0_graph = scatter_sum(d_v0_node, batch, dim=0, dim_size=num_graphs)
-                d_v2_graph = scatter_sum(d_v2_node,batch, dim=0, dim_size=num_graphs)
+                d_v2_graph = scatter_sum(d_v2_node, batch, dim=0, dim_size=num_graphs)
                 D_V = self.direct_virials_basis_change(d_v0_graph, d_v2_graph)
                 VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
                 D_S = -D_V / VOLUME.view(-1, 1, 1)
                 D_S = torch.where(torch.abs(D_S) < 1e10, D_S, torch.zeros_like(D_S))
             else:
-                d_v0_list = []; d_v2_list = []
+                d_v0_list = []
+                d_v2_list = []
                 for ii, (direct_virials_readout0, direct_virials_readout2) in enumerate(
                     zip(self.direct_virials_readout0s, self.direct_virials_readout2s)
                 ):
@@ -422,38 +482,47 @@ class e3nnTACE(torch.nn.Module):
                         ii = -1
                     d_v0_list.append(
                         direct_virials_readout0(
-                            from_representation['decouple_node_feats1'],
+                            from_representation["decouple_node_feats1"],
                         )[num_atoms_arange, node_fidelity]
                     )
                     d_v2_list.append(
                         direct_virials_readout2(
-                            from_representation['decouple_node_feats1'],
-                        ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                            from_representation["decouple_node_feats1"],
+                        ).reshape(-1, self.num_fidelities, 5)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 d_v0_node = torch.sum(torch.stack(d_v0_list, dim=-1), dim=-1)
                 d_v2_node = torch.sum(torch.stack(d_v2_list, dim=-1), dim=-1)
                 d_v0_graph = scatter_sum(d_v0_node, batch, dim=0, dim_size=num_graphs)
-                d_v2_graph = scatter_sum(d_v2_node,batch, dim=0, dim_size=num_graphs)
+                d_v2_graph = scatter_sum(d_v2_node, batch, dim=0, dim_size=num_graphs)
                 D_V = self.direct_virials_basis_change(d_v0_graph, d_v2_graph)
                 VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
                 D_S = -D_V / VOLUME.view(-1, 1, 1)
                 D_S = torch.where(torch.abs(D_S) < 1e10, D_S, torch.zeros_like(D_S))
 
-         # === Charges === 
+        # === Charges ===
         CHARGES = None
-        if 'charges' in self.target_property:
-            if self.predict_charges_method == 'lagrangian':
-                chi_list = []; eta_list = []
+        if "charges" in self.target_property:
+            if self.predict_charges_method == "lagrangian":
+                chi_list = []
+                eta_list = []
                 for ii, (chi_readout, eta_readout) in enumerate(
                     zip(self.chi_readouts, self.eta_readouts)
                 ):
                     if not self.use_alllayer:
                         ii = -1
-                    chi_list.append(chi_readout(descriptors[ii])[num_atoms_arange, node_fidelity])
-                    eta_list.append(eta_readout(descriptors[ii])[num_atoms_arange, node_fidelity])
+                    chi_list.append(
+                        chi_readout(descriptors[ii])[num_atoms_arange, node_fidelity]
+                    )
+                    eta_list.append(
+                        eta_readout(descriptors[ii])[num_atoms_arange, node_fidelity]
+                    )
                 chi_node = torch.sum(torch.stack(chi_list, dim=-1), dim=-1)
                 eta_node = torch.sum(torch.stack(eta_list, dim=-1), dim=-1)
-                eta_node = torch.hypot(eta_node, torch.tensor(1e-6, device=device, dtype=dtype))
+                eta_node = torch.hypot(
+                    eta_node, torch.tensor(1e-6, device=device, dtype=dtype)
+                )
                 eta_node = torch.reciprocal(eta_node)
                 lambda_graph = (
                     data["total_charge"]
@@ -463,23 +532,36 @@ class e3nnTACE(torch.nn.Module):
                 ) / scatter_sum(eta_node, batch, dim=-1, dim_size=num_graphs)
                 lambda_node = lambda_graph[batch]
                 CHARGES = lambda_node * (eta_node) - (chi_node * eta_node)
-            elif self.predict_charges_method == 'uniform_distribution':
+            elif self.predict_charges_method == "uniform_distribution":
                 c_list = []
                 for ii, charges_readout in enumerate(self.charges_readouts):
                     if not self.use_alllayer:
                         ii = -1
-                    c_list.append(charges_readout(descriptors[ii])[num_atoms_arange, node_fidelity])
+                    c_list.append(
+                        charges_readout(descriptors[ii])[
+                            num_atoms_arange, node_fidelity
+                        ]
+                    )
                 c_node = torch.sum(torch.stack(c_list, dim=-1), dim=-1)
                 c_graph = scatter_sum(c_node, batch, dim=-1, dim_size=num_graphs)
-                c_delta_node = (c_graph - data["total_charge"]) / (data["ptr"][1:] - data["ptr"][:-1])
+                c_delta_node = (c_graph - data["total_charge"]) / (
+                    data["ptr"][1:] - data["ptr"][:-1]
+                )
                 CHARGES = c_node + c_delta_node[batch]
-       
+
         # === Direct Diagonal Hessian ===
         D_DIAG_H = None
-        if 'direct_diagonal_hessian' in self.target_property:
-            d_diag_h0_list = []; d_diag_h2_list = []
-            for ii, (direct_diagonal_hessian_readout0, direct_diagonal_hessian_readout2) in enumerate(
-                zip(self.direct_diagonal_hessian_readout0s, self.direct_diagonal_hessian_readout2s)
+        if "direct_diagonal_hessian" in self.target_property:
+            d_diag_h0_list = []
+            d_diag_h2_list = []
+            for ii, (
+                direct_diagonal_hessian_readout0,
+                direct_diagonal_hessian_readout2,
+            ) in enumerate(
+                zip(
+                    self.direct_diagonal_hessian_readout0s,
+                    self.direct_diagonal_hessian_readout2s,
+                )
             ):
                 if not self.use_alllayer:
                     ii = -1
@@ -491,11 +573,15 @@ class e3nnTACE(torch.nn.Module):
                 d_diag_h2_list.append(
                     direct_diagonal_hessian_readout2(
                         descriptors[ii],
-                    ).reshape(-1, self.num_fidelities, 5)[num_atoms_arange, node_fidelity, :]
+                    ).reshape(-1, self.num_fidelities, 5)[
+                        num_atoms_arange, node_fidelity, :
+                    ]
                 )
             d_diag_h0_node = torch.sum(torch.stack(d_diag_h0_list, dim=-1), dim=-1)
             d_diag_h2_node = torch.sum(torch.stack(d_diag_h2_list, dim=-1), dim=-1)
-            D_DIAG_H  = self.direct_diagonal_hessian_basis_change(d_diag_h0_node, d_diag_h2_node)
+            D_DIAG_H = self.direct_diagonal_hessian_basis_change(
+                d_diag_h0_node, d_diag_h2_node
+            )
 
         # # === Direct Hessian ===
         # D_H = None
@@ -521,27 +607,33 @@ class e3nnTACE(torch.nn.Module):
         #     d_h2_node = torch.sum(torch.stack(d_h2_list, dim=-1), dim=-1)
         #     D_H  = self.direct_hessian_basis_change(d_h0_node, d_h2_node)
 
-        # === ABS_F_C_MAG === 
+        # === ABS_F_C_MAG ===
         ABS_F_C_MAG = None
         if "abs_final_collinear_magmoms" in self.target_property:
             mag_list = []
-            for ii, abs_final_collinear_magmoms_readout in enumerate(self.abs_final_collinear_magmoms_readouts):
+            for ii, abs_final_collinear_magmoms_readout in enumerate(
+                self.abs_final_collinear_magmoms_readouts
+            ):
                 if not self.use_alllayer:
                     ii = -1
                 mag_list.append(
                     torch.abs(
-                        abs_final_collinear_magmoms_readout(descriptors[ii])[num_atoms_arange, node_fidelity]
+                        abs_final_collinear_magmoms_readout(descriptors[ii])[
+                            num_atoms_arange, node_fidelity
+                        ]
                     )
                 )
             ABS_F_C_MAG = torch.sum(torch.stack(mag_list, dim=-1), dim=-1)
 
-        if hasattr(self, 'les'):
+        if hasattr(self, "les"):
             les_lq_list = []
             for ii, les_readout in enumerate(self.les_readouts):
                 if not self.use_alllayer:
                     ii = -1
-                les_lq_list.append(les_readout(descriptors[ii])[num_atoms_arange, node_fidelity])
-            LES_LQ = torch.sum(torch.stack(les_lq_list, dim=0), dim=0) 
+                les_lq_list.append(
+                    les_readout(descriptors[ii])[num_atoms_arange, node_fidelity]
+                )
+            LES_LQ = torch.sum(torch.stack(les_lq_list, dim=0), dim=0)
             les_results = self.les(
                 latent_charges=LES_LQ,
                 positions=graph.positions,
@@ -562,25 +654,27 @@ class e3nnTACE(torch.nn.Module):
             LES_BEC = None
 
         scalar_descriptor = None
-        if '0e' in self.target_irreps:
+        if "0e" in self.target_irreps:
             scalar_descriptor_list = []
             for descriptor in descriptors:
-                scalar_descriptor_list.append(descriptor[:, :self.num_channel])
+                scalar_descriptor_list.append(descriptor[:, : self.num_channel])
             scalar_descriptor = torch.cat(scalar_descriptor_list, dim=-1)
 
         # === DeNS noise ===
         dens_noise = None
-        if hasattr(self, 'dens_noise_readouts'):
-            if from_representation['decouple_node_feats2'] is not None:
+        if hasattr(self, "dens_noise_readouts"):
+            if from_representation["decouple_node_feats2"] is not None:
                 noise_list = []
                 for ii, dens_noise_readout in enumerate(self.dens_noise_readouts):
                     if not self.use_alllayer:
                         ii = -1
                     noise_list.append(
                         dens_noise_readout(
-                            from_representation['decouple_node_feats2'],
+                            from_representation["decouple_node_feats2"],
                             node_fidelity,
-                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                        ).reshape(-1, self.num_fidelities, 3)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
             else:
@@ -592,13 +686,15 @@ class e3nnTACE(torch.nn.Module):
                         dens_noise_readout(
                             descriptors[ii],
                             node_fidelity,
-                        ).reshape(-1, self.num_fidelities, 3)[num_atoms_arange, node_fidelity, :]
+                        ).reshape(-1, self.num_fidelities, 3)[
+                            num_atoms_arange, node_fidelity, :
+                        ]
                     )
                 dens_noise = torch.sum(torch.stack(noise_list, dim=-1), dim=-1)
 
         return {
             "energy": E,
-            "node_energy": e_node, # not include les
+            "node_energy": e_node,  # not include les
             # "e_base_graph": e_base_graph,
             "direct_dipole": D,
             "direct_polarizability": ALPHA,
@@ -613,9 +709,8 @@ class e3nnTACE(torch.nn.Module):
             "les_born_effective_charges": LES_BEC,
             "scalar_descriptor": scalar_descriptor,
             "abs_final_collinear_magmoms": ABS_F_C_MAG,
-            "noise_vec": dens_noise
+            "noise_vec": dens_noise,
         }
-    
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, Any]:
         rep = self.representation(data, graph)

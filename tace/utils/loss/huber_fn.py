@@ -5,9 +5,7 @@
 
 from typing import Dict
 
-
 import torch
-
 
 from .common import polarization_error_per_atom, voigt6_stress
 from .mse_fn import register_loss
@@ -15,7 +13,9 @@ from .mse_fn import register_loss
 
 @register_loss
 def huber_energy(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = label["entropy"] * label["energy_weight"]
     key = "energy"
@@ -26,9 +26,12 @@ def huber_energy(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_energy_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = label["entropy"] * label["energy_weight"]
     num_atoms = label["ptr"][1:] - label["ptr"][:-1]
@@ -43,7 +46,9 @@ def huber_energy_per_atom(
 
 @register_loss
 def huber_forces(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     batch = label["batch"]
     total_weight = (label["entropy"] * label["forces_weight"])[batch].unsqueeze(-1)
@@ -55,11 +60,16 @@ def huber_forces(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_stress(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["stress_weight"]).unsqueeze(-1).unsqueeze(-1)
+    total_weight = (
+        (label["entropy"] * label["stress_weight"]).unsqueeze(-1).unsqueeze(-1)
+    )
     key = "stress"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -71,7 +81,9 @@ def huber_stress(
 
 @register_loss
 def huber_voigt_stress(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     key = "stress"
     total_weight = (label["entropy"] * label["stress_weight"]).unsqueeze(-1)
@@ -82,11 +94,16 @@ def huber_voigt_stress(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_virials(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    total_weight = (
+        (label["entropy"] * label["virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    )
     key = "virials"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -95,11 +112,16 @@ def huber_virials(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_virials_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    total_weight = (
+        (label["entropy"] * label["virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    )
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).view(-1, 1, 1)
     key = "virials"
     return torch.nn.functional.huber_loss(
@@ -109,14 +131,17 @@ def huber_virials_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_direct_forces(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     batch = label["batch"]
-    total_weight = label["entropy"][batch].unsqueeze(-1) * label["direct_forces_weight"][
-        batch
-    ].unsqueeze(-1)
+    total_weight = label["entropy"][batch].unsqueeze(-1) * label[
+        "direct_forces_weight"
+    ][batch].unsqueeze(-1)
     key = "direct_forces"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -125,11 +150,16 @@ def huber_direct_forces(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_direct_stress(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["direct_stress_weight"]).unsqueeze(-1).unsqueeze(-1)
+    total_weight = (
+        (label["entropy"] * label["direct_stress_weight"]).unsqueeze(-1).unsqueeze(-1)
+    )
     key = "direct_stress"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -141,7 +171,9 @@ def huber_direct_stress(
 
 @register_loss
 def huber_voigt_direct_stress(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     key = "direct_stress"
     total_weight = (label["entropy"] * label["direct_stress_weight"]).unsqueeze(-1)
@@ -152,11 +184,16 @@ def huber_voigt_direct_stress(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_direct_virials_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["direct_virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    total_weight = (
+        (label["entropy"] * label["direct_virials_weight"]).unsqueeze(-1).unsqueeze(-1)
+    )
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).view(-1, 1, 1)
     key = "direct_virials"
     return torch.nn.functional.huber_loss(
@@ -166,9 +203,12 @@ def huber_direct_virials_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_direct_dipole(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (label["entropy"] * label["direct_dipole_weight"]).unsqueeze(-1)
     key = "direct_dipole"
@@ -178,10 +218,13 @@ def huber_direct_dipole(
         reduction="mean",
         delta=huber_delta,
     )
+
 
 @register_loss
 def huber_direct_dipole_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (label["entropy"] * label["direct_dipole_weight"]).unsqueeze(-1)
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).unsqueeze(-1)
@@ -193,11 +236,16 @@ def huber_direct_dipole_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_conservative_dipole(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["conservative_dipole_weight"]).unsqueeze(-1)
+    total_weight = (label["entropy"] * label["conservative_dipole_weight"]).unsqueeze(
+        -1
+    )
     key = "conservative_dipole"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -206,11 +254,16 @@ def huber_conservative_dipole(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_conservative_dipole_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["conservative_dipole_weight"]).unsqueeze(-1)
+    total_weight = (label["entropy"] * label["conservative_dipole_weight"]).unsqueeze(
+        -1
+    )
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).unsqueeze(-1)
     key = "conservative_dipole"
     return torch.nn.functional.huber_loss(
@@ -220,12 +273,17 @@ def huber_conservative_dipole_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_direct_polarizability(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (
-        (label["entropy"] * label["direct_polarizability_weight"]).unsqueeze(-1).unsqueeze(-1)
+        (label["entropy"] * label["direct_polarizability_weight"])
+        .unsqueeze(-1)
+        .unsqueeze(-1)
     )
     key = "direct_polarizability"
     return torch.nn.functional.huber_loss(
@@ -234,13 +292,18 @@ def huber_direct_polarizability(
         reduction="mean",
         delta=huber_delta,
     )
+
 
 @register_loss
 def huber_direct_polarizability_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (
-        (label["entropy"] * label["direct_polarizability_weight"]).unsqueeze(-1).unsqueeze(-1)
+        (label["entropy"] * label["direct_polarizability_weight"])
+        .unsqueeze(-1)
+        .unsqueeze(-1)
     )
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).unsqueeze(-1).unsqueeze(-1)
     key = "direct_polarizability"
@@ -251,12 +314,17 @@ def huber_direct_polarizability_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_conservative_polarizability(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (
-        (label["entropy"] * label["conservative_polarizability_weight"]).unsqueeze(-1).unsqueeze(-1)
+        (label["entropy"] * label["conservative_polarizability_weight"])
+        .unsqueeze(-1)
+        .unsqueeze(-1)
     )
     key = "conservative_polarizability"
     return torch.nn.functional.huber_loss(
@@ -266,12 +334,17 @@ def huber_conservative_polarizability(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_conservative_polarizability_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     total_weight = (
-        (label["entropy"] * label["conservative_polarizability_weight"]).unsqueeze(-1).unsqueeze(-1)
+        (label["entropy"] * label["conservative_polarizability_weight"])
+        .unsqueeze(-1)
+        .unsqueeze(-1)
     )
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).unsqueeze(-1).unsqueeze(-1)
     key = "conservative_polarizability"
@@ -282,9 +355,12 @@ def huber_conservative_polarizability_per_atom(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_born_effective_charges(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     batch = label["batch"]
     total_weight = (
@@ -300,9 +376,12 @@ def huber_born_effective_charges(
         delta=huber_delta,
     )
 
+
 @register_loss
 def huber_polarization_per_atom(
-    pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
 ) -> torch.Tensor:
     key = "polarization"
     total_weight = (label["entropy"] * label["polarization_weight"]).unsqueeze(-1)
@@ -314,8 +393,13 @@ def huber_polarization_per_atom(
         reduction="mean",
     )
 
+
 @register_loss
-def huber_charges(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_charges(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
     total_weight = (label["entropy"] * label["charges_weight"])[batch]
     key = "charges"
@@ -326,8 +410,13 @@ def huber_charges(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor],
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_final_collinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_final_collinear_magmoms(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
     total_weight = (label["entropy"] * label["final_collinear_magmoms_weight"])[batch]
     key = "final_collinear_magmoms"
@@ -338,10 +427,17 @@ def huber_final_collinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict[str
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_abs_final_collinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_abs_final_collinear_magmoms(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
-    total_weight = (label["entropy"] * label["abs_final_collinear_magmoms_weight"])[batch]
+    total_weight = (label["entropy"] * label["abs_final_collinear_magmoms_weight"])[
+        batch
+    ]
     key = "abs_final_collinear_magmoms"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -352,11 +448,15 @@ def huber_abs_final_collinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict
 
 
 @register_loss
-def huber_final_noncollinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_final_noncollinear_magmoms(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
-    total_weight = label["entropy"][batch].unsqueeze(-1) * label["final_noncollinear_magmoms_weight"][
-        batch
-    ].unsqueeze(-1)
+    total_weight = label["entropy"][batch].unsqueeze(-1) * label[
+        "final_noncollinear_magmoms_weight"
+    ][batch].unsqueeze(-1)
     key = "final_noncollinear_magmoms"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -365,8 +465,13 @@ def huber_final_noncollinear_magmoms(pred: Dict[str, torch.Tensor], label: Dict[
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_collinear_magnetic_forces(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_collinear_magnetic_forces(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
     total_weight = (label["entropy"] * label["collinear_magnetic_forces_weight"])[batch]
     key = "collinear_magnetic_forces"
@@ -377,12 +482,17 @@ def huber_collinear_magnetic_forces(pred: Dict[str, torch.Tensor], label: Dict[s
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_noncollinear_magnetic_forces(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_noncollinear_magnetic_forces(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     batch = label["batch"]
-    total_weight = label["entropy"][batch].unsqueeze(-1) * label["noncollinear_magnetic_forces_weight"][
-        batch
-    ].unsqueeze(-1)
+    total_weight = label["entropy"][batch].unsqueeze(-1) * label[
+        "noncollinear_magnetic_forces_weight"
+    ][batch].unsqueeze(-1)
     key = "noncollinear_magnetic_forces"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -391,8 +501,13 @@ def huber_noncollinear_magnetic_forces(pred: Dict[str, torch.Tensor], label: Dic
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_total_collinear_magmom(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_total_collinear_magmom(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     total_weight = label["entropy"] * label["total_collinear_magmom_weight"]
     key = "total_collinear_magmom"
     return torch.nn.functional.huber_loss(
@@ -402,8 +517,13 @@ def huber_total_collinear_magmom(pred: Dict[str, torch.Tensor], label: Dict[str,
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_total_collinear_magmom_per_atom(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
+def huber_total_collinear_magmom_per_atom(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
     total_weight = label["entropy"] * label["total_collinear_magmom_weight"]
     num_atoms = label["ptr"][1:] - label["ptr"][:-1]
     key = "total_collinear_magmom"
@@ -414,9 +534,16 @@ def huber_total_collinear_magmom_per_atom(pred: Dict[str, torch.Tensor], label: 
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_total_noncollinear_magmom(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["total_noncollinear_magmom_weight"]).unsqueeze(-1)
+def huber_total_noncollinear_magmom(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
+    total_weight = (
+        label["entropy"] * label["total_noncollinear_magmom_weight"]
+    ).unsqueeze(-1)
     key = "total_noncollinear_magmom"
     return torch.nn.functional.huber_loss(
         total_weight * label[key],
@@ -425,9 +552,16 @@ def huber_total_noncollinear_magmom(pred: Dict[str, torch.Tensor], label: Dict[s
         delta=huber_delta,
     )
 
+
 @register_loss
-def huber_total_noncollinear_magmom_per_atom(pred: Dict[str, torch.Tensor], label: Dict[str, torch.Tensor], huber_delta: float = 0.01) -> torch.Tensor:
-    total_weight = (label["entropy"] * label["total_noncollinear_magmom_weight"]).unsqueeze(-1)
+def huber_total_noncollinear_magmom_per_atom(
+    pred: Dict[str, torch.Tensor],
+    label: Dict[str, torch.Tensor],
+    huber_delta: float = 0.01,
+) -> torch.Tensor:
+    total_weight = (
+        label["entropy"] * label["total_noncollinear_magmom_weight"]
+    ).unsqueeze(-1)
     num_atoms = (label["ptr"][1:] - label["ptr"][:-1]).unsqueeze(-1)
     key = "total_noncollinear_magmom"
     return torch.nn.functional.huber_loss(

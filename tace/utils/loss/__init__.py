@@ -3,9 +3,9 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import os
 import glob
 import importlib
+import os
 
 __all__ = []
 py_files = glob.glob(os.path.join(os.path.dirname(__file__), "*.py"))
@@ -15,7 +15,6 @@ for p in py_files:
     module_name = os.path.splitext(os.path.basename(p))[0]
     module = importlib.import_module(f".{module_name}", package=__name__)
     for attr_name in dir(module):
-        
         attr = getattr(module, attr_name)
         if isinstance(attr, type):
             globals()[attr_name] = attr

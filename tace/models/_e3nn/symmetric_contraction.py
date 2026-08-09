@@ -538,9 +538,9 @@
 #         correlation: int,
 #         num_elements: int,
 #         use_reduced_cg: bool = True,
-#         use_cueq: bool = False,  
+#         use_cueq: bool = False,
 #     ):
-        
+
 #         if use_cueq:
 #             assert use_reduced_cg
 #             import cuequivariance as cue

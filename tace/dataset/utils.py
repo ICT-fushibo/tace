@@ -8,51 +8,54 @@ import torch
 from torch import Tensor
 
 
-def default_value_for_rank0_atom(num_atoms: int, class_: str,  **kwargs):
+def default_value_for_rank0_atom(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms,))
 
 
-def default_value_for_rank1_atom(num_atoms: int, class_: str,  **kwargs):
+def default_value_for_rank1_atom(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms, 3))
 
 
-def default_value_for_rank2_atom(num_atoms: int, class_: str,  **kwargs):
+def default_value_for_rank2_atom(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms, 3, 3))
 
-def default_value_for_rank3_atom(num_atoms: int, class_: str,  **kwargs):
+
+def default_value_for_rank3_atom(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms, 3, 3, 3))
 
 
-def default_value_for_rank4_atom(num_atoms: int, class_: str,  **kwargs):
+def default_value_for_rank4_atom(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms, 3, 3, 3, 3))
+
 
 def default_value_for_rank0_graph(num_atoms: int, class_: str, **kwargs):
     return np.zeros((1,))
 
 
-def default_value_for_rank1_graph(num_atoms: int,  class_: str, **kwargs):
+def default_value_for_rank1_graph(num_atoms: int, class_: str, **kwargs):
     return np.zeros((3,))
 
 
-def default_value_for_rank2_graph(num_atoms: int,  class_: str, **kwargs):
+def default_value_for_rank2_graph(num_atoms: int, class_: str, **kwargs):
     return np.zeros((3, 3))
 
 
-def default_value_for_rank3_graph(num_atoms: int,  class_: str, **kwargs):
+def default_value_for_rank3_graph(num_atoms: int, class_: str, **kwargs):
     return np.zeros((3, 3, 3))
 
 
-def default_value_for_rank4_graph(num_atoms: int,  class_: str, **kwargs):
+def default_value_for_rank4_graph(num_atoms: int, class_: str, **kwargs):
     return np.zeros((3, 3, 3, 3))
 
 
 def default_value_for_hessian(num_atoms: int, class_: str, **kwargs):
     return np.zeros((num_atoms * 3 * num_atoms * 3))
 
+
 def shape_fn_for_hessian(t: Tensor, num_atoms: int, **kwargs):
     # assert np.allclose(t, t.T, atol=1e-6)
-    shape1 = (num_atoms * 3 , num_atoms * 3)
-    shape2 = (num_atoms * 3 * num_atoms * 3)
+    shape1 = (num_atoms * 3, num_atoms * 3)
+    shape2 = num_atoms * 3 * num_atoms * 3
     assert t.shape == shape1 or t.shape == shape2, (
         f"hessian shape mismatch: got {tuple(t.shape)}, expected {shape1} or {shape2}"
     )
@@ -60,11 +63,11 @@ def shape_fn_for_hessian(t: Tensor, num_atoms: int, **kwargs):
 
 
 def shape_fn_for_direct_diagonal_hessian(t: Tensor, num_atoms: int, **kwargs):
-    shape1 = (num_atoms * 3 , num_atoms * 3)    # [3N, 3N]
-    shape2 = (num_atoms * 3 * num_atoms * 3,)   # [flat]
-    shape3 = (num_atoms, num_atoms, 3, 3)       # [N, N, 3, 3]
-    shape4 = (num_atoms, 3, num_atoms, 3)       # [N, 3, N, 3]
-    shape5 = (num_atoms, 9)                  # already diagonal
+    shape1 = (num_atoms * 3, num_atoms * 3)  # [3N, 3N]
+    shape2 = (num_atoms * 3 * num_atoms * 3,)  # [flat]
+    shape3 = (num_atoms, num_atoms, 3, 3)  # [N, N, 3, 3]
+    shape4 = (num_atoms, 3, num_atoms, 3)  # [N, 3, N, 3]
+    shape5 = (num_atoms, 9)  # already diagonal
 
     # to (N,3,N,3)
     if t.shape == shape1:

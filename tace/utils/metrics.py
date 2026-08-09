@@ -8,29 +8,28 @@
 import logging
 from typing import Dict, List
 
-
 import torch
 from torch import Tensor
 from torchmetrics import Metric
 
-
 from ..dataset.quantity import (
-    PROPERTY,
-    MAE_PROPERTY,
-    RMSE_PROPERTY,
     MAE_PER_ATOM_PROPERTY,
+    MAE_PROPERTY,
+    PROPERTY,
     RMSE_PER_ATOM_PROPERTY,
+    RMSE_PROPERTY,
     SPECIAL_METRIC_PROPERTY,
 )
 from .mask_metrics import (
     MaskMAE,
-    MaskRMSE,
     MaskPerAtomMAE,
     MaskPerAtomRMSE,
+    MaskRMSE,
     supports_weight_filter,
 )
 
 SCALE = 1000.0  # for example, metric units from eV to meV
+
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
     while T.ndim < n_dim:
@@ -223,9 +222,9 @@ class DirectForcesMetric(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, pred: Tensor, label: Tensor):
-        batch = label['batch']
-        key = 'direct_forces'
-        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        batch = label["batch"]
+        key = "direct_forces"
+        total_weight = (label["entropy"] * label[key + "_weight"])[batch]
         mask = total_weight != 0
         error = pred[key] - label[key]
         error = error * total_weight.unsqueeze(-1)
@@ -247,7 +246,7 @@ class DirectForcesMetric(Metric):
             return self.sum_abs_error / self.count * self.scale
         else:  # rmse
             return torch.sqrt(self.sum_squared_error / self.count) * self.scale
-        
+
 
 class ForcesMetric(Metric):
     def __init__(self, metric_type: str = "mae", scale: float = SCALE):
@@ -273,14 +272,14 @@ class ForcesMetric(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
 
     def update(self, pred: Tensor, label: Tensor):
-        batch = label['batch']
-        key = 'forces'
-        total_weight = (label['entropy'] * label[key + '_weight'])[batch]
+        batch = label["batch"]
+        key = "forces"
+        total_weight = (label["entropy"] * label[key + "_weight"])[batch]
         mask = total_weight != 0
         error = pred[key] - label[key]
 
-        if 'noise_mask' in label:
-            noise_mask = label['noise_mask'].bool()
+        if "noise_mask" in label:
+            noise_mask = label["noise_mask"].bool()
             mask = mask & (~noise_mask)
 
         error = error * total_weight.unsqueeze(-1)
@@ -308,8 +307,7 @@ def use_weight_filter(property_name: str) -> bool:
     return (
         property_name in PROPERTY
         and supports_weight_filter(property_name)
-
-        and property_name not in SPECIAL_METRIC_PROPERTY # TODO
+        and property_name not in SPECIAL_METRIC_PROPERTY  # TODO
     )
 
 
@@ -318,7 +316,7 @@ def log_metric_choice(metric_name: str, property_name: str, use_mask: bool):
         logging.debug(
             "Build metric %s: special metric, see code.",
             metric_name,
-        ) 
+        )
         return
     if use_mask:
         logging.debug(
@@ -340,25 +338,31 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
     def add_metrics(property_name):
         use_mask = use_weight_filter(property_name)
 
-        # === General === 
+        # === General ===
         if property_name in MAE_PROPERTY:
             metric_name = f"{prefix}/{property_name}_mae"
             metrics[metric_name] = MaskMAE(property_name, SCALE) if use_mask else MAE()
             log_metric_choice(metric_name, property_name, use_mask)
         if property_name in RMSE_PROPERTY:
             metric_name = f"{prefix}/{property_name}_rmse"
-            metrics[metric_name] = MaskRMSE(property_name, SCALE) if use_mask else RMSE()
+            metrics[metric_name] = (
+                MaskRMSE(property_name, SCALE) if use_mask else RMSE()
+            )
             log_metric_choice(metric_name, property_name, use_mask)
         if property_name in MAE_PER_ATOM_PROPERTY:
             metric_name = f"{prefix}/{property_name}_per_atom_mae"
-            metrics[metric_name] = MaskPerAtomMAE(property_name, SCALE) if use_mask else PerAtomMAE()
+            metrics[metric_name] = (
+                MaskPerAtomMAE(property_name, SCALE) if use_mask else PerAtomMAE()
+            )
             log_metric_choice(metric_name, property_name, use_mask)
         if property_name in RMSE_PER_ATOM_PROPERTY:
             metric_name = f"{prefix}/{property_name}_per_atom_rmse"
-            metrics[metric_name] = MaskPerAtomRMSE(property_name, SCALE) if use_mask else PerAtomRMSE()
+            metrics[metric_name] = (
+                MaskPerAtomRMSE(property_name, SCALE) if use_mask else PerAtomRMSE()
+            )
             log_metric_choice(metric_name, property_name, use_mask)
 
-        # === Special === 
+        # === Special ===
         if property_name == "polarization":
             metric_name = f"{prefix}/{property_name}_mae"
             metrics[metric_name] = PolarizationMetric("mae", False)
@@ -374,7 +378,7 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
             log_metric_choice(metric_name, property_name, False)
         if property_name == "abs_final_collinear_magmoms":
             metric_name = f"{prefix}/{property_name}_mae"
-            metrics[metric_name] =  AbsFinalCollinearMagmomsMetric("mae")
+            metrics[metric_name] = AbsFinalCollinearMagmomsMetric("mae")
             log_metric_choice(metric_name, property_name, use_mask)
             metric_name = f"{prefix}/{property_name}_rmse"
             metrics[metric_name] = AbsFinalCollinearMagmomsMetric("rmse")
@@ -393,7 +397,7 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
             metric_name = f"{prefix}/{property_name}_rmse"
             metrics[metric_name] = ForcesMetric("rmse")
             log_metric_choice(metric_name, property_name, use_mask)
-    
+
     for p in loss_property:
         add_metrics(p)
 
@@ -402,7 +406,6 @@ def build_metrics(prefix: str, loss_property: List[str]) -> Dict[str, Metric]:
 
 def update_metrics(metrics, prefix, pred, label, loss_property):
     for p in loss_property:
-
         if p not in pred:
             continue
 
@@ -422,12 +425,16 @@ def update_metrics(metrics, prefix, pred, label, loss_property):
                 metrics[f"{prefix}/{p}_rmse"](output_value, batch_value)
         if p in MAE_PER_ATOM_PROPERTY:
             if weighted:
-                metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, ptr, label)
+                metrics[f"{prefix}/{p}_per_atom_mae"](
+                    output_value, batch_value, ptr, label
+                )
             else:
                 metrics[f"{prefix}/{p}_per_atom_mae"](output_value, batch_value, ptr)
         if p in RMSE_PER_ATOM_PROPERTY:
             if weighted:
-                metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, ptr, label)
+                metrics[f"{prefix}/{p}_per_atom_rmse"](
+                    output_value, batch_value, ptr, label
+                )
             else:
                 metrics[f"{prefix}/{p}_per_atom_rmse"](output_value, batch_value, ptr)
         if p == "polarization":

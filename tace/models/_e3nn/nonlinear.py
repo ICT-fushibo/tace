@@ -5,16 +5,14 @@
 
 from typing import Union
 
-
 import torch
 from e3nn import o3
-from e3nn.o3._tensor_product._sub import ElementwiseTensorProduct
 from e3nn.nn import Activation
 from e3nn.nn._gate import _Sortcut
+from e3nn.o3._tensor_product._sub import ElementwiseTensorProduct
 
-
-from ..mlp import ACTIVATION
 from ..linear import e3nnLinear
+from ..mlp import ACTIVATION
 
 
 def get_nonlinear_layer(
@@ -26,13 +24,15 @@ def get_nonlinear_layer(
     tensor_act: Union[str, None] = None,
     bias: bool = True,
 ):
-    if nonlinear_type == 'gate': 
+    if nonlinear_type == "gate":
         if gate_m0:
             irreps_gated = irreps_in
             irreps_gates = o3.Irreps([mul, (0, 1)] for mul, _ in irreps_in)
-            scalar_act = scalar_act or 'sigmoid'
-            tensor_act = tensor_act or 'sigmoid'
-            act_gates = [ACTIVATION[scalar_act]()]  + [ACTIVATION[tensor_act]()] * (len(irreps_gates) - 1)
+            scalar_act = scalar_act or "sigmoid"
+            tensor_act = tensor_act or "sigmoid"
+            act_gates = [ACTIVATION[scalar_act]()] + [ACTIVATION[tensor_act]()] * (
+                len(irreps_gates) - 1
+            )
             nonlinearity = O3Gate(
                 irreps_gates=irreps_gates,
                 act_gates=act_gates,
@@ -42,6 +42,7 @@ def get_nonlinear_layer(
             linear_nonlinearity = e3nnLinear(irreps_in, irreps_out, bias=bias)
         else:
             from e3nn.nn import Gate
+
             even_scalar = o3.Irrep("0e")
             irreps_scalars = o3.Irreps(
                 [(mul, ir) for mul, ir in irreps_in if ir == even_scalar]
@@ -50,8 +51,8 @@ def get_nonlinear_layer(
                 [(mul, ir) for mul, ir in irreps_in if ir != even_scalar]
             )
             irreps_gates = o3.Irreps([mul, "0e"] for mul, _ in irreps_gated)
-            scalar_act = scalar_act or 'silu'
-            tensor_act = tensor_act or 'sigmoid'
+            scalar_act = scalar_act or "silu"
+            tensor_act = tensor_act or "sigmoid"
             activation_fn = ACTIVATION[scalar_act]()
             act_gates_fn = ACTIVATION[tensor_act]()
             nonlinearity = Gate(
@@ -67,7 +68,7 @@ def get_nonlinear_layer(
                 irreps_out,
                 bias=bias,
             )
-    # elif nonlinear_type == 'norm': 
+    # elif nonlinear_type == 'norm':
     #     scalar_act = scalar_act or 'sigmoid'
     #     tensor_act = tensor_act or 'sigmoid'
     #     assert scalar_act == tensor_act
@@ -97,7 +98,9 @@ class O3Gate(torch.nn.Module):
         irreps_gated = o3.Irreps(irreps_gated)
 
         if len(irreps_gates) > 0 and irreps_gates.lmax > 0:
-            raise ValueError(f"Gate scalars must be scalars, instead got irreps_gates = {irreps_gates}")
+            raise ValueError(
+                f"Gate scalars must be scalars, instead got irreps_gates = {irreps_gates}"
+            )
         if irreps_gates.num_irreps != irreps_gated.num_irreps:
             raise ValueError(
                 f"There are {irreps_gated.num_irreps} irreps in irreps_gated, but a different number "
@@ -138,7 +141,7 @@ class O3Gate(torch.nn.Module):
     @property
     def irreps_out(self):
         return self._irreps_out
-    
+
 
 # class O3Norm(torch.nn.Module):
 #     def __init__(
@@ -168,7 +171,7 @@ class O3Gate(torch.nn.Module):
 #         if y is not None:
 #             return self.scalar_multiplier(norm, y)
 #         return self.scalar_multiplier(norm, x)
-    
+
 
 # class ChannelWiseO3NormGate(torch.nn.Module):
 #     """Gate all O(3) components belonging to the same channel together."""

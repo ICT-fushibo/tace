@@ -5,10 +5,8 @@
 
 from typing import Optional, Tuple
 
-
 import torch
 from e3nn.o3 import wigner_3j
-
 
 from .ictd import ICTD
 
@@ -27,8 +25,8 @@ def torch_get_default_device() -> torch.device:
 
 
 def explicit_default_types(
-        dtype: Optional[torch.dtype], device: Optional[torch.device]
-    ) -> Tuple[torch.dtype, torch.device]:
+    dtype: Optional[torch.dtype], device: Optional[torch.device]
+) -> Tuple[torch.dtype, torch.device]:
     """A torchscript-compatible type resolver"""
     if dtype is None:
         dtype = torch_get_default_dtype()
@@ -37,10 +35,10 @@ def explicit_default_types(
     return dtype, device
 
 
-def _cartesian_3j(l1: int, l2: int, l3: int) -> torch.Tensor:     
+def _cartesian_3j(l1: int, l2: int, l3: int) -> torch.Tensor:
     with torch.no_grad():
         Z = torch.einsum(
-            "ijk, ai, bj, ck -> abc", 
+            "ijk, ai, bj, ck -> abc",
             wigner_3j(l1, l2, l3),
             ICTD(l1, l1, decomposition=False)[2][0],
             ICTD(l2, l2, decomposition=False)[2][0],
@@ -58,4 +56,6 @@ def cartesian_3j(l1: int, l2: int, l3: int, dtype=None, device=None) -> torch.Te
 
     Z = _cartesian_3j(l1, l2, l3)
 
-    return Z.to(dtype=dtype, device=device, copy=True, memory_format=torch.contiguous_format)
+    return Z.to(
+        dtype=dtype, device=device, copy=True, memory_format=torch.contiguous_format
+    )

@@ -1,12 +1,11 @@
-from contextlib import contextmanager
 import operator
+from contextlib import contextmanager
 from typing import Callable, Dict, Iterable, Sequence
 
 import torch
 from torch._decomp import get_decompositions
 from torch.func import functional_call
 from torch.fx.experimental.proxy_tensor import make_fx
-
 
 torch._dynamo.config.optimize_ddp = False
 
@@ -33,10 +32,7 @@ def trace_and_compile(
 
     def compute(*args: torch.Tensor) -> tuple[torch.Tensor, ...]:
         num_inputs = len(inputs)
-        state = {
-            name: value
-            for name, value in zip(state_names, args[num_inputs:])
-        }
+        state = {name: value for name, value in zip(state_names, args[num_inputs:])}
         return functional_call(model, state, args=args[:num_inputs])
 
     trace_inputs = [value.clone() for value in inputs]

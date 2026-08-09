@@ -6,7 +6,6 @@
 import os
 from typing import Dict
 
-
 ACCELERATION_ENV = {
     "oeq": "TACE_USE_OEQ",
     "cue": "TACE_USE_CUE",
@@ -63,6 +62,7 @@ def acceleration_enabled(name: str) -> bool:
 def get_tace_apply_u_shift():
     return os.environ.get("TACE_APPLY_U_SHIFT", "0")
 
+
 def get_tace_use_dens():
     return os.environ.get("TACE_USE_DENS", "0")
 
@@ -72,14 +72,11 @@ def get_tace_dens_loss_ratio():
     try:
         ratio = float(value)
     except ValueError as e:
-        raise ValueError(
-            f"Invalid TACE_DENS_LOSS_RATIO: {value}"
-        ) from e
+        raise ValueError(f"Invalid TACE_DENS_LOSS_RATIO: {value}") from e
     if ratio <= 0:
-        raise ValueError(
-            "TACE_DENS_LOSS_RATIO must be positive"
-        )
+        raise ValueError("TACE_DENS_LOSS_RATIO must be positive")
     return ratio
 
+
 def get_tace_use_matrix_weight():
-    return os.environ.get("TACE_USE_MATRIX_WEIGHT", '0')
+    return os.environ.get("TACE_USE_MATRIX_WEIGHT", "0")

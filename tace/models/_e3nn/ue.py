@@ -5,14 +5,13 @@
 
 from typing import Union
 
-
 import torch
 from e3nn import o3
 from e3nn.nn import Activation
 
 from ...dataset.quantity import PROPERTY
+from ..linear import e3nnElementLinear, e3nnLinear
 from ..mlp import ACTIVATION, MLP
-from ..linear import e3nnLinear, e3nnElementLinear
 
 
 class UniversalInvariantEmbedding(torch.nn.Module):
@@ -46,19 +45,18 @@ class UniversalInvariantEmbedding(torch.nn.Module):
         self.act = Activation(f"{out_dim}x0e", [ACTIVATION[activation]()])
 
     def forward(self, data: dict[str, torch.Tensor]) -> torch.Tensor:
-        
-        batch = data['batch']
+
+        batch = data["batch"]
         embeddings = []
 
         for p, module in self.uie.items():
-
-            p_type = PROPERTY[p]['type']
-            p_scope = PROPERTY[p]['scope']
+            p_type = PROPERTY[p]["type"]
+            p_scope = PROPERTY[p]["scope"]
 
             attr = data[p]
             if p_scope == "per-system":
                 attr = attr[batch]
-            if p_type == 'float':
+            if p_type == "float":
                 attr = attr.unsqueeze(-1)
 
             embeddings.append(module(attr))
@@ -80,7 +78,7 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
         self.irreps_in = irreps_in
         irreps_out = irreps_in
         for p in config.keys():
-            irreps_out += o3.Irreps(PROPERTY[p]["irreps"]) 
+            irreps_out += o3.Irreps(PROPERTY[p]["irreps"])
         irreps_out = irreps_out.regroup()
         self.irreps_out = o3.Irreps([(num_channel, ir) for _, ir in irreps_out])
 
@@ -88,27 +86,26 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
         self.uee = torch.nn.ModuleDict()
         for k, v in config.items():
             self.uee[k] = e3nnElementLinear(
-                o3.Irreps(PROPERTY[k]["irreps"]), 
+                o3.Irreps(PROPERTY[k]["irreps"]),
                 self.irreps_out,
                 bias=True,
                 num_elements=num_elements,
             )
-            self.config[k]['scope'] = PROPERTY[k]["scope"]
-
+            self.config[k]["scope"] = PROPERTY[k]["scope"]
 
     def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            data: dict[str, torch.Tensor]
-        ) -> torch.Tensor:
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        data: dict[str, torch.Tensor],
+    ) -> torch.Tensor:
 
         node_feats = self.linear(node_feats)
-        
-        batch = data['batch']
+
+        batch = data["batch"]
         for p, e_linear in self.uee.items():
-            scope = self.config[p]['scope']
-            normalizer = self.config[p]['normalizer']
+            scope = self.config[p]["scope"]
+            normalizer = self.config[p]["normalizer"]
             attr = data[p] * normalizer
             if scope == "per-system":
                 attr = attr[batch]
@@ -116,6 +113,6 @@ class UniversalEquivariantEmbedding(torch.nn.Module):
             node_feats = node_feats + uee_feats
 
         return node_feats
-    
+
     def extra_repr(self):
         return str(self.config)

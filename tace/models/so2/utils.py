@@ -6,7 +6,6 @@
 import math
 from typing import Union
 
-
 import torch
 
 
@@ -27,7 +26,7 @@ def satisfy(l1: int, l2: int, restriction: Union[str, None] = None) -> bool:
         return l1 != l2
     else:
         raise ValueError(f"Unknown restriction: {restriction}")
-    
+
 
 def so2_expand_index(mmax: int, lmax: int, start: int = 0) -> tuple[int, torch.Tensor]:
     expand_index = []
@@ -37,7 +36,7 @@ def so2_expand_index(mmax: int, lmax: int, start: int = 0) -> tuple[int, torch.T
         index = index + offset
         expand_index.append(index)
         if m > 0:
-            expand_index.append(index)    # +- m
+            expand_index.append(index)  # +- m
         offset = offset + len(index)
     expand_index = torch.cat(expand_index, dim=0)
     expand_index = expand_index.long()
@@ -63,26 +62,32 @@ def rot(m: int, theta: float) -> torch.Tensor:
     R = torch.tensor(
         [
             [c, -s],
-            [s,  c],
+            [s, c],
         ]
     )
     return R
 
+
 def complex_mul(x, y):
     a, b = x
     c, d = y
-    return torch.tensor([
-        a*c - b*d,
-        a*d + b*c,
-    ])
+    return torch.tensor(
+        [
+            a * c - b * d,
+            a * d + b * c,
+        ]
+    )
+
 
 def complex_mul_conj(x, y):
     a, b = x
     c, d = y
-    return torch.tensor([
-        a*c + b*d,
-        b*c - a*d,
-    ])
+    return torch.tensor(
+        [
+            a * c + b * d,
+            b * c - a * d,
+        ]
+    )
 
 
 def num_so2_components(
@@ -94,12 +99,12 @@ def num_so2_components(
         total += 2 * (lmax + 1 - m)
     return total
 
+
 def num_uuu_so2_components(
     lmax: int,
     mmax: int,
 ):
     return (lmax + 1) + (lmax + 1) * (mmax) * 2
-
 
 
 def rotate_real_irrep(
@@ -136,21 +141,21 @@ def rotate_so2_features(
 
     # m = 0
     n0 = lmax + 1
-    x0 = x[:, offset:offset+n0]
+    x0 = x[:, offset : offset + n0]
     outputs.append(x0)
     offset += n0
 
     # m > 0
     for m in range(1, mmax + 1):
         n = lmax + 1 - m
-        xm = x[:, offset:offset+2*n]
+        xm = x[:, offset : offset + 2 * n]
         xm = xm.view(B, 2, n, num_channels)
         xm = rotate_real_irrep(
             xm,
             theta,
             m,
         )
-        xm = xm.reshape(B, 2*n, num_channels)
+        xm = xm.reshape(B, 2 * n, num_channels)
         outputs.append(xm)
         offset += 2 * n
 
@@ -173,24 +178,23 @@ def rotate_uuu_so2_features(
 
     n = lmax + 1
     # m = 0
-    x0 = x[:, offset:offset+n]
+    x0 = x[:, offset : offset + n]
     outputs.append(x0)
     offset += n
 
     # m > 0
     for m in range(1, mmax + 1):
-        xm = x[:, offset:offset+2*n]
+        xm = x[:, offset : offset + 2 * n]
         xm = xm.view(B, 2, n, num_channels)
         xm = rotate_real_irrep(
             xm,
             theta,
             m,
         )
-        xm = xm.reshape(B, 2*n, num_channels)
+        xm = xm.reshape(B, 2 * n, num_channels)
         outputs.append(xm)
         offset += 2 * n
 
     out = torch.cat(outputs, dim=1)
 
     return out
-

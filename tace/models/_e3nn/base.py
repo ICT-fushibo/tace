@@ -4,13 +4,11 @@
 ################################################################################
 
 
-import abc 
+import abc
 from typing import Union
-
 
 import torch
 from e3nn import o3
-
 
 from ..lammps import e3nnGhostExchangeMixin
 
@@ -27,11 +25,7 @@ def _to_possible_tp_irreps(
         for _, ir1 in irreps_in1
         for _, ir2 in irreps_in2
         for ir3 in ir1 * ir2
-        if ir3.l <= lmax
-        and (
-            parity
-            or ir3.p == (-1) ** ir3.l
-        )
+        if ir3.l <= lmax and (parity or ir3.p == (-1) ** ir3.l)
     )
     return o3.Irreps(irrep_set).regroup()
 
@@ -58,12 +52,12 @@ class NodeEmbedding(torch.nn.Module):
         self.avg_num_neighbors = avg_num_neighbors
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
-    
-    
+
+
 class EdgeEmbedding(torch.nn.Module):
     def __init__(
         self,
@@ -80,11 +74,11 @@ class EdgeEmbedding(torch.nn.Module):
         self.bias = bias
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
-    
+
 
 class EdgeUpdate(torch.nn.Module):
     def __init__(
@@ -101,16 +95,16 @@ class EdgeUpdate(torch.nn.Module):
 
         self.layer = layer
         self.num_layers = num_layers
-        self.first_layer = (layer == 0)
-        self.last_layer = (layer == num_layers - 1)
+        self.first_layer = layer == 0
+        self.last_layer = layer == num_layers - 1
         self.num_elements = num_elements
         self.num_radial_basis = num_radial_basis
         self.num_channel = num_channel
-        self.edge_embedding_channel=edge_embedding_channel
+        self.edge_embedding_channel = edge_embedding_channel
         self.use_bias = bias
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
@@ -139,13 +133,13 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         tensor_act: str,
         edge_ace_hidden: Union[int, None],
         l1l2: Union[str, None] = None,
-        scatter_norm: str = 'avg_num_neighbors',
+        scatter_norm: str = "avg_num_neighbors",
         bias: bool = True,
         nonlinear: Union[str, None] = None,
         edge_nonlinear: Union[str, None] = None,
-        edge_info_type: str = 'mlp',
-        resnet_type: str = 'BB',
-        resnet_linear_type: str = 'aware',
+        edge_info_type: str = "mlp",
+        resnet_type: str = "BB",
+        resnet_linear_type: str = "aware",
         use_first_resnet: bool = False,
         pre_norm_type: Union[str, None] = None,
         use_first_pre_norm: bool = False,
@@ -157,8 +151,8 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         use_graph_softmax: bool = False,
         node_wise_hidden: Union[int, None] = None,
         edge_wise_hidden: Union[int, None] = None,
-        so2_linear_type: str = 'w1',
-        so2_l1l3: Union[str, None] = None, # TODO
+        so2_linear_type: str = "w1",
+        so2_l1l3: Union[str, None] = None,  # TODO
         gate_m0: bool = True,
         use_radial_phase: bool = True,
     ) -> None:
@@ -184,22 +178,22 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.scalar_act = scalar_act
         self.tensor_act = tensor_act
         self.edge_ace_hidden = edge_ace_hidden or num_channel
-        if self.scatter_norm == 'no_cutoff_density':
+        if self.scatter_norm == "no_cutoff_density":
             self.apply_density_cutoff = False
         else:
             self.apply_density_cutoff = True
         self.radial_layer_norm = False
-        if self.edge_feats_channel != self.num_radial_basis:    
+        if self.edge_feats_channel != self.num_radial_basis:
             self.radial_layer_norm = True
         self.nonlinear_type = None
         self.nonlinear_act = None
         if nonlinear is not None:
-            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split("_")
         self.edge_info_type = edge_info_type
-        if self.edge_info_type == 'mlp':
-            self.radial_act = 'silu'
+        if self.edge_info_type == "mlp":
+            self.radial_act = "silu"
         else:
-            self.radial_act = 'sigmoid'
+            self.radial_act = "sigmoid"
         self.use_temperature = use_temperature
         self.gate_m0 = gate_m0
         self.use_radial_phase = use_radial_phase
@@ -207,7 +201,7 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.use_first_resnet = use_first_resnet
         self.resnet_type = resnet_type
         self.use_so2_edge_ace = use_so2_edge_ace
-        self.use_first_dropout = use_first_dropout 
+        self.use_first_dropout = use_first_dropout
         self.resnet_linear_type = resnet_linear_type
         self.pre_norm_type = pre_norm_type
         self.use_first_pre_norm = use_first_pre_norm
@@ -225,19 +219,25 @@ class Interaction(torch.nn.Module, e3nnGhostExchangeMixin):
         self.irreps_in = irreps_in
         self.irreps_sh = o3.Irreps.spherical_harmonics(lmax=self.lmax, p=-1)
         if self.correlation == 1:
-            self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=Lmax)
+            self.irrreps_tp_out = _to_possible_tp_irreps(
+                self.irreps_in, self.irreps_sh, parity, lmax=Lmax
+            )
         else:
-            self.irrreps_tp_out = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=lmax)
-        self.irreps_out =  (self.irrreps_tp_out * num_channel).regroup()
+            self.irrreps_tp_out = _to_possible_tp_irreps(
+                self.irreps_in, self.irreps_sh, parity, lmax=lmax
+            )
+        self.irreps_out = (self.irrreps_tp_out * num_channel).regroup()
 
-        if self.layer == num_layers -1:
+        if self.layer == num_layers - 1:
             self.irreps_sc = (o3.Irreps(target_irreps) * num_channel).regroup()
         else:
-            self.irreps_sc = _to_possible_tp_irreps(self.irreps_in, self.irreps_sh, parity, lmax=Lmax)
-            self.irreps_sc =  (self.irreps_sc * num_channel).regroup()
+            self.irreps_sc = _to_possible_tp_irreps(
+                self.irreps_in, self.irreps_sh, parity, lmax=Lmax
+            )
+            self.irreps_sc = (self.irreps_sc * num_channel).regroup()
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
@@ -289,51 +289,77 @@ class Product(torch.nn.Module):
         self.nonlinear_type = None
         self.nonlinear_act = None
         if nonlinear is not None:
-            self.nonlinear_act, self.nonlinear_type = nonlinear.split('_')
+            self.nonlinear_act, self.nonlinear_type = nonlinear.split("_")
         self.stochastic_depth_p = stochastic_depth
         self.use_first_dropout = use_first_dropout
         self.parity = parity
-        self.last_layer = layer == num_layers -1
+        self.last_layer = layer == num_layers - 1
         self.irreps_in = irreps_in
-        self.irreps_hidden = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in])
-
-
+        self.irreps_hidden = o3.Irreps(
+            [(self.num_hidden_channel, ir) for _, ir in self.irreps_in]
+        )
 
         self.irreps_tp_out_list = []
-        for nu in range(2, self.correlation+1):
+        for nu in range(2, self.correlation + 1):
             if nu == self.correlation:
                 if self.last_layer:
-                    self.irreps_tp_out_list.append((self.target_irreps * self.num_hidden_channel).regroup())
+                    self.irreps_tp_out_list.append(
+                        (self.target_irreps * self.num_hidden_channel).regroup()
+                    )
                 else:
-                    self.irreps_tp_out_list.append((_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, Lmax) * self.num_hidden_channel).regroup())       
+                    self.irreps_tp_out_list.append(
+                        (
+                            _to_possible_tp_irreps(
+                                self.irreps_hidden, self.irreps_hidden, parity, Lmax
+                            )
+                            * self.num_hidden_channel
+                        ).regroup()
+                    )
             else:
-                self.irreps_tp_out_list.append(_to_possible_tp_irreps(self.irreps_hidden, self.irreps_hidden, parity, lmax))
+                self.irreps_tp_out_list.append(
+                    _to_possible_tp_irreps(
+                        self.irreps_hidden, self.irreps_hidden, parity, lmax
+                    )
+                )
 
         if self.correlation == 1:
-            self.irreps_coefs_out = o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_in if ir.l <=Lmax])
+            self.irreps_coefs_out = o3.Irreps(
+                [
+                    (self.num_hidden_channel, ir)
+                    for _, ir in self.irreps_in
+                    if ir.l <= Lmax
+                ]
+            )
         else:
-            self.irreps_coefs_out = (_to_possible_tp_irreps(self.irreps_in, self.irreps_in, parity, Lmax) * self.num_hidden_channel).regroup()
+            self.irreps_coefs_out = (
+                _to_possible_tp_irreps(self.irreps_in, self.irreps_in, parity, Lmax)
+                * self.num_hidden_channel
+            ).regroup()
 
         if self.last_layer:
-            self.irreps_coefs_out = (self.target_irreps * self.num_hidden_channel).regroup()
+            self.irreps_coefs_out = (
+                self.target_irreps * self.num_hidden_channel
+            ).regroup()
         else:
             self.irreps_coefs_out = self.irreps_coefs_out
 
-        self.irreps_out = o3.Irreps([(self.num_channel, ir) for _, ir in self.irreps_coefs_out])
+        self.irreps_out = o3.Irreps(
+            [(self.num_channel, ir) for _, ir in self.irreps_coefs_out]
+        )
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
-   
-    
+
+
 class ReadOut(torch.nn.Module):
     def __init__(
         self,
         layer: int,
         num_layers: int,
-        hidden_channel: list[int], 
+        hidden_channel: list[int],
         bias: bool,
         num_fidelities: int,
         parity: bool,
@@ -342,8 +368,8 @@ class ReadOut(torch.nn.Module):
     ) -> None:
         super().__init__()
 
-        self.scalar_act = 'tanh' if '0o' in irreps_out else 'silu'
-        self.tensor_act = 'sigmoid'
+        self.scalar_act = "tanh" if "0o" in irreps_out else "silu"
+        self.tensor_act = "sigmoid"
         self.layer = layer
         self.num_layers = num_layers
         self.use_bias = bias
@@ -354,8 +380,7 @@ class ReadOut(torch.nn.Module):
         self.irreps_out = (irreps_out * num_fidelities).regroup()
 
         self.irreps_gates = [
-            o3.Irreps([(c * self.num_fidelities, (0, 1))])
-            for c in hidden_channel
+            o3.Irreps([(c * self.num_fidelities, (0, 1))]) for c in hidden_channel
         ]
         self.irreps_hidden = [
             o3.Irreps([(c * self.num_fidelities, self.irreps_out[0].ir)])
@@ -365,11 +390,11 @@ class ReadOut(torch.nn.Module):
         assert len(set(self.irreps_out.ls)) == 1
 
         self._setup()
-    
+
     @abc.abstractmethod
     def _setup(self) -> None:
         raise NotImplementedError
-    
+
     def extra_repr(self) -> str:
         return (
             f"scalar_act={self.scalar_act}, "

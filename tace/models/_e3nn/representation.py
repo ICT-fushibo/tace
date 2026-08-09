@@ -7,24 +7,21 @@
 import math
 from typing import Dict, List
 
-
 import torch
 from e3nn import o3
 
-
 from ...utils.env import get_tace_use_dens
-from ..radial import RadialBasis
 from ..angular import SphericalHarmonics
-from ..so2 import WignerD
 from ..layout import LayoutTransform
-from .node import NODE_EMBEDDING
-from .edge import EDGE_EMBEDDING, EDGE_UPDATE
-from .inter import INTERACTION # , SO2EdgeInteraction
-from .prod import PRODUCT
-from .ue import UniversalInvariantEmbedding, UniversalEquivariantEmbedding
-from .layer_norm import get_normalization_layer
 from ..linear import e3nnLinear
-
+from ..radial import RadialBasis
+from ..so2 import WignerD
+from .edge import EDGE_EMBEDDING, EDGE_UPDATE
+from .inter import INTERACTION  # , SO2EdgeInteraction
+from .layer_norm import get_normalization_layer
+from .node import NODE_EMBEDDING
+from .prod import PRODUCT
+from .ue import UniversalEquivariantEmbedding, UniversalInvariantEmbedding
 
 
 class Representation(torch.nn.Module):
@@ -38,7 +35,7 @@ class Representation(torch.nn.Module):
         Lmax: int,
         lmax: int,
         num_channel: int,
-        target_irreps: o3.Irreps,  
+        target_irreps: o3.Irreps,
         node_embedding: Dict,
         edge_embedding: Dict,
         edge_update: Dict,
@@ -60,37 +57,42 @@ class Representation(torch.nn.Module):
         self.num_layers = num_layers
         self.invariant_property = invariant_property
         self.equivariant_property = equivariant_property
-        self.register_buffer('atomic_numbers', torch.tensor(atomic_numbers, dtype=torch.int64))
-        self.resnet_type = resnet['type']
-        self.use_dens = get_tace_use_dens() == '1'
+        self.register_buffer(
+            "atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64)
+        )
+        self.resnet_type = resnet["type"]
+        self.use_dens = get_tace_use_dens() == "1"
 
         # === radial basis ===
         self.radial_basis = RadialBasis(
             cutoff=cutoff,
-            r_min=radial_basis['r_min'],
-            num_basis=radial_basis['num_radial_basis'],
-            cutoff_fn=radial_basis['cutoff_fn'],
-            polynomial_cutoff=radial_basis['polynomial_cutoff'],
-            radial_basis=radial_basis['radial_basis'],
-            distance_transform=radial_basis['distance_transform'],
-            order=radial_basis['order'],
-            trainable=radial_basis['trainable'],
-            apply_cutoff=radial_basis['apply_cutoff'],
-            gaussian_width=radial_basis['gaussian_width'],
-            use_dydynamic_cutoff=radial_basis['use_dydynamic_cutoff'],
-            dydynamic_cutoff_mu=radial_basis['dydynamic_cutoff_mu'],
+            r_min=radial_basis["r_min"],
+            num_basis=radial_basis["num_radial_basis"],
+            cutoff_fn=radial_basis["cutoff_fn"],
+            polynomial_cutoff=radial_basis["polynomial_cutoff"],
+            radial_basis=radial_basis["radial_basis"],
+            distance_transform=radial_basis["distance_transform"],
+            order=radial_basis["order"],
+            trainable=radial_basis["trainable"],
+            apply_cutoff=radial_basis["apply_cutoff"],
+            gaussian_width=radial_basis["gaussian_width"],
+            use_dydynamic_cutoff=radial_basis["use_dydynamic_cutoff"],
+            dydynamic_cutoff_mu=radial_basis["dydynamic_cutoff_mu"],
             num_elements=len(atomic_numbers),
         )
-        
+
         # === angular basis ===
         self.use_so2 = (
-            any(t.endswith('so2') for t in atomic_basis['type'])
-            or any(t.endswith('SO2') for t in atomic_basis['type'])
-            or any(t.endswith('attn') for t in atomic_basis['type'])
-            or node_embedding["type"] == 'so2_tensor' 
+            any(t.endswith("so2") for t in atomic_basis["type"])
+            or any(t.endswith("SO2") for t in atomic_basis["type"])
+            or any(t.endswith("attn") for t in atomic_basis["type"])
+            or node_embedding["type"] == "so2_tensor"
             # or True in atomic_basis["use_graph_softmax"]
         )
-        self.use_o3 = any(t != 'so2' for t in atomic_basis['type']) or node_embedding["type"] == 'tensor'
+        self.use_o3 = (
+            any(t != "so2" for t in atomic_basis["type"])
+            or node_embedding["type"] == "tensor"
+        )
         if self.use_so2:
             assert Lmax == lmax, "SO2Interaciton require Lmax == lmax in TACE"
             self.so2_angular_basis = WignerD(mmax, Lmax)
@@ -104,7 +106,7 @@ class Representation(torch.nn.Module):
             )
 
         # === node/edge embedding ===
-        self.node_embedding = NODE_EMBEDDING[node_embedding['type']](
+        self.node_embedding = NODE_EMBEDDING[node_embedding["type"]](
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
@@ -113,7 +115,7 @@ class Representation(torch.nn.Module):
             avg_num_neighbors=avg_num_neighbors,
             bias=False,
         )
-        self.edge_embedding = EDGE_EMBEDDING[edge_embedding['type']](
+        self.edge_embedding = EDGE_EMBEDDING[edge_embedding["type"]](
             num_elements=self.num_elements,
             num_radial_basis=self.radial_basis.num_basis,
             num_channel=num_channel,
@@ -125,7 +127,8 @@ class Representation(torch.nn.Module):
             self.uie_embedding = UniversalInvariantEmbedding(
                 num_channel,
                 {
-                    k: v for k, v in universal_embedding.items() 
+                    k: v
+                    for k, v in universal_embedding.items()
                     if k in self.invariant_property
                 },
                 bias=False,
@@ -134,7 +137,7 @@ class Representation(torch.nn.Module):
         # === Edge Update ===
         self.edge_updates = torch.nn.ModuleList(
             [
-                EDGE_UPDATE[edge_update['type']](
+                EDGE_UPDATE[edge_update["type"]](
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
@@ -172,8 +175,7 @@ class Representation(torch.nn.Module):
             "bias": True,
             "node_wise_hidden": atomic_basis["node_wise_hidden"],
             "edge_wise_hidden": atomic_basis["edge_wise_hidden"],
-            "stochastic_depth": dropout['stochastic_depth'],
-
+            "stochastic_depth": dropout["stochastic_depth"],
             "num_head": atomic_basis["num_head"],
             "use_so2_edge_ace": atomic_basis["use_so2_edge_ace"],
             "so2_linear_type": atomic_basis["so2_linear_type"],
@@ -195,14 +197,16 @@ class Representation(torch.nn.Module):
         for layer in range(num_layers):
             # === Interaction ===
             self.interactions.append(
-                INTERACTION[atomic_basis['type'][layer]](
+                INTERACTION[atomic_basis["type"][layer]](
                     **for_interactions,
                     layer=layer,
                     edge_feats_channel=self.edge_updates[layer].out_dim,
-                    nonlinear=atomic_basis['nonlinear'][layer],
-                    edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
-                    irreps_in=self.node_embedding.irreps_out if layer == 0 else self.products[layer-1].irreps_out,
-                    use_graph_softmax=atomic_basis["use_graph_softmax"][layer],  
+                    nonlinear=atomic_basis["nonlinear"][layer],
+                    edge_nonlinear=atomic_basis["edge_nonlinear"][layer],
+                    irreps_in=self.node_embedding.irreps_out
+                    if layer == 0
+                    else self.products[layer - 1].irreps_out,
+                    use_graph_softmax=atomic_basis["use_graph_softmax"][layer],
                 )
             )
             inter_irreps_out = self.interactions[layer].irreps_out
@@ -215,7 +219,8 @@ class Representation(torch.nn.Module):
                         num_channel=num_channel,
                         num_elements=len(atomic_numbers),
                         config={
-                            k: v for k, v in universal_embedding.items() 
+                            k: v
+                            for k, v in universal_embedding.items()
                             if k in self.equivariant_property
                         },
                     ),
@@ -226,21 +231,21 @@ class Representation(torch.nn.Module):
 
             # === Product ===
             self.products.append(
-                PRODUCT[product_basis['type'][layer]](
+                PRODUCT[product_basis["type"][layer]](
                     layer=layer,
                     num_layers=num_layers,
                     num_elements=self.num_elements,
                     Lmax=Lmax,
                     lmax=lmax,
                     num_channel=num_channel,
-                    num_expert=product_basis['num_expert'],
-                    num_channel_per_expert=product_basis['num_channel_per_expert'],
-                    nonlinear=product_basis['nonlinear'],
+                    num_expert=product_basis["num_expert"],
+                    num_channel_per_expert=product_basis["num_channel_per_expert"],
+                    nonlinear=product_basis["nonlinear"],
                     target_irreps=target_irreps,
-                    correlation=product_basis['correlation'],
-                    l1l2=product_basis['l1l2'],     
+                    correlation=product_basis["correlation"],
+                    l1l2=product_basis["l1l2"],
                     bias=True,
-                    stochastic_depth=dropout['stochastic_depth'],
+                    stochastic_depth=dropout["stochastic_depth"],
                     parity=parity,
                     irreps_in=prod_irreps_in,
                     use_shared_expert=product_basis["use_shared_expert"],
@@ -249,9 +254,15 @@ class Representation(torch.nn.Module):
             )
             self.irreps_out = self.products[-1].irreps_out
 
-        if layer_norm['final_norm_type'] is not None:
-            self.final_norm = get_normalization_layer(layer_norm['final_norm_type'], ls=target_irreps.ls, num_channels=num_channel)
-            self.final_reshape = LayoutTransform([(num_channel, ir) for _, ir in target_irreps])
+        if layer_norm["final_norm_type"] is not None:
+            self.final_norm = get_normalization_layer(
+                layer_norm["final_norm_type"],
+                ls=target_irreps.ls,
+                num_channels=num_channel,
+            )
+            self.final_reshape = LayoutTransform(
+                [(num_channel, ir) for _, ir in target_irreps]
+            )
 
         if self.use_dens:
             self.irreps_forces_sh = o3.Irreps.spherical_harmonics(lmax=Lmax)
@@ -283,7 +294,7 @@ class Representation(torch.nn.Module):
             #             nonlinear=atomic_basis['nonlinear'][layer],
             #             edge_nonlinear=atomic_basis['edge_nonlinear'][layer],
             #             irreps_in=self.products[-1].irreps_out,
-            #             use_graph_softmax=False,  
+            #             use_graph_softmax=False,
             #         )
             #     )
             #     self.decouple_products.append(
@@ -297,7 +308,7 @@ class Representation(torch.nn.Module):
             #             num_hidden_channel=product_basis['num_channel'],
             #             target_irreps=target_irreps,
             #             correlation=product_basis['correlation'],
-            #             l1l2=product_basis['l1l2'],     
+            #             l1l2=product_basis['l1l2'],
             #             resolution=product_basis['resolution'],
             #             bias=True,
             #             stochastic_depth=0.0,
@@ -308,16 +319,16 @@ class Representation(torch.nn.Module):
             #     )
 
     def forward(self, data: Dict[str, torch.Tensor], graph) -> Dict[str, torch.Tensor]:
-  
+
         # === edge initialize (radial) ===
         radial_basis, cutoff = self.radial_basis(
             graph.edge_length,
-            data['node_attrs'],
-            data['edge_index'],
+            data["node_attrs"],
+            data["edge_index"],
             self.atomic_numbers,
             graph.dcutoff,
         )
-        
+
         # === angular basis ===
         edge_attrs = None
         wigner = None
@@ -333,18 +344,20 @@ class Representation(torch.nn.Module):
             #     enabled=False,
             # ):
             #     wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector.to(dtype=compute_dtype))
-                wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
+            wigner, wigner_inv = self.so2_angular_basis.get_wigner(graph.edge_vector)
         if self.use_o3:
-            edge_attrs = self.o3_angular_basis(graph.edge_vector / graph.edge_length) # have added eps in adapter.py
-            
+            edge_attrs = self.o3_angular_basis(
+                graph.edge_vector / graph.edge_length
+            )  # have added eps in adapter.py
+
         # === node initialize ===
         node_feats = self.node_embedding(
-            data['node_attrs'],
+            data["node_attrs"],
             radial_basis,
-            data['edge_index'],
+            data["edge_index"],
             edge_attrs,
             cutoff,
-            wigner, 
+            wigner,
             wigner_inv,
         )
         if hasattr(self, "uie_embedding"):
@@ -355,40 +368,44 @@ class Representation(torch.nn.Module):
 
         edge_feats = self.edge_embedding(
             node_feats,
-            data['node_attrs'],
+            data["node_attrs"],
             radial_basis,
-            data['edge_index'],
+            data["edge_index"],
             cutoff,
         )
-  
+
         forces_embedding = None
         noise_mask_tensor = None
         dens_batch_mask_tensor = None
         if self.training and self.use_dens:
-            forces_embedding, noise_mask_tensor, dens_batch_mask_tensor = self._forward_dens_forces_encoding(data)
-        
+            forces_embedding, noise_mask_tensor, dens_batch_mask_tensor = (
+                self._forward_dens_forces_encoding(data)
+            )
+
         # === representation Learning ===
         prev_feats = []
-        for idx, (edge_update, inter, prod) in enumerate(zip(self.edge_updates, self.interactions, self.products)):
-            node_attrs_total = data['node_attrs']
-            node_attrs_slice = data['node_attrs']
+        for idx, (edge_update, inter, prod) in enumerate(
+            zip(self.edge_updates, self.interactions, self.products)
+        ):
+            node_attrs_total = data["node_attrs"]
+            node_attrs_slice = data["node_attrs"]
             this_edge_feats = edge_update(
                 node_feats,
-                node_attrs_total, 
-                edge_feats, 
-                data['edge_index'],
+                node_attrs_total,
+                edge_feats,
+                data["edge_index"],
                 cutoff,
             )
             if graph.lmp and idx > 0:
-                node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]]
+                node_attrs_slice = node_attrs_slice[: graph.lmp_natoms[0]]
             node_feats, sc = inter(
                 node_feats,
-                node_attrs_total, 
-                node_attrs_slice, 
+                node_attrs_total,
+                node_attrs_slice,
                 radial_basis,
-                this_edge_feats, 
-                edge_attrs, 
-                data['edge_index'],
+                this_edge_feats,
+                edge_attrs,
+                data["edge_index"],
                 cutoff,
                 graph,
                 wigner,
@@ -396,33 +413,37 @@ class Representation(torch.nn.Module):
                 data["batch"],
             )
             if graph.lmp and idx == 0:
-                node_attrs_slice = node_attrs_slice[:graph.lmp_natoms[0]] 
-            if self.uee_embeddings is not None: 
-                node_feats = self.uee_embeddings[idx](node_feats, node_attrs_slice, data)
+                node_attrs_slice = node_attrs_slice[: graph.lmp_natoms[0]]
+            if self.uee_embeddings is not None:
+                node_feats = self.uee_embeddings[idx](
+                    node_feats, node_attrs_slice, data
+                )
             if forces_embedding is not None and idx == 0:
                 node_feats = node_feats + forces_embedding
             node_feats = prod(node_feats, node_attrs_slice, sc, data["batch"])
-            if idx == self.num_layers -1 and hasattr(self, "final_norm"):
-                node_feats = self.final_reshape.inverse(self.final_norm(self.final_reshape(node_feats)))
+            if idx == self.num_layers - 1 and hasattr(self, "final_norm"):
+                node_feats = self.final_reshape.inverse(
+                    self.final_norm(self.final_reshape(node_feats))
+                )
             prev_feats.append(node_feats)
 
         decouple_node_feats1 = None
         decouple_node_feats2 = None
         # if self.use_dens:
-       
+
         #     decouple_edge_feats1 = self.decouple_edge_updates[0](
         #         node_feats,
-        #         node_attrs_total, 
-        #         edge_feats, 
+        #         node_attrs_total,
+        #         edge_feats,
         #         data['edge_index'],
         #         cutoff,
         #     )
         #     decouple_node_feats1, sc = self.decouple_interactions[0](
         #         node_feats,
-        #         node_attrs_total, 
-        #         node_attrs_slice, 
-        #         decouple_edge_feats1, 
-        #         edge_attrs, 
+        #         node_attrs_total,
+        #         node_attrs_slice,
+        #         decouple_edge_feats1,
+        #         edge_attrs,
         #         data['edge_index'],
         #         cutoff,
         #         graph,
@@ -431,17 +452,17 @@ class Representation(torch.nn.Module):
 
         #     decouple_edge_feats2 = self.decouple_edge_updates[1](
         #         node_feats,
-        #         node_attrs_total, 
-        #         edge_feats, 
+        #         node_attrs_total,
+        #         edge_feats,
         #         data['edge_index'],
         #         cutoff,
         #     )
         #     decouple_node_feats2, sc = self.decouple_interactions[1](
         #         node_feats,
-        #         node_attrs_total, 
-        #         node_attrs_slice, 
-        #         decouple_edge_feats2, 
-        #         edge_attrs, 
+        #         node_attrs_total,
+        #         node_attrs_slice,
+        #         decouple_edge_feats2,
+        #         edge_attrs,
         #         data['edge_index'],
         #         cutoff,
         #         graph,
@@ -458,42 +479,43 @@ class Representation(torch.nn.Module):
             "decouple_node_feats2": decouple_node_feats2,
         }
 
-
     def _generate_dens_data(self, data: Dict[str, torch.Tensor]):
-        num_atoms = data['node_attrs'].size(0)
-        num_graphs = len(data['ptr']) - 1
+        num_atoms = data["node_attrs"].size(0)
+        num_graphs = len(data["ptr"]) - 1
         # dtype = data['node_attrs'].dtype
-        device = data['node_attrs'].device
+        device = data["node_attrs"].device
 
-        if 'direct_forces' in data:
-            forces_data = data['direct_forces']
+        if "direct_forces" in data:
+            forces_data = data["direct_forces"]
         else:
-            forces_data = data['forces']
-        if 'noise_mask' in data:
-            noise_mask = data['noise_mask'].view(-1, 1)
+            forces_data = data["forces"]
+        if "noise_mask" in data:
+            noise_mask = data["noise_mask"].view(-1, 1)
         else:
             noise_mask = torch.ones((num_atoms, 1), dtype=torch.bool, device=device)
-        if 'dens_batch_mask' in data:
-            dens_batch_mask = data['dens_batch_mask'].view(-1, 1)
+        if "dens_batch_mask" in data:
+            dens_batch_mask = data["dens_batch_mask"].view(-1, 1)
         else:
-            dens_batch_mask = torch.ones((num_graphs, 1), dtype=torch.bool, device=device)
+            dens_batch_mask = torch.ones(
+                (num_graphs, 1), dtype=torch.bool, device=device
+            )
 
         forces_sh = o3.spherical_harmonics(
             l=self.irreps_forces_sh,
             x=forces_data,
             normalize=True,
-            normalization='component'
+            normalization="component",
         )
-        
+
         return forces_data, forces_sh, noise_mask, dens_batch_mask
-    
+
     def _forward_dens_forces_encoding(self, data):
-        forces_data, forces_sh, noise_mask, dens_batch_mask = self._generate_dens_data(data)
+        forces_data, forces_sh, noise_mask, dens_batch_mask = self._generate_dens_data(
+            data
+        )
         forces_norm = forces_data.norm(dim=-1, keepdim=True)
         forces_norm = forces_norm / math.sqrt(3.0)
-        forces_embedding = forces_sh * forces_norm # [node, 3]
+        forces_embedding = forces_sh * forces_norm  # [node, 3]
         forces_embedding = self.forces_embedding(forces_embedding)
         forces_embedding = forces_embedding * noise_mask
         return forces_embedding, noise_mask, dens_batch_mask
-
-

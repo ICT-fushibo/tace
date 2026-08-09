@@ -6,19 +6,15 @@
 import math
 from typing import Dict, Union
 
-
 import torch
 from e3nn import o3
 
 from tace.utils.env import acceleration_enabled
 
-from ..linear import e3nnLinear, e3nnElementLinear, e3nnMoEElementLinear
-
-
+from ..linear import e3nnElementLinear, e3nnLinear, e3nnMoEElementLinear
 from .base import Product
-from .fused import uuuTensorProduct
 from .dropout import GraphDropPath
-
+from .fused import uuuTensorProduct
 
 
 class CgtpACE(Product):
@@ -29,8 +25,8 @@ class CgtpACE(Product):
     all channels, forming a highly expressive product basis.
 
     Note:
-        It is recommended to use no more than 64 channels for each expert, as 
-        increasing the number of channels beyond this does not necessarily lead 
+        It is recommended to use no more than 64 channels for each expert, as
+        increasing the number of channels beyond this does not necessarily lead
         to better performance and may introduce unnecessary computational overhead.
     """
 
@@ -59,7 +55,6 @@ class CgtpACE(Product):
                 coefs_cls = e3nnMoEElementLinear
                 for_coefs["num_experts"] = self.num_expert
 
-        
         self.use_bilinear_ace = self.nonlinear_type == "bilineargate"
         self.aces = torch.nn.ModuleList()
         self.coefs = torch.nn.ModuleList()
@@ -67,7 +62,9 @@ class CgtpACE(Product):
             self.shared_coefs = torch.nn.ModuleList()
         self.coefs.append(
             coefs_cls(
-                o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]).simplify(),
+                o3.Irreps(
+                    [(self.num_hidden_channel, ir) for _, ir in self.irreps_hidden]
+                ).simplify(),
                 **for_coefs,
             )
         )
@@ -85,30 +82,30 @@ class CgtpACE(Product):
         self.irreps_base = self.irreps_hidden
         if self.use_bilinear_ace:
             assert self.correlation == 2
-            self.irreps_base = (
-                self.irreps_hidden
-                + o3.Irreps([(self.num_hidden_channel, o3.Irrep("0e"))])
+            self.irreps_base = self.irreps_hidden + o3.Irreps(
+                [(self.num_hidden_channel, o3.Irrep("0e"))]
             )
 
         product_in1 = self.irreps_hidden
-        warn_without_eqt = (
-            self.correlation >= 3 and not acceleration_enabled("eqt")
-        )
+        warn_without_eqt = self.correlation >= 3 and not acceleration_enabled("eqt")
 
-        for nu in range(2, self.correlation+1):
+        for nu in range(2, self.correlation + 1):
             this_ace = uuuTensorProduct(
                 irreps_in1=product_in1,
                 irreps_in2=self.irreps_base,
-                irreps_out=self.irreps_tp_out_list[nu-2],
+                irreps_out=self.irreps_tp_out_list[nu - 2],
                 l1l2=self.l1l2,
                 trainable=self.use_bilinear_ace,
                 warning=warn_without_eqt and nu == 2,
                 identical_inputs=nu == 2 and not self.use_bilinear_ace,
             )
             self.aces.append(this_ace)
-            self.coefs.append(coefs_cls(
-                o3.Irreps([(self.num_hidden_channel, ir) for _, ir in this_ace.irreps_out]).simplify(), 
-                **for_coefs,
+            self.coefs.append(
+                coefs_cls(
+                    o3.Irreps(
+                        [(self.num_hidden_channel, ir) for _, ir in this_ace.irreps_out]
+                    ).simplify(),
+                    **for_coefs,
                 )
             )
             if hasattr(self, "shared_coefs"):
@@ -140,8 +137,7 @@ class CgtpACE(Product):
                 [(2 * mul, ir) for mul, ir in self.irreps_hidden]
             )
             self.irreps_linear_up = (
-                o3.Irreps(f"{self.num_ace_gate_weights}x0e")
-                + self.irreps_double_hidden
+                o3.Irreps(f"{self.num_ace_gate_weights}x0e") + self.irreps_double_hidden
             )
             self.linear_up = e3nnLinear(
                 self.irreps_in,
@@ -152,21 +148,26 @@ class CgtpACE(Product):
             self._hidden_muls = [mul for mul, _ in self.irreps_hidden]
             self._hidden_ir_dims = [ir.dim for _, ir in self.irreps_hidden]
         else:
-            self.linear_up = e3nnLinear(
-                self.irreps_in,
-                self.irreps_hidden,
-                bias=self.use_bias,
-            ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
-
+            self.linear_up = (
+                e3nnLinear(
+                    self.irreps_in,
+                    self.irreps_hidden,
+                    bias=self.use_bias,
+                )
+                if self.num_channel != self.num_hidden_channel
+                else torch.nn.Identity()
+            )
 
         self.linear = e3nnLinear(
-            o3.Irreps([(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]),
+            o3.Irreps(
+                [(self.num_hidden_channel, ir) for _, ir in self.irreps_coefs_out]
+            ),
             self.irreps_out,
             bias=self.use_bias,
-        )    
+        )
 
         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+            self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
     def _merge_shared_expert(
         self,
@@ -183,10 +184,8 @@ class CgtpACE(Product):
         if not self.use_bilinear_ace:
             return x, None, None
 
-        ace_weights = torch.nn.functional.silu(
-            x[:, :self.num_ace_gate_weights]
-        )
-        double_features = x[:, self.num_ace_gate_weights:]
+        ace_weights = torch.nn.functional.silu(x[:, : self.num_ace_gate_weights])
+        double_features = x[:, self.num_ace_gate_weights :]
 
         node_fields = []
         base_fields = []
@@ -215,12 +214,12 @@ class CgtpACE(Product):
         return node_feats, base_feats, ace_weights
 
     def forward(
-            self, 
-            node_feats: torch.Tensor, 
-            node_attrs: torch.Tensor,
-            sc: torch.Tensor,
-            batch: torch.Tensor,
-        ) -> torch.Tensor:
+        self,
+        node_feats: torch.Tensor,
+        node_attrs: torch.Tensor,
+        sc: torch.Tensor,
+        batch: torch.Tensor,
+    ) -> torch.Tensor:
 
         if self.agnostic:
             for_coefs = {}
@@ -240,18 +239,18 @@ class CgtpACE(Product):
             else None
         )
 
-        for nu in range(2, self.correlation+1):
+        for nu in range(2, self.correlation + 1):
             if self.use_bilinear_ace:
-                corr_feats[nu] = self.aces[nu-2](
-                    corr_feats[nu-1],
+                corr_feats[nu] = self.aces[nu - 2](
+                    corr_feats[nu - 1],
                     base_feats,
-                    ace_weights[:, self._ace_gate_slices[nu-2]],
+                    ace_weights[:, self._ace_gate_slices[nu - 2]],
                 )
             else:
-                corr_feats[nu] = self.aces[nu-2](corr_feats[nu-1], node_feats)
-            outs = outs + self.coefs[nu-1](corr_feats[nu], **for_coefs)
+                corr_feats[nu] = self.aces[nu - 2](corr_feats[nu - 1], node_feats)
+            outs = outs + self.coefs[nu - 1](corr_feats[nu], **for_coefs)
             if shared_outs is not None:
-                shared_outs = shared_outs + self.shared_coefs[nu-1](corr_feats[nu])
+                shared_outs = shared_outs + self.shared_coefs[nu - 1](corr_feats[nu])
 
         if shared_outs is not None:
             outs = self._merge_shared_expert(outs, shared_outs)
@@ -260,12 +259,12 @@ class CgtpACE(Product):
 
         if hasattr(self, "stochastic_depth"):
             outs = self.stochastic_depth(outs, batch)
-        
+
         if sc is not None:
             outs = outs + sc
 
         return outs
-  
+
 
 # class GtpACE(Product):
 #     """
@@ -277,10 +276,10 @@ class CgtpACE(Product):
 #     expansion paths.
 
 #     As a result, increasing the correlation order does not always lead to improved
-#     accuracy. 
+#     accuracy.
 
-#     In practice, the grid-processing operation can be fused with the linear layer. 
-#     However, considering modules such as LoRA, we do not perform such fusion for the sake of 
+#     In practice, the grid-processing operation can be fused with the linear layer.
+#     However, considering modules such as LoRA, we do not perform such fusion for the sake of
 #     simplicity and flexibility.
 #     """
 
@@ -296,7 +295,7 @@ class CgtpACE(Product):
 #         ) if self.num_channel != self.num_hidden_channel else torch.nn.Identity()
 
 #         self.reshape1 = LayoutTransform(self.irreps_hidden)
- 
+
 #         self.grid = SO3Grid(
 #             lmax=self.irreps_in.lmax,
 #             mmax=self.irreps_in.lmax,
@@ -322,18 +321,18 @@ class CgtpACE(Product):
 #         )
 
 #         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
 #     def forward(
-#             self, 
-#             node_feats: torch.Tensor, 
+#             self,
+#             node_feats: torch.Tensor,
 #             node_attrs: torch.Tensor,
 #             sc: torch.Tensor,
 #             batch: torch.Tensor,
 #         ) -> torch.Tensor:
 
 #         node_feats = self.linear_up(node_feats)
-        
+
 #         outs = self.coefs[0](node_feats, node_attrs)
 #         node_feats = self.reshape1(node_feats)
 #         base_grid = self.grid.to_grid(node_feats)
@@ -347,7 +346,7 @@ class CgtpACE(Product):
 #         for nu in range(2, self.correlation + 1):
 #             this_corr_feats = self.reshape1.inverse(self.grid.from_grid(corr_feats_list[nu-2]))
 #             outs = outs + self.coefs[nu-1](this_corr_feats, node_attrs)
-           
+
 #         outs = self.linear(outs)
 
 #         if hasattr(self, "stochastic_depth"):
@@ -356,7 +355,7 @@ class CgtpACE(Product):
 #         if sc is not None:
 #             outs = outs + sc
 
-#         return outs   
+#         return outs
 
 
 # class MACE(Product):
@@ -392,15 +391,15 @@ class CgtpACE(Product):
 #             self.irreps_coefs_out,
 #             self.irreps_out,
 #             bias=self.use_bias
-#         )    
+#         )
 
 #         if (self.layer > 0 or self.use_first_dropout) and self.stochastic_depth_p > 0.0:
-#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p) 
+#             self.stochastic_depth = GraphDropPath(self.stochastic_depth_p)
 
 
 #     def forward(
-#         self, 
-#         node_feats: torch.Tensor, 
+#         self,
+#         node_feats: torch.Tensor,
 #         node_attrs: torch.Tensor,
 #         sc: torch.Tensor,
 #         batch: torch.Tensor,
@@ -421,10 +420,10 @@ class CgtpACE(Product):
 #             outs = self.symmetric_contractions(node_feats, node_attrs)
 
 #         outs = self.linear(outs)
-        
+
 #         if hasattr(self, "stochastic_depth"):
 #             outs = self.stochastic_depth(outs, batch)
-        
+
 #         if sc is not None:
 #             outs = outs + sc
 
@@ -436,16 +435,11 @@ PRODUCT: Dict[str, torch.nn.Module] = {
     "coupled": CgtpACE,
     "cgtp": CgtpACE,
     "glu": CgtpACE,
-
     # "spectral": GtpACE,
     # "grid": GtpACE,
     # "gtp": GtpACE,
-
     # "mace": MACE,
-
     # "so2": So2ACE,
-
     # "vstp": VstpACE,
-
     # "asym": ASymmetricContractionACE,
 }

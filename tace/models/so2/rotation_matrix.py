@@ -2,14 +2,14 @@
 # Authors: Zemin Xu
 # License: MIT, see LICENSE.md
 ################################################################################
-'''
+"""
 The rotation matrix constructed here aligns the edge with the y-axis [0,1,0].
 
 For details on obtaining a rotation matrix from quaternions, see:
 https://en.wikipedia.org/wiki/Hopf_fibration#Explicit_formulae
 and
 https://github.com/facebookresearch/fairchem/blob/main/src/fairchem/core/models/uma/common/quaternion/quaternion_utils.py
-'''
+"""
 
 import torch
 
@@ -77,8 +77,12 @@ def init_edge_rot_mat_quaternion(
 ) -> torch.Tensor:
     edge_unit = edge_distance_vec / _norm(edge_distance_vec, eps)
     x, y, z = edge_unit.unbind(dim=-1)
-    q_pos = _quaternion_normalize(torch.stack([1.0 + y, -z, torch.zeros_like(x), x], dim=-1), eps)
-    q_neg = _quaternion_normalize(torch.stack([-z, 1.0 - y, x, torch.zeros_like(x)], dim=-1), eps)
+    q_pos = _quaternion_normalize(
+        torch.stack([1.0 + y, -z, torch.zeros_like(x), x], dim=-1), eps
+    )
+    q_neg = _quaternion_normalize(
+        torch.stack([-z, 1.0 - y, x, torch.zeros_like(x)], dim=-1), eps
+    )
     blend = _smooth_step_cinf(0.5 * (y + 1.0))
     quaternion = _quaternion_nlerp(q_neg, q_pos, blend, eps)
     return _quaternion_to_rotation_matrix(quaternion)

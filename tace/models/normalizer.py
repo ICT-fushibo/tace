@@ -5,7 +5,7 @@
 
 
 # class Normalizer(torch.nn.Module):
-   
+
 #     def __init__(
 #         self,
 #         mean: Union[torch.nn.Module, float] = 0.0,
@@ -29,7 +29,7 @@
 
 #     def forward(self, normed_tensor: torch.Tensor) -> torch.Tensor:
 #         return self.denorm(normed_tensor)
-    
+
 #     def __repr__(self):
 #         mean = self.mean.item()
 #         rmsd = self.rmsd.item()

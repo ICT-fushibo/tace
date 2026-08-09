@@ -111,12 +111,12 @@ from __future__ import (
     annotations,
 )
 
+import logging
 import math
 from typing import (
     TYPE_CHECKING,
     Any,
 )
-import logging
 
 import torch
 import torch._dynamo.config as _dynamo_config
@@ -738,7 +738,7 @@ def get_adam_route(
         return "adam"
     if leaf_name.startswith("adamw_"):
         return "adamw"
-    
+
     # For TACE
     if leaf_name.endswith("_norm"):
         return "adam"
@@ -750,9 +750,9 @@ def get_adam_route(
         return "adam"
     if leaf_name == "beta":
         return "adam"
-    if 'affine' in leaf_name:
+    if "affine" in leaf_name:
         return "adam"
-    
+
     return "muon"
 
 

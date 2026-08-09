@@ -3,35 +3,33 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-from typing import List, Tuple, Dict, Tuple, Callable
-
+from typing import Callable, Dict, List, Tuple
 
 import torch
 from e3nn import o3
 
-
 from tace.utils.torch_scatter import scatter_sum
 
-
 to_irrep = {
-    'energy': ['0e'],
-    'charges': ['0e'],
-    'direct_forces': ['1o'],
-    'direct_stress': ['0e', '2e'],
-    'direct_virials': ['0e', '2e'],
-    'direct_dipole': ['1o'],
-    'direct_polarizability': ['0e', '2e'],
-    'direct_diagonal_hessian': ['0e', '2e'],
-    'abs_final_collinear_magmoms': ['0e'], #TODO, check
+    "energy": ["0e"],
+    "charges": ["0e"],
+    "direct_forces": ["1o"],
+    "direct_stress": ["0e", "2e"],
+    "direct_virials": ["0e", "2e"],
+    "direct_dipole": ["1o"],
+    "direct_polarizability": ["0e", "2e"],
+    "direct_diagonal_hessian": ["0e", "2e"],
+    "abs_final_collinear_magmoms": ["0e"],  # TODO, check
 }
 
 
 def get_target_irreps(target_property: List[str]) -> o3.Irreps:
-    target_irreps: List[str] = ['0e']
+    target_irreps: List[str] = ["0e"]
     for p in target_property:
         target_irreps.extend(to_irrep.get(p, []))
     # return o3.Irreps(list(set(target_irreps)))
     return list(set(target_irreps))
+
 
 def expand_dims_to(T: torch.Tensor, n_dim: int, dim: int = -1) -> torch.Tensor:
     while T.ndim < n_dim:
@@ -50,9 +48,9 @@ def compute_fixed_charge_dipole(
 
 
 def compute_symmetric_displacement(
-        data: Dict[str, torch.Tensor], num_graphs: int
-    ) -> torch.Tensor:
-    
+    data: Dict[str, torch.Tensor], num_graphs: int
+) -> torch.Tensor:
+
     displacement = torch.zeros(
         (num_graphs, 3, 3),
         dtype=data["positions"].dtype,
@@ -84,14 +82,14 @@ def compute_symmetric_displacement(
 def compute_atomic_virials_stresses(
     edge_vector: torch.Tensor,
     edge_forces: torch.Tensor,
-    edge_index: torch.Tensor, 
-    lattice: torch.Tensor, 
+    edge_index: torch.Tensor,
+    lattice: torch.Tensor,
     batch: torch.Tensor,
     num_nodes: torch.Tensor,
     compute_atomic_virials: bool,
     compute_atomic_stresses: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    
+
     atomic_virials = None
     atomic_stresses = None
 
@@ -109,7 +107,9 @@ def compute_atomic_virials_stresses(
         volume = torch.linalg.det(lattice).abs().unsqueeze(-1)
         atomic_stresses = -1 * atomic_virials / volume[batch].view(-1, 1, 1)
         atomic_stresses = torch.where(
-            torch.abs(atomic_stresses) < 1e10, atomic_stresses, torch.zeros_like(atomic_stresses)
+            torch.abs(atomic_stresses) < 1e10,
+            atomic_stresses,
+            torch.zeros_like(atomic_stresses),
         )
 
     return atomic_virials, atomic_stresses
@@ -185,7 +185,7 @@ def build_grad_outputs(
     total_atoms: int,
     device: torch.device,
 ) -> torch.Tensor:
-    
+
     all_samples = []
 
     # Convert local atom indices to global (batch-fidelity_idx) indices
@@ -195,14 +195,14 @@ def build_grad_outputs(
         s[:, 0] += offset  # local -> global atom index
         all_samples.append(s)
 
-    all_samples = torch.cat(all_samples, dim=0) # 1D, effective global atoms
+    all_samples = torch.cat(all_samples, dim=0)  # 1D, effective global atoms
     K_total = all_samples.shape[0]
 
     grad_outputs = torch.zeros(
         (K_total, total_atoms, 3),
         device=device,
         dtype=all_samples.dtype,
-    ) # TODO, dtype may have bug
+    )  # TODO, dtype may have bug
 
     grad_outputs[
         torch.arange(K_total, device=device),
@@ -227,6 +227,7 @@ def compute_force_jacobian(
             retain_graph=True,
             create_graph=create_graph,
         )[0]
+
     return torch.vmap(single_grad)(grad_outputs)
 
 
@@ -269,7 +270,7 @@ def sample_force_jacobian(
             n_atoms=n_atoms,
             num_samples=num_samples,
             device=device,
-        ) # [num_samples, 2]
+        )  # [num_samples, 2]
         samples_per_graph.append(samples)
 
     grad_outputs = build_grad_outputs(

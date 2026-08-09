@@ -10,7 +10,6 @@ from typing import Iterable
 
 from .mse_fn import LOSS_FN
 
-
 LOSS_MODULES = (
     "mse_fn",
     "mae_fn",
@@ -33,16 +32,13 @@ def ensure_loss_functions_registered() -> None:
 
 
 def _natural_sort_key(value: str) -> list[object]:
-    return [
-        int(part) if part.isdigit() else part
-        for part in re.split(r"(\d+)", value)
-    ]
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", value)]
 
 
 def _loss_property_name(loss_name: str) -> str:
     for prefix in LOSS_NAME_PREFIXES:
         if loss_name.startswith(prefix):
-            return loss_name[len(prefix):]
+            return loss_name[len(prefix) :]
     return loss_name
 
 
@@ -91,9 +87,7 @@ def format_unknown_loss_error(unknown_loss_names: Iterable[str]) -> str:
 def validate_loss_function_names(loss_function_names: Iterable[str]) -> None:
     ensure_loss_functions_registered()
     unknown = [
-        loss_name
-        for loss_name in loss_function_names
-        if loss_name not in LOSS_FN
+        loss_name for loss_name in loss_function_names if loss_name not in LOSS_FN
     ]
     if unknown:
         raise ValueError(format_unknown_loss_error(unknown))

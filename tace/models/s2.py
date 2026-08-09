@@ -4,28 +4,24 @@
 ################################################################################
 
 import copy
-import math
 import logging
+import math
 from typing import Union
-
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from e3nn import o3
 
-
 from .so2 import CoefficientMappingModule
-
-
 
 
 class FibonacciLattice:
     @staticmethod
     def generate(num_points: int) -> torch.Tensor:
-        assert (
-            isinstance(num_points, int) and num_points > 0
-        ), "num_points musst should be int and > 0"
+        assert isinstance(num_points, int) and num_points > 0, (
+            "num_points musst should be int and > 0"
+        )
         GOLDEN_ANGLE = math.pi * (3 - math.sqrt(5))
         i = torch.arange(num_points, dtype=torch.float32)
         z = 1 - 2 * i / (num_points - 1) if num_points > 1 else torch.zeros(1)
@@ -97,9 +93,9 @@ class HealpixLattice:
                 "Failed to import healpy. Please make sure it is installed correctly. You can install it via 'conda install -c conda-forge healpy'."
             ) from e
 
-        assert (
-            isinstance(num_points, int) and num_points > 0
-        ), "num_points musst should be int and > 0"
+        assert isinstance(num_points, int) and num_points > 0, (
+            "num_points musst should be int and > 0"
+        )
         nside = int((num_points / 12) ** 0.5)
 
         if 12 * nside**2 != num_points:
@@ -385,7 +381,6 @@ class RandomSampling:
             plt.show()
 
 
-
 class SO3Grid(torch.nn.Module):
     """
     Helper functions for grid representation of the irreps
@@ -395,7 +390,7 @@ class SO3Grid(torch.nn.Module):
         mmax (int):   Maximum order of the spherical harmonics
         normalization (str):    Default: 'component'
                                 How grid samples are normalized.
-        resolution_list (list:int):  
+        resolution_list (list:int):
                                 Default: None
                                 List of grid resolutions corresponding to `lat_resolution` and `long_resolution`.
                                 Set to `None` to use default resolutions.
@@ -403,16 +398,17 @@ class SO3Grid(torch.nn.Module):
                                 Whether to change the layout of m components.
                                 If `False`, the layout of m is (0), (-1, 0, +1), (-2, -1, 0, +1, +2), ...
                                 If `True`, the layout of m is (0, 0, ...), (1, 1, ...), ...
-                                The second one is used in SO(2) linear operations to avoid redundant 
+                                The second one is used in SO(2) linear operations to avoid redundant
                                 matrix multiplications.
     """
+
     def __init__(
         self,
         lmax,
         mmax,
-        normalization='component',
+        normalization="component",
         resolution_list=None,
-        use_m_primary=False
+        use_m_primary=False,
     ):
         super().__init__()
         self.lmax = lmax
@@ -430,16 +426,14 @@ class SO3Grid(torch.nn.Module):
             self.long_resolution = resolution_list[1]
 
         mapping = CoefficientMappingModule(
-            lmax=self.lmax,
-            mmax=self.lmax,
-            use_rotate_inv_rescale=False
+            lmax=self.lmax, mmax=self.lmax, use_rotate_inv_rescale=False
         )
 
         to_grid = o3.ToS2Grid(
             self.lmax,
             (self.lat_resolution, self.long_resolution),
-            normalization=normalization, #normalization="integral",
-            device='cpu',
+            normalization=normalization,  # normalization="integral",
+            device="cpu",
         )
         to_grid_mat = torch.einsum("mbi, am -> bai", to_grid.shb, to_grid.sha).detach()
         # rescale based on mmax
@@ -447,43 +441,52 @@ class SO3Grid(torch.nn.Module):
             for l in range(lmax + 1):
                 if l <= mmax:
                     continue
-                start_idx = l ** 2
+                start_idx = l**2
                 length = 2 * l + 1
                 rescale_factor = math.sqrt(length / (2 * mmax + 1))
-                to_grid_mat[:, :, start_idx : (start_idx + length)] = to_grid_mat[:, :, start_idx : (start_idx + length)] * rescale_factor
+                to_grid_mat[:, :, start_idx : (start_idx + length)] = (
+                    to_grid_mat[:, :, start_idx : (start_idx + length)] * rescale_factor
+                )
         to_grid_mat = to_grid_mat[:, :, mapping.coefficient_idx(self.lmax, self.mmax)]
 
         from_grid = o3.FromS2Grid(
             (self.lat_resolution, self.long_resolution),
             self.lmax,
-            normalization=normalization, #normalization="integral",
-            device='cpu',
+            normalization=normalization,  # normalization="integral",
+            device="cpu",
         )
-        from_grid_mat = torch.einsum("am, mbi -> bai", from_grid.sha, from_grid.shb).detach()
+        from_grid_mat = torch.einsum(
+            "am, mbi -> bai", from_grid.sha, from_grid.shb
+        ).detach()
         # rescale based on mmax
         if lmax != mmax:
             for l in range(lmax + 1):
                 if l <= mmax:
                     continue
-                start_idx = l ** 2
+                start_idx = l**2
                 length = 2 * l + 1
                 rescale_factor = math.sqrt(length / (2 * mmax + 1))
-                from_grid_mat[:, :, start_idx : (start_idx + length)] = from_grid_mat[:, :, start_idx : (start_idx + length)] * rescale_factor
-        from_grid_mat = from_grid_mat[:, :, mapping.coefficient_idx(self.lmax, self.mmax)]
+                from_grid_mat[:, :, start_idx : (start_idx + length)] = (
+                    from_grid_mat[:, :, start_idx : (start_idx + length)]
+                    * rescale_factor
+                )
+        from_grid_mat = from_grid_mat[
+            :, :, mapping.coefficient_idx(self.lmax, self.mmax)
+        ]
 
         # flatten and permute
-        to_grid_mat   = to_grid_mat.flatten(0, 1)
+        to_grid_mat = to_grid_mat.flatten(0, 1)
         from_grid_mat = from_grid_mat.flatten(0, 1)
         from_grid_mat = from_grid_mat.permute(1, 0)
 
         # change the layout of m components
         if self.use_m_primary:
             temp = CoefficientMappingModule(self.lmax, self.mmax, False)
-            to_grid_mat = torch.einsum('ai, ji -> aj', to_grid_mat, temp.to_m)
-            from_grid_mat = torch.einsum('ia, ji -> ja', from_grid_mat, temp.to_m)
+            to_grid_mat = torch.einsum("ai, ji -> aj", to_grid_mat, temp.to_m)
+            from_grid_mat = torch.einsum("ia, ji -> ja", from_grid_mat, temp.to_m)
 
-        self.register_buffer('to_grid_mat',  to_grid_mat)
-        self.register_buffer('from_grid_mat', from_grid_mat)
+        self.register_buffer("to_grid_mat", to_grid_mat)
+        self.register_buffer("from_grid_mat", from_grid_mat)
 
     def get_to_grid_mat(self):
         return self.to_grid_mat
@@ -492,16 +495,21 @@ class SO3Grid(torch.nn.Module):
         return self.from_grid_mat
 
     def to_grid(self, embedding):
-        grid = torch.einsum('aj, njc -> nac', self.to_grid_mat, embedding)
+        grid = torch.einsum("aj, njc -> nac", self.to_grid_mat, embedding)
         return grid
 
     def from_grid(self, grid):
-        embedding = torch.einsum('ja, nac -> njc', self.from_grid_mat, grid)
+        embedding = torch.einsum("ja, nac -> njc", self.from_grid_mat, grid)
         return embedding
 
-
     def extra_repr(self):
-        return 'lmax={}, mmax={}, lat_resolution={}, long_resolution={}, use_m_primary={}'.format(self.lmax, self.mmax, self.lat_resolution, self.long_resolution, self.use_m_primary)
+        return "lmax={}, mmax={}, lat_resolution={}, long_resolution={}, use_m_primary={}".format(
+            self.lmax,
+            self.mmax,
+            self.lat_resolution,
+            self.long_resolution,
+            self.use_m_primary,
+        )
 
 
 class SO3VstpGrid(torch.nn.Module):
@@ -580,16 +588,14 @@ class SO3VstpGrid(torch.nn.Module):
                 if l <= self.mmax:
                     continue
 
-                start_idx = l ** 2
+                start_idx = l**2
                 length = 2 * l + 1
-                rescale_factor = math.sqrt(
-                    length / (2 * self.mmax + 1)
-                )
+                rescale_factor = math.sqrt(length / (2 * self.mmax + 1))
 
-                to_grid_mat[:, :, start_idx:start_idx + length] *= rescale_factor
-                from_grid_mat[:, :, start_idx:start_idx + length] *= rescale_factor
-                d_beta_mat[:, :, start_idx:start_idx + length] *= rescale_factor
-                d_alpha_mat[:, :, start_idx:start_idx + length] *= rescale_factor
+                to_grid_mat[:, :, start_idx : start_idx + length] *= rescale_factor
+                from_grid_mat[:, :, start_idx : start_idx + length] *= rescale_factor
+                d_beta_mat[:, :, start_idx : start_idx + length] *= rescale_factor
+                d_alpha_mat[:, :, start_idx : start_idx + length] *= rescale_factor
 
         coeff_idx = mapping.coefficient_idx(
             self.lmax,
@@ -693,7 +699,10 @@ class SO3VstpGrid(torch.nn.Module):
             ),
         )
 
-    def _build_derivative_matrices(self, to_grid,):
+    def _build_derivative_matrices(
+        self,
+        to_grid,
+    ):
         """
         Build analytic spectral derivative matrices:
             d_beta_mat[b, a, i]  = ∂beta Y_i(beta_b, alpha_a)
@@ -865,15 +874,16 @@ class SO3VstpGrid(torch.nn.Module):
 
         anti_variance = 2.0 * (
             beta_cov.diagonal() * alpha_cov.diagonal()
-            -
-            beta_alpha_cov.diagonal().square()
+            - beta_alpha_cov.diagonal().square()
         )
         anti_variance = anti_variance * inv_sin_beta.square()
         anti_variance = anti_variance.mean().clamp_min(0.0)
 
         if anti_variance.item() <= self.eps:
             return torch.tensor(0.0, dtype=torch.get_default_dtype())
-        return torch.sqrt(sym_variance / anti_variance).to(dtype=torch.get_default_dtype())
+        return torch.sqrt(sym_variance / anti_variance).to(
+            dtype=torch.get_default_dtype()
+        )
 
     def get_to_grid_mat(self):
         return self.to_grid_mat
@@ -905,13 +915,17 @@ class SO3VstpGrid(torch.nn.Module):
         """
         Compute ∂beta f
         """
-        return torch.matmul(self.d_beta_to_grid_mat.to(dtype=embedding.dtype), embedding)
+        return torch.matmul(
+            self.d_beta_to_grid_mat.to(dtype=embedding.dtype), embedding
+        )
 
     def d_alpha_to_grid(self, embedding):
         """
         Compute ∂alpha f
         """
-        return torch.matmul(self.d_alpha_to_grid_mat.to(dtype=embedding.dtype), embedding)
+        return torch.matmul(
+            self.d_alpha_to_grid_mat.to(dtype=embedding.dtype), embedding
+        )
 
     def d_beta_grid(self, grid):
         return torch.matmul(self.d_beta_grid_mat.to(dtype=grid.dtype), grid)
@@ -928,11 +942,7 @@ class SO3VstpGrid(torch.nn.Module):
         y_beta = self.d_beta_grid(y_grid)
         y_alpha = self.d_alpha_grid(y_grid)
         inv_sin_beta = self.inv_sin_beta.to(x_grid.dtype).view(1, -1, 1)
-        bracket_grid = (
-            x_beta * y_alpha
-            -
-            x_alpha * y_beta
-        ) * inv_sin_beta
+        bracket_grid = (x_beta * y_alpha - x_alpha * y_beta) * inv_sin_beta
         return bracket_grid * self.antisymmetric_grid_norm.to(dtype=bracket_grid.dtype)
 
     def full_grid_product(
@@ -970,11 +980,7 @@ class SO3VstpGrid(torch.nn.Module):
 
         inv_sin_beta = self.inv_sin_beta.to(x.dtype).view(1, -1, 1)
 
-        bracket_grid = (
-            x_beta * y_alpha
-            -
-            x_alpha * y_beta
-        ) * inv_sin_beta
+        bracket_grid = (x_beta * y_alpha - x_alpha * y_beta) * inv_sin_beta
 
         out = self.from_grid(bracket_grid)
         return out * self.antisymmetric_output_norm.to(dtype=out.dtype)
@@ -992,7 +998,7 @@ class SO3VstpGrid(torch.nn.Module):
         sym = self.symmetric_product(x, y)
         anti = self.antisymmetric_product(x, y)
 
-        return sym + anti # TODO
+        return sym + anti  # TODO
 
         # return symmetric_scale * sym + antisym_scale * anti
 

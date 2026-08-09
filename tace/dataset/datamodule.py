@@ -4,7 +4,6 @@
 ################################################################################
 
 import gc
-import lmdb
 import logging
 import os
 import pickle
@@ -14,19 +13,17 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-
-from torch.utils.data import Dataset
-from lightning.pytorch import LightningDataModule
-from lightning.pytorch.utilities.rank_zero import rank_zero_info, rank_zero_only
+import lmdb
 import torch.distributed as dist
 from hydra.utils import instantiate
+from lightning.pytorch import LightningDataModule
+from lightning.pytorch.utilities.rank_zero import rank_zero_info, rank_zero_only
+from torch.utils.data import Dataset
 
-
+from .element import TorchElement, build_element_lookup
 from .graph import from_atoms
-from .element import build_element_lookup, TorchElement
-from .read import tace_read_all_files
 from .quantity import KeySpecification
-
+from .read import tace_read_all_files
 
 
 class GraphDatasetLMDB(Dataset):
@@ -58,9 +55,7 @@ class GraphDatasetLMDB(Dataset):
             if shard_lengths is None:
                 self.lengths = [None] * len(self.lmdb_paths)
             elif len(shard_lengths) != len(self.lmdb_paths):
-                raise ValueError(
-                    "shard_lengths must match the number of LMDB paths"
-                )
+                raise ValueError("shard_lengths must match the number of LMDB paths")
             else:
                 self.lengths = list(shard_lengths)
 
@@ -96,10 +91,7 @@ class GraphDatasetLMDB(Dataset):
 
         # map global idx -> shard_idx, local_idx
         shard_idx = 0
-        while (
-            shard_idx < len(self.lengths)
-            and idx >= self.lengths[shard_idx]
-        ):
+        while shard_idx < len(self.lengths) and idx >= self.lengths[shard_idx]:
             idx -= self.lengths[shard_idx]
             shard_idx += 1
 
@@ -200,9 +192,7 @@ def create_graphs(
         if rank == 0:
             if existing_dataset is not None:
                 if not existing_dataset.in_memory:
-                    raise ValueError(
-                        "existing_dataset must be an in-memory dataset"
-                    )
+                    raise ValueError("existing_dataset must be an in-memory dataset")
                 graphs = existing_dataset.data_list
             else:
                 graphs = [
@@ -237,9 +227,7 @@ def create_graphs(
         if rank == 0 and existing_dataset is not None:
             return existing_dataset
 
-        dataset = GraphDatasetLMDB(
-            lmdb_paths=[], in_memory=True, cache_size=cache_size
-        )
+        dataset = GraphDatasetLMDB(lmdb_paths=[], in_memory=True, cache_size=cache_size)
         dataset.data_list = graphs
         dataset.length = len(graphs)
         return dataset
@@ -255,8 +243,7 @@ def create_graphs(
     lmdb_paths = _collect_lmdb_paths()
     if lmdb_paths:
         rank_zero_info(
-            f"Found existing LMDB files for {stage}: "
-            f"{len(lmdb_paths)} shards"
+            f"Found existing LMDB files for {stage}: {len(lmdb_paths)} shards"
         )
         return GraphDatasetLMDB(
             lmdb_paths,
@@ -280,9 +267,7 @@ def create_graphs(
 
         for idx, atoms in enumerate(atoms_list):
             graph = from_atoms(element, atoms, **for_dataset)
-            buffer.append(
-                pickle.dumps(graph, protocol=pickle.HIGHEST_PROTOCOL)
-            )
+            buffer.append(pickle.dumps(graph, protocol=pickle.HIGHEST_PROTOCOL))
 
             if len(buffer) >= shard_size or idx == n_atoms - 1:
                 dir_path = shard_dirs[shard_idx % n_dirs]
@@ -348,7 +333,7 @@ def create_graphs(
         rank_zero_info(f"All {n_atoms} graphs saved successfully for stage={stage}")
         gc.collect()
 
-        #  other ranks wait for files to appear 
+        #  other ranks wait for files to appear
     if world_size > 1 and dist.is_initialized():
         if rank != 0:
             # poll for lmdb files with timeout to avoid indefinite hang
@@ -362,7 +347,9 @@ def create_graphs(
                 waited += poll_interval
             if not lmdb_paths:
                 # after timeout, still no files -> error to avoid silent hang
-                raise RuntimeError(f"Timeout: no LMDB files for stage={stage} found after {lmdb_wait_timeout}s")
+                raise RuntimeError(
+                    f"Timeout: no LMDB files for stage={stage} found after {lmdb_wait_timeout}s"
+                )
         # ensure all processes reach here after files exist or after rank0 created them
         dist.barrier()
 
@@ -389,7 +376,7 @@ class GraphDataModule(LightningDataModule):
         target_property: List[str],
         keyspec: KeySpecification,
         embedding_property: List[str],
-        threeAtomsList = None,
+        threeAtomsList=None,
     ):
         super().__init__()
         self.cfg = cfg
@@ -404,7 +391,9 @@ class GraphDataModule(LightningDataModule):
         self.threeAtomsList = threeAtomsList
 
         self.storage_mode = cfg.get("dataset", {}).get("storage_mode", "memory")
-        self.shard_dirs = [Path(p) for p in cfg.get("dataset", {}).get("shard_dirs", ["graphCache"])]
+        self.shard_dirs = [
+            Path(p) for p in cfg.get("dataset", {}).get("shard_dirs", ["graphCache"])
+        ]
         test_pattern = re.compile(r"^test(\d+)_shard\d+\.lmdb$")
         test_ids = set()
         for shard_dir in self.shard_dirs:
@@ -418,25 +407,30 @@ class GraphDataModule(LightningDataModule):
         self.num_test_sets = len(test_ids)
         self.shard_size = cfg.get("dataset", {}).get("shard_size", 1_000_000)
         self.cache_size = cfg.get("dataset", {}).get("cache_size", 1024)
-        self.avg_graph_size_in_KB = cfg.get("dataset", {}).get("avg_graph_size_in_KB", 200)
+        self.avg_graph_size_in_KB = cfg.get("dataset", {}).get(
+            "avg_graph_size_in_KB", 200
+        )
         self.lmdb_wait_timeout = cfg.get("dataset", {}).get("lmdb_wait_timeout", 86400)
         self.no_valid_set = cfg.get("dataset", {}).get("no_valid_set", False)
-        self.neighborlist_backend = self.cfg.get("dataset", {}).get("neighborlist_backend", "matscipy")
+        self.neighborlist_backend = self.cfg.get("dataset", {}).get(
+            "neighborlist_backend", "matscipy"
+        )
         self._for_dataset_config = {
-            "cutoff": float(cfg['model']['config'].get("cutoff", 6.0)),
-            "max_neighbors": cfg['model']['config'].get("max_neighbors", None),
+            "cutoff": float(cfg["model"]["config"].get("cutoff", 6.0)),
+            "max_neighbors": cfg["model"]["config"].get("max_neighbors", None),
             "keyspec": self.keyspec,
             "target_property": self.target_property,
             "embedding_property": self.embedding_property,
-            "universal_embedding": self.cfg.get("model", {}).get("config", {}).get("universal_embedding", None),
+            "universal_embedding": self.cfg.get("model", {})
+            .get("config", {})
+            .get("universal_embedding", None),
             "neighborlist_backend": self.neighborlist_backend,
         }
         logging.info(f"Neighborlist backend is {self.neighborlist_backend}")
 
     def _stage_cache_exists(self, stage: str) -> bool:
         return any(
-            any(directory.glob(f"{stage}_shard*.lmdb"))
-            for directory in self.shard_dirs
+            any(directory.glob(f"{stage}_shard*.lmdb")) for directory in self.shard_dirs
         )
 
     def _all_required_caches_exist(self) -> bool:
@@ -446,15 +440,12 @@ class GraphDataModule(LightningDataModule):
         test_files = self.cfg.get("dataset", {}).get("test_files")
         if test_files:
             num_test_sets = len(test_files) if isinstance(test_files, list) else 1
-            required_stages.extend(
-                f"test{idx}" for idx in range(num_test_sets)
-            )
+            required_stages.extend(f"test{idx}" for idx in range(num_test_sets))
         return all(self._stage_cache_exists(stage) for stage in required_stages)
-
 
     @rank_zero_only
     def prepare_data(self):
-        if self.storage_mode == 'lmdb':
+        if self.storage_mode == "lmdb":
             for d in self.shard_dirs:
                 d.mkdir(parents=True, exist_ok=True)
             if self._all_required_caches_exist():
@@ -486,9 +477,7 @@ class GraphDataModule(LightningDataModule):
         world_size = dist.get_world_size() if dist.is_initialized() else 1
         rank = dist.get_rank() if dist.is_initialized() else 0
         sync_memory_datasets = (
-            self.storage_mode == "memory"
-            and world_size > 1
-            and dist.is_initialized()
+            self.storage_mode == "memory" and world_size > 1 and dist.is_initialized()
         )
 
         # === memory mode ===
@@ -505,7 +494,11 @@ class GraphDataModule(LightningDataModule):
 
         if stage in (None, "fit"):
             # TRAIN
-            atoms_for_train = (self.threeAtomsList[0] if (self.threeAtomsList and self.threeAtomsList[0] is not None) else None)
+            atoms_for_train = (
+                self.threeAtomsList[0]
+                if (self.threeAtomsList and self.threeAtomsList[0] is not None)
+                else None
+            )
             if self.train_dataset is None or sync_memory_datasets:
                 self.train_dataset = create_graphs(
                     atoms_for_train,
@@ -521,14 +514,20 @@ class GraphDataModule(LightningDataModule):
                     existing_dataset=self.train_dataset,
                 )
 
-            logging.info(f"Rank {rank}: Number of configs in train: {len(self.train_dataset)}")
+            logging.info(
+                f"Rank {rank}: Number of configs in train: {len(self.train_dataset)}"
+            )
             if rank == 0 and self.threeAtomsList and self.threeAtomsList[0] is not None:
                 self.threeAtomsList[0] = None
                 gc.collect()
 
             # VALID
             if not self.no_valid_set:
-                atoms_for_valid = (self.threeAtomsList[1] if (self.threeAtomsList and self.threeAtomsList[1] is not None) else None)
+                atoms_for_valid = (
+                    self.threeAtomsList[1]
+                    if (self.threeAtomsList and self.threeAtomsList[1] is not None)
+                    else None
+                )
                 if self.val_dataset is None or sync_memory_datasets:
                     self.val_dataset = create_graphs(
                         atoms_for_valid,
@@ -543,15 +542,25 @@ class GraphDataModule(LightningDataModule):
                         cache_size=self.cache_size,
                         existing_dataset=self.val_dataset,
                     )
-                logging.info(f"Rank {rank}: Number of configs in valid: {len(self.val_dataset)}")
-                if rank == 0 and self.threeAtomsList and self.threeAtomsList[1] is not None:
+                logging.info(
+                    f"Rank {rank}: Number of configs in valid: {len(self.val_dataset)}"
+                )
+                if (
+                    rank == 0
+                    and self.threeAtomsList
+                    and self.threeAtomsList[1] is not None
+                ):
                     self.threeAtomsList[1] = None
                     gc.collect()
             else:
                 self.val_dataset = None
 
             # TEST
-            atoms_for_test_container = (self.threeAtomsList[2] if (self.threeAtomsList and self.threeAtomsList[2] is not None) else None)
+            atoms_for_test_container = (
+                self.threeAtomsList[2]
+                if (self.threeAtomsList and self.threeAtomsList[2] is not None)
+                else None
+            )
             if sync_memory_datasets:
                 if rank == 0:
                     existing_test_datasets = self.test_datasets
@@ -632,9 +641,10 @@ class GraphDataModule(LightningDataModule):
                 self.threeAtomsList[2] = None
                 gc.collect()
 
-                
     def train_dataloader(self):
-        return instantiate(self.cfg["dataset"]["train_dataloader"], dataset=self.train_dataset)
+        return instantiate(
+            self.cfg["dataset"]["train_dataloader"], dataset=self.train_dataset
+        )
 
     def statistics_dataloader(self):
         config = {
@@ -647,16 +657,21 @@ class GraphDataModule(LightningDataModule):
         return instantiate(config, dataset=self.train_dataset)
 
     def val_dataloader(self):
-        if self.no_valid_set or self.val_dataset is None: 
+        if self.no_valid_set or self.val_dataset is None:
             # if None, will warning dataloader's length is zero, just ignore it
             return instantiate(self.cfg["dataset"]["valid_dataloader"], dataset=[])
-        
-        return instantiate(self.cfg["dataset"]["valid_dataloader"], dataset=self.val_dataset)
+
+        return instantiate(
+            self.cfg["dataset"]["valid_dataloader"], dataset=self.val_dataset
+        )
 
     def test_dataloader(self):
         if self.test_datasets is None:
             return None
-        return [instantiate(self.cfg["dataset"]["test_dataloader"], dataset=td) for td in self.test_datasets]
+        return [
+            instantiate(self.cfg["dataset"]["test_dataloader"], dataset=td)
+            for td in self.test_datasets
+        ]
 
 
 # === Datamodule Builder ===

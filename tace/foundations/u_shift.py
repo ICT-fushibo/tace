@@ -3,8 +3,8 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import numpy as np
 import ase
+import numpy as np
 
 WTC_U_SHIFT = {
     23: -2.271,  # V
@@ -17,10 +17,11 @@ WTC_U_SHIFT = {
     74: -5.875,  # W
 }
 
+
 def apply_wtc_u_shift(atoms: ase.Atoms, energy: float, minus: bool = True) -> float:
     Z = atoms.get_atomic_numbers()
     if not (np.any(Z == 8) or np.any(Z == 9)):
-        return energy 
+        return energy
 
     shift = 0.0
     for elem, dE in WTC_U_SHIFT.items():

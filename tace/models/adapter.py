@@ -5,24 +5,22 @@
 
 from typing import Dict, Union
 
-
 import torch
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
-
 from tace.dataset.element import TorchElement
+
 from ..dataset.quantity import PROPERTY, ComputeFlag
+from .lammps import Graph
 from .utils import (
-    compute_symmetric_displacement, 
     compute_atomic_virials_stresses,
     compute_hessians_vmap,
+    compute_symmetric_displacement,
 )
-from .lammps import Graph
 
 
 class TensorModel(torch.nn.Module):
-
     def __init__(self, readout_fn: torch.nn.Module):
         super().__init__()
         self.readout_fn = readout_fn
@@ -30,8 +28,10 @@ class TensorModel(torch.nn.Module):
         self._set_target_property()
         self._set_lammps_mliap()
         self.reset_fidelity_idx()
-   
-    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, Union[torch.Tensor, None]]:
+
+    def forward(
+        self, data: Dict[str, torch.Tensor]
+    ) -> Dict[str, Union[torch.Tensor, None]]:
         graph = self.prepare_graph(data)
         RESULTS = self.readout_fn(data, graph)
         FIRST = self.first_derivative_fn(data, graph, RESULTS)
@@ -39,8 +39,10 @@ class TensorModel(torch.nn.Module):
         OUT = {**RESULTS, **FIRST, **SECOND}
         # return self.denorm(OUT)
         return OUT
-    
-    def denorm(self, out: Dict[str, Union[torch.Tensor, None]]) -> Dict[str, Union[torch.Tensor, None]]:
+
+    def denorm(
+        self, out: Dict[str, Union[torch.Tensor, None]]
+    ) -> Dict[str, Union[torch.Tensor, None]]:
         """
         We always return:
         -  normalized value in train
@@ -50,8 +52,8 @@ class TensorModel(torch.nn.Module):
             return out
         for k, v in self.readout_fn.normalizers.items():
             out[k] = v.denorm(out[k])
-        if out['e_base_graph'] is not None:
-            out['energy'] = out['energy'] + out['e_base_graph']
+        if out["e_base_graph"] is not None:
+            out["energy"] = out["energy"] + out["e_base_graph"]
         return out
 
     def first_derivative_fn(
@@ -83,9 +85,11 @@ class TensorModel(torch.nn.Module):
             inputs.append(data["initial_collinear_magmoms"])
         if self.flags.compute_noncollinear_magnetic_forces:
             inputs.append(data["initial_noncollinear_magmoms"])
-        if self.flags.compute_edge_forces or \
-            self.flags.compute_atomic_virials or \
-            self.flags.compute_atomic_stresses:
+        if (
+            self.flags.compute_edge_forces
+            or self.flags.compute_atomic_virials
+            or self.flags.compute_atomic_stresses
+        ):
             inputs.append(graph.edge_vector)
 
         if self.compute_first_derivative:
@@ -101,30 +105,18 @@ class TensorModel(torch.nn.Module):
         idx = 0
         if self.flags.compute_forces:
             grad = grads[idx]
-            F = (
-                torch.zeros_like(data["positions"])
-                if grad is None
-                else -grad
-            )
+            F = torch.zeros_like(data["positions"]) if grad is None else -grad
             idx += 1
         if self.flags.compute_stress or self.flags.compute_virials:
             grad = grads[idx]
-            V = (
-                torch.zeros_like(data["lattice"])
-                if grad is None
-                else -grad
-            )
+            V = torch.zeros_like(data["lattice"]) if grad is None else -grad
             VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
             S = -V / VOLUME.view(-1, 1, 1)
             S = torch.where(torch.abs(S) < 1e10, S, torch.zeros_like(S))
             idx += 1
         if self.flags.compute_polarization or self.flags.compute_conservative_dipole:
             grad = grads[idx]
-            P = (
-                torch.zeros_like(data["electric_field"])
-                if grad is None
-                else -grad
-            )
+            P = torch.zeros_like(data["electric_field"]) if grad is None else -grad
             idx += 1
         # if self.flags.compute_magnetization:
         #     M = -grads[idx]
@@ -145,28 +137,28 @@ class TensorModel(torch.nn.Module):
                 else -grad
             )
             idx += 1
-        if self.flags.compute_edge_forces or \
-            self.flags.compute_atomic_virials or \
-            self.flags.compute_atomic_stresses:
+        if (
+            self.flags.compute_edge_forces
+            or self.flags.compute_atomic_virials
+            or self.flags.compute_atomic_stresses
+        ):
             grad = grads[idx]
             EDGE_F = (
-                torch.zeros_like(graph.edge_vector)
-                if grad is None
-                else grad
+                torch.zeros_like(graph.edge_vector) if grad is None else grad
             )  # consistency with LAMMPS
             idx += 1
             if not self.lmp:
                 A_V, A_S = compute_atomic_virials_stresses(
                     graph.edge_vector,
                     EDGE_F,
-                    data['edge_index'],
+                    data["edge_index"],
                     graph.lattice,
-                    data['batch'],
-                    data['node_attrs'].size(0),
+                    data["batch"],
+                    data["node_attrs"].size(0),
                     True,
                     True,
                 )
-                
+
         return {
             "forces": F,
             "virials": V,
@@ -213,17 +205,17 @@ class TensorModel(torch.nn.Module):
         BECList = []
         ALPHAList = []
         # CHI_MList = []
-        if self.flags.compute_conservative_polarizability or self.flags.compute_born_effective_charges:
+        if (
+            self.flags.compute_conservative_polarizability
+            or self.flags.compute_born_effective_charges
+        ):
             for i in range(3):  # μ = 0,1,2
-
                 polarization_i = polarization.sum(dim=0)[i]  # sum over batch dimension
                 grads = torch.autograd.grad(
                     outputs=polarization_i,
                     inputs=inputs_list,
                     retain_graph=(
-                        i != 2 
-                        or self.training 
-                        or self.flags.compute_hessian
+                        i != 2 or self.training or self.flags.compute_hessian
                     ),
                     create_graph=self.training,
                 )
@@ -260,9 +252,9 @@ class TensorModel(torch.nn.Module):
         #             outputs=mag_i,
         #             inputs=[MF],
         #             retain_graph=(
-        #                 i != 2 
-        #                 or self.training 
-        #                 or self.flags.compute_hessians 
+        #                 i != 2
+        #                 or self.training
+        #                 or self.flags.compute_hessians
         #             ),
         #             create_graph=self.training,
         #             allow_unused=True,
@@ -286,18 +278,18 @@ class TensorModel(torch.nn.Module):
     def prepare_graph(self, data: Dict[str, torch.Tensor]) -> Graph:
 
         node_fidelity = (
-            data['fidelity_idx'][data['batch']]
+            data["fidelity_idx"][data["batch"]]
             if ("fidelity_idx" in data)
-            else torch.full_like(data['batch'], self.fidelity_idx, dtype=torch.int64)
+            else torch.full_like(data["batch"], self.fidelity_idx, dtype=torch.int64)
         )  # used for multi-fidelity and multi-head
 
         if self.lmp:
             for p in self.get_target_property():
-                for requires_grad_p in PROPERTY[p]['requires_grad_with']:
-                    if p != 'forces':
+                for requires_grad_p in PROPERTY[p]["requires_grad_with"]:
+                    if p != "forces":
                         data[requires_grad_p].requires_grad_(True)
             dtype = data["node_attrs"].dtype
-            device =  data["node_attrs"].device 
+            device = data["node_attrs"].device
             nlocal, nghosts = data["natoms"][0], data["natoms"][1]
             num_graphs = 2
             displacement = None
@@ -315,16 +307,18 @@ class TensorModel(torch.nn.Module):
             edge_length = (edge_vector**2).sum(dim=1, keepdim=True).sqrt() + 1e-9
             lmp_data = data["lmp_data"]
             lmp_natoms = (nlocal, nghosts)
-            num_atoms_arange = torch.arange(nlocal, device=positions.device, dtype=torch.int64)
+            num_atoms_arange = torch.arange(
+                nlocal, device=positions.device, dtype=torch.int64
+            )
         else:
             requires_grad_p_list = []
             for p in self.get_target_property():
-                for requires_grad_p in PROPERTY[p]['requires_grad_with']:
+                for requires_grad_p in PROPERTY[p]["requires_grad_with"]:
                     requires_grad_p_list.append(requires_grad_p)
                     if requires_grad_p != "edge_vector":
                         data[requires_grad_p].requires_grad_(True)
             dtype = data["node_attrs"].dtype
-            device =  data["node_attrs"].device 
+            device = data["node_attrs"].device
             positions = data["positions"]
             num_graphs = data["ptr"].numel() - 1
             if self.flags.compute_virials or self.flags.compute_stress:
@@ -341,14 +335,19 @@ class TensorModel(torch.nn.Module):
                     "ni,nij->nj", data["edge_shifts"], data["lattice"][edge_batch]
                 )
             )
-            if set(self.get_target_property()) & {"edge_vector", "atomic_stresses", "atomic_virials"}:
-                    edge_vector.requires_grad_(True)
+            if set(self.get_target_property()) & {
+                "edge_vector",
+                "atomic_stresses",
+                "atomic_virials",
+            }:
+                edge_vector.requires_grad_(True)
             edge_length = (edge_vector**2).sum(dim=1, keepdim=True).sqrt() + 1e-9
-            lattice = data['lattice']
+            lattice = data["lattice"]
             lmp_data = None
             lmp_natoms = (positions.size(0), 0)
-            num_atoms_arange = torch.arange(positions.shape[0], device=positions.device, dtype=torch.int64)
-
+            num_atoms_arange = torch.arange(
+                positions.shape[0], device=positions.device, dtype=torch.int64
+            )
 
         # if self.readout_fn.representation.radial_basis.use_dydynamic_cutoff:
         #     dcutoff = self.readout_fn.representation.radial_basis.dydynamic_cutoff_fn(
@@ -367,7 +366,7 @@ class TensorModel(torch.nn.Module):
         return Graph(
             lmp=self.lmp,
             lmp_data=lmp_data,
-            lmp_natoms=lmp_natoms, 
+            lmp_natoms=lmp_natoms,
             num_graphs=num_graphs,
             displacement=displacement,
             positions=positions,
@@ -380,17 +379,17 @@ class TensorModel(torch.nn.Module):
             dcutoff=None,
             # node_radius=(data["positions"]**2).sum(dim=1, keepdim=True).sqrt() + 1e-9 # TODO
         )
-    
+
     def get_fidelity_idx(self) -> int:
         return int(self.fidelity_idx)
-    
-    def reset_fidelity_idx(self, fidelity_idx: Union[int, None]= 0) -> None:
+
+    def reset_fidelity_idx(self, fidelity_idx: Union[int, None] = 0) -> None:
         if fidelity_idx is not None:
             self.fidelity_idx = fidelity_idx
-        
+
     def get_embedding_property(self) -> list[str]:
         return list(set(self.readout_fn.embedding_property))
-    
+
     def get_target_property(self) -> list[str]:
         return list(set(self.readout_fn.target_property))
 
@@ -404,36 +403,36 @@ class TensorModel(torch.nn.Module):
 
         self.compute_first_derivative = False
         for p in target_property:
-            if PROPERTY[p]['first_derivative']:
+            if PROPERTY[p]["first_derivative"]:
                 self.compute_first_derivative = True
 
         self.compute_second_derivative = False
         for p in target_property:
-            if PROPERTY[p]['second_derivative']:
+            if PROPERTY[p]["second_derivative"]:
                 self.compute_second_derivative = True
 
         self.retain_graph = self.compute_second_derivative
         self.create_graph = self.compute_second_derivative
-        
+
     def reset_target_property(self, target_property: list[str]) -> None:
         assert isinstance(target_property, list)
         self.readout_fn.target_property = target_property
         self._set_target_property()
-      
+
     def _set_lammps_mliap(self, enable: bool = False) -> None:
         self.lmp = enable
 
     def get_model_dtype(self) -> torch.dtype:
         return self.readout_fn.cutoff.dtype
-    
+
     def get_max_neighbors(self) -> Union[int, None]:
         return self.readout_fn.max_neighbors
-    
+
     def get_cutoff(self) -> float:
         return float(self.readout_fn.cutoff.item())
-    
+
     def get_atomic_numbers(self) -> float:
         return [int(z) for z in self.readout_fn.atomic_numbers.cpu().tolist()]
-    
+
     def get_torch_element(self) -> TorchElement:
         return TorchElement(self.get_atomic_numbers())

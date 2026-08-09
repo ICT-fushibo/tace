@@ -13,12 +13,14 @@ from tace.lightning.lora import from_lora_to_merged_model
 
 ALLOWED_TYPE = ["merge_lora", "merged_lora"]
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "-m", "--model",
+        "-m",
+        "--model",
         type=str,
         required=True,
         help="Model path",
@@ -27,27 +29,26 @@ def parse_args():
         "--dtype",
         type=str,
         help="Model dtype",
-        choices=['float32', 'float64'],
+        choices=["float32", "float64"],
         default=None,
     )
     parser.add_argument(
-        "-t", "--type", 
-        type=str, 
+        "-t",
+        "--type",
+        type=str,
         default="merge_lora",
-        choices=ALLOWED_TYPE, 
-        help="Specify convert type"
+        choices=ALLOWED_TYPE,
+        help="Specify convert type",
     )
     parser.add_argument(
-        "--debug", 
-        type=int, 
-        default=0,
-        help="print some extra information for debug"
+        "--debug", type=int, default=0, help="print some extra information for debug"
     )
     return parser.parse_args()
 
 
 def count_parameters(model: torch.nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())
+
 
 def main():
     args = parse_args()
@@ -72,7 +73,10 @@ def main():
         print(f"  After merged:  {total_after}")
         torch.save(model, args.model + "-merged_lora.pt")
     else:
-        raise ValueError(f"Unsupported convert type '{args.type}'. One of {ALLOWED_TYPE} is available.")
+        raise ValueError(
+            f"Unsupported convert type '{args.type}'. One of {ALLOWED_TYPE} is available."
+        )
+
 
 if __name__ == "__main__":
     main()

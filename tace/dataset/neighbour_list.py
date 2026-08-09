@@ -25,6 +25,7 @@ from typing import Optional, Tuple, Union
 import numpy as np
 from ase.geometry import complete_cell
 from matscipy.neighbours import neighbour_list
+
 try:
     from ase.neighborlist import primitive_neighbor_list
 except ImportError:
@@ -107,7 +108,9 @@ def _build_alchemiops_edges(
         ) from exc
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    dtype = torch.float64 if np.asarray(positions).dtype == np.float64 else torch.float32
+    dtype = (
+        torch.float64 if np.asarray(positions).dtype == np.float64 else torch.float32
+    )
     num_atoms = int(positions.shape[0])
     periodic = any(pbc)
 
@@ -244,10 +247,7 @@ def get_neighborhood(
         )
     elif backend == "vesin":
         # https://github.com/Luthaf/vesin/blob/main/python/vesin/vesin/_ase.py
-        edges = vesin_nl(
-            cutoff=cutoff, 
-            full_list=True
-        ).compute(
+        edges = vesin_nl(cutoff=cutoff, full_list=True).compute(
             points=positions,
             box=neighbor_cell,
             periodic=pbc,

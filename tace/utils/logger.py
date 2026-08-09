@@ -3,20 +3,16 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
-import sys
 import logging
-from typing import Union
+import sys
 from datetime import datetime
+from typing import Union
 
-
-
-import torch
 import lightning as L
+import torch
 from lightning.pytorch.utilities.rank_zero import rank_zero_only
 
-
 from ..__init__ import __version__
-
 
 LOG_LEVELS = {
     10: logging.DEBUG,
@@ -76,4 +72,3 @@ def set_logger(_level: Union[int, str] = "info", _rank_zero_only: bool = True) -
                                                                                                                        
         """
     )
-
