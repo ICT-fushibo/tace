@@ -681,17 +681,6 @@ class uvSO2Interaction(Interaction):
         return m_i, self.truncate_ghosts(sc, nlocal)
 
 
-# def _cgtp_interaction(*args, **kwargs):
-#     import os
-
-#     if os.environ.get("TACE_USE_Sobek", "0") == "1":
-#         from .._sobek import SobekCgtpInteraction
-
-#         return SobekCgtpInteraction(*args, **kwargs)
-
-#     return CgtpInteraction(*args, **kwargs)
-
-
 INTERACTION: Dict[str, Interaction] = {
     "normal": CgtpInteraction,
     "spectral": CgtpInteraction,
@@ -700,6 +689,4 @@ INTERACTION: Dict[str, Interaction] = {
     "so2": uvSO2Interaction,
     "uv_so2": uvSO2Interaction,
     "attn": uvSO2Interaction,
-    # "w6j": Wigner6jInteraction,
-    # "wigner6j": Wigner6jInteraction,
 }

@@ -706,62 +706,6 @@ class ComplexProductBasis(torch.nn.Module):
         return self.tp(x, y, ws)
 
 
-# class VectorSwiGLU(torch.nn.Module):
-#     """
-#     in dev, not recommended for practical use
-#     """
-#     def __init__(
-#             self,
-#             mmax: int,
-#             lmax: int,
-#             num_channel: int,
-#             resolution: list[int],
-#             use_m_primary: bool = True,
-#             use_vstp: bool = False,
-#         ):
-#         super().__init__()
-
-#         self.mmax = mmax
-#         self.lmax = lmax
-#         self.num_channel =  num_channel
-#         self.resolution = resolution
-#         self.use_m_primary = use_m_primary
-#         self.use_vstp = use_vstp
-#         from ..mlp import ScaledSigmoid
-#         from ..s2 import SO3VstpGrid
-#         self.grid = SO3VstpGrid(
-#             self.lmax,
-#             self.mmax,
-#             resolution_list=self.resolution,
-#             use_m_primary=self.use_m_primary,
-#         )
-#         self.sigmoid = ScaledSigmoid()
-
-#     def forward(self, t, s):
-#         B = s.size(0)
-#         s = s.view(B, 1, 3*self.num_channel)
-#         o_s = s.narrow(2, 0, 2*self.num_channel)
-#         o_s1, o_s2 = torch.chunk(o_s, chunks=2, dim=-1)
-#         o_s = torch.nn.functional.silu(o_s1) * o_s2
-#         g_s = s.narrow(2, self.num_channel*2, self.num_channel)
-#         g_s = self.sigmoid(g_s)
-#         t1, t2 = torch.chunk(t, chunks=2, dim=-1)
-#         if self.use_vstp:
-#             o_t = self.grid.from_grid(
-#                 self.grid.full_grid_product(
-#                     self.grid.to_grid(t1),
-#                     self.grid.to_grid(t2),
-#                     symmetric_scale=1.0,
-#                     antisym_scale=1.0,
-#                 )
-#             )
-#         else:
-#             o_t = self.grid.symmetric_product(t1, t2)
-#         o_t = g_s * o_t
-#         o_t[:, 0:1, :] = o_t.narrow(1, 0, 1) + o_s
-#         return o_t
-
-
 # class _SO2DimExpr:
 #     def __init__(self, m: int) -> None:
 #         self.m = int(m)
@@ -1089,7 +1033,7 @@ class ComplexProductBasis(torch.nn.Module):
 #             parts.append(xm.permute(0, 3, 1, 2).reshape(B, -1, self.num_channels))
 #         return torch.cat(parts, dim=1)
 
-#     def _one_hot_elements( # TODO
+#     def _one_hot_elements(
 #         self,
 #         node_attrs: Union[torch.Tensor, None],
 #         batch: int,
