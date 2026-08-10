@@ -2,8 +2,11 @@ import math
 
 import pytest
 import torch
+from e3nn import o3
 
 from tace.models import o2
+from tace.models._e3nn.inter import O2MagneticInteraction
+from tace.models.legacy_so2 import WignerD
 from tace.models.o2 import (
     Irrep,
     Irreps,
@@ -514,3 +517,174 @@ def test_o2_linear_rejects_complex_input_and_weight():
             torch.ones(2, 1),
             torch.ones(*external.weight_shape, dtype=torch.complex64),
         )
+
+
+def _build_o2_magnetic_interaction(monkeypatch, path_mode):
+    monkeypatch.setattr(O2MagneticInteraction, "path_mode", path_mode)
+    module = O2MagneticInteraction(
+        layer=0,
+        num_layers=1,
+        num_elements=2,
+        avg_num_neighbors=4.0,
+        mmax=1,
+        Lmax=1,
+        lmax=1,
+        correlation=[1],
+        num_channel=2,
+        use_temperature=False,
+        edge_feats_channel=4,
+        target_irreps=o3.Irreps("0e"),
+        num_radial_basis=4,
+        radial_mlp=[8],
+        radial_bias=True,
+        irreps_in=o3.Irreps("2x0e + 2x1o"),
+        scalar_act=None,
+        tensor_act=None,
+        edge_ace_hidden=None,
+        parity=True,
+        nonlinear=None,
+    )
+    return module.to(device=DEVICE, dtype=DTYPE)
+
+
+def _o2_magnetic_inputs(module):
+    num_nodes = 5
+    num_edges = 9
+    edge_index = torch.randint(num_nodes, (2, num_edges), device=DEVICE)
+    edge_vectors = torch.randn(num_edges, 3, dtype=DTYPE, device=DEVICE)
+    node_feats = torch.randn(
+        num_nodes,
+        module.irreps_in.dim,
+        dtype=DTYPE,
+        device=DEVICE,
+        requires_grad=True,
+    )
+    node_attrs = torch.nn.functional.one_hot(
+        torch.randint(2, (num_nodes,), device=DEVICE),
+        2,
+    ).to(node_feats)
+    edge_feats = torch.randn(
+        num_edges,
+        4,
+        dtype=DTYPE,
+        device=DEVICE,
+        requires_grad=True,
+    )
+    magnetic_moments = torch.randn(
+        num_nodes,
+        3,
+        dtype=DTYPE,
+        device=DEVICE,
+        requires_grad=True,
+    )
+    cutoff = torch.rand(num_edges, 1, dtype=DTYPE, device=DEVICE)
+    return (
+        node_feats,
+        node_attrs,
+        edge_feats,
+        edge_vectors,
+        edge_index,
+        cutoff,
+        magnetic_moments,
+    )
+
+
+def _evaluate_o2_magnetic_interaction(module, inputs):
+    (
+        node_feats,
+        node_attrs,
+        edge_feats,
+        edge_vectors,
+        edge_index,
+        cutoff,
+        magnetic_moments,
+    ) = inputs
+    previous_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(DTYPE)
+    try:
+        wigner_module = WignerD(1, 1)
+    finally:
+        torch.set_default_dtype(previous_dtype)
+    wigner, wigner_inv = wigner_module.to(device=DEVICE).get_wigner(edge_vectors)
+    return module._compute_messages(
+        node_feats,
+        node_attrs,
+        edge_feats,
+        None,
+        edge_index,
+        cutoff,
+        magnetic_moments,
+        wigner,
+        wigner_inv,
+    )
+
+
+@pytest.mark.parametrize("path_mode", ["uv", "uu"])
+def test_o2_magnetic_interaction_uses_standard_linear_paths(
+    path_mode,
+    monkeypatch,
+):
+    torch.manual_seed(7)
+    module = _build_o2_magnetic_interaction(monkeypatch, path_mode)
+    assert module.rejector.path_mode == path_mode
+    assert module.edge_info.dims[0] == module.edge_feats_channel + 2 * 2 + 2
+    if path_mode == "uv":
+        assert module.rejector.linear.internal_weights
+        assert module.rejector.radial_linear.path_mode == "uu"
+    else:
+        assert not module.rejector.linear.internal_weights
+
+    inputs = _o2_magnetic_inputs(module)
+    output = _evaluate_o2_magnetic_interaction(module, inputs)
+    assert output.shape == (inputs[0].size(0), module.rejector.irreps_out.dim)
+    gradients = torch.autograd.grad(
+        output.square().sum(),
+        (inputs[0], inputs[2], inputs[-1]),
+        create_graph=True,
+    )
+    assert all(gradient.isfinite().all() for gradient in gradients)
+
+
+@pytest.mark.parametrize("path_mode", ["uv", "uu"])
+@pytest.mark.parametrize("improper", [False, True])
+def test_o2_magnetic_interaction_is_globally_o3_equivariant(
+    path_mode,
+    improper,
+    monkeypatch,
+):
+    torch.manual_seed(8)
+    module = _build_o2_magnetic_interaction(monkeypatch, path_mode)
+    inputs = _o2_magnetic_inputs(module)
+    output = _evaluate_o2_magnetic_interaction(module, inputs)
+
+    previous_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(DTYPE)
+    try:
+        rotation = o3.rand_matrix(dtype=DTYPE)
+        if improper:
+            rotation = -rotation
+        node_rotation = module.irreps_in.D_from_matrix(rotation)
+        magnetic_rotation = o3.Irreps("1e").D_from_matrix(rotation)
+        output_rotation = module.rejector.irreps_out.D_from_matrix(rotation)
+    finally:
+        torch.set_default_dtype(previous_dtype)
+    rotation = rotation.to(DEVICE)
+    node_rotation = node_rotation.to(DEVICE)
+    magnetic_rotation = magnetic_rotation.to(DEVICE)
+    output_rotation = output_rotation.to(DEVICE)
+    rotated_inputs = (
+        inputs[0] @ node_rotation.T,
+        inputs[1],
+        inputs[2],
+        inputs[3] @ rotation.T,
+        inputs[4],
+        inputs[5],
+        inputs[6] @ magnetic_rotation.T,
+    )
+    rotated_output = _evaluate_o2_magnetic_interaction(module, rotated_inputs)
+    torch.testing.assert_close(
+        rotated_output,
+        output @ output_rotation.T,
+        atol=3.0e-10,
+        rtol=3.0e-10,
+    )
