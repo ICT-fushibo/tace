@@ -22,6 +22,12 @@ Spherical/SO(2) Architecture
 The architecture of the spherical model is largely the same as that of the Cartesian space. 
 For details on the SO(2) component, please refer to our paper and code.
 
+Wigner6j/O(2) Magnetic Architecture
+-----------------------------------
+
+For more details on global O(3), local O(2), and Wigner 6j recoupling, 
+please look forward to our upcoming preprint paper.
+
 Docs
 ----
 
