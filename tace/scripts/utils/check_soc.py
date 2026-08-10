@@ -142,8 +142,7 @@ def main():
     args = parse_args()
     if args.num_structures is not None and args.num_structures < 1:
         raise ValueError("--num-structures must be positive.")
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     index = ":" if args.num_structures is None else f":{args.num_structures}"
     atoms_list = ase.io.read(args.input, index=index)
     if not atoms_list:
