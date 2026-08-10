@@ -38,7 +38,7 @@ Currently, the officially supported properties include:
 - Atomic stresses (conservative, predict only)
 - Atomic virials (conservative, predict only)
 - Absolute final collinear magmoms
-- Noncollinear magnetic forces (full O(3))
+- Noncollinear magnetic forces (SOC, full O(3))
 
 For embedding property, we support:
 
@@ -46,7 +46,7 @@ For embedding property, we support:
 - charges
 - total charge
 - electric field
-- initial noncollinear magmoms (full O(3))
+- initial noncollinear magmoms (SOC, full O(3))
 
 
 Plugins
