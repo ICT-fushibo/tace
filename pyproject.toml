@@ -112,7 +112,7 @@ include = [
 target-version = "py39"
 line-length = 88
 extend-exclude = [
-    "tace/models/_eqt/equitorch",
+    "tace/models/eqt/equitorch",
 ]
 
 [tool.ruff.lint]

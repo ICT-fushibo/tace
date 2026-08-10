@@ -13,9 +13,9 @@ from e3nn import o3
 from ...utils.env import get_tace_use_dens
 from ..angular import SphericalHarmonics
 from ..layout import LayoutTransform
+from ..legacy_so2 import WignerD
 from ..linear import e3nnLinear
 from ..radial import RadialBasis
-from ..so2 import WignerD
 from .edge import EDGE_EMBEDDING, EDGE_UPDATE
 from .inter import INTERACTION  # , SO2EdgeInteraction
 from .layer_norm import get_normalization_layer

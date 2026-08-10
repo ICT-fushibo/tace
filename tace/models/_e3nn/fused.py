@@ -16,15 +16,15 @@ from tace.utils.env import (
 from tace.utils.torch_scatter import scatter_sum
 
 from ..layout import LayoutTransform
-from ..linear import torchLinear
-from ..mlp import ScaledSigmoid, ScaledSiLU
-from ..so2 import (
+from ..legacy_so2 import (
     SO2Gate,
     so2_expand_index,
     so3_expand_index,
     uuSO2Linear,
     uvSO2Linear,
 )
+from ..linear import torchLinear
+from ..mlp import ScaledSigmoid, ScaledSiLU
 from ..softmax import GraphSoftmax
 from .asymmetric_contraction import ComplexProductBasis, SO2ASymmetricContraction
 from .paths import generate_paths
@@ -75,7 +75,7 @@ class uuuTensorProduct(torch.nn.Module):
         self.use_cue = acceleration_enabled("cue")
 
         if self.use_eqt:
-            from .._eqt import e3nnEqtTensorProduct
+            from ..eqt import e3nnEqtTensorProduct
 
             self.fused_tp = e3nnEqtTensorProduct(
                 irreps_in1=irreps_in1,
@@ -86,7 +86,7 @@ class uuuTensorProduct(torch.nn.Module):
                 trainable=trainable,
             )
         # elif self.use_cue and not trainable:
-        #     from .._cue import e3nnCueTensorProduct
+        #     from ..cue import e3nnCueTensorProduct
         #     self.fused_tp = e3nnCueTensorProduct(
         #         irreps_in1=irreps_in1,
         #         irreps_in2=irreps_in2,
@@ -173,7 +173,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
             pass
 
         if self.use_oeq:
-            from .._oeq import e3nnOeqScatterTensorProduct
+            from ..oeq import e3nnOeqScatterTensorProduct
 
             self.fused_tp = e3nnOeqScatterTensorProduct(
                 irreps_in1=self.irreps_in1,
@@ -182,7 +182,7 @@ class O3ScatterTensorProduct(torch.nn.Module):
                 instructions=self.instructions,
             )
         elif self.use_cue and not explicit_instructions:
-            from .._cue import e3nnCueScatterTensorProduct
+            from ..cue import e3nnCueScatterTensorProduct
 
             self.fused_tp = e3nnCueScatterTensorProduct(
                 irreps_in1=self.irreps_in1,

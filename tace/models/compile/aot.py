@@ -634,9 +634,9 @@ def _custom_ops_libs_from_model(model: torch.nn.Module) -> Set[str]:
     libs: Set[str] = set()
     for module in model.modules():
         module_name = type(module).__module__.lower()
-        if module_name.startswith("openequivariance") or ".models._oeq" in module_name:
+        if module_name.startswith("openequivariance") or ".models.oeq" in module_name:
             libs.add("openequivariance")
-        if module_name.startswith("cuequivariance") or ".models._cue" in module_name:
+        if module_name.startswith("cuequivariance") or ".models.cue" in module_name:
             libs.update({"cuequivariance", "cuequivariance_torch"})
     return libs
 
