@@ -354,8 +354,9 @@ class Representation(torch.nn.Module):
                 wigner,
                 wigner_inv,
                 data["batch"],
-                data["initial_noncollinear_magmoms"] if \
-                    "initial_noncollinear_magmoms" in data else None
+                data["initial_noncollinear_magmoms"]
+                if "initial_noncollinear_magmoms" in data
+                else None,
             )
             if graph.lmp and idx == 0:
                 node_attrs_slice = node_attrs_slice[: graph.lmp_natoms[0]]

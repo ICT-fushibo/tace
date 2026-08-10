@@ -96,8 +96,8 @@ class O3Wigner6jScatterTensorProduct(torch.nn.Module):
     the two trees are equal for arbitrary per-edge, per-path radial and magnetic
     weights.
 
-    Tensor products use e3nn's default component and element normalization. 
-    The registered recoupling coefficients include the normalization ratio 
+    Tensor products use e3nn's default component and element normalization.
+    The registered recoupling coefficients include the normalization ratio
     between the two coupling trees.
     """
 
@@ -108,13 +108,21 @@ class O3Wigner6jScatterTensorProduct(torch.nn.Module):
         irreps_out: o3.Irreps,
         magnetic_irreps: o3.Irreps = o3.Irreps("1x1e"),
         l1l2: Union[str, None] = None,
+        magnetic_weight_level: str = "edge",
     ) -> None:
         super().__init__()
+
+        if magnetic_weight_level not in {"edge", "node"}:
+            raise ValueError(
+                "magnetic_weight_level must be either 'edge' or 'node', "
+                f"got {magnetic_weight_level!r}"
+            )
 
         self.irreps_node = o3.Irreps(irreps_node)
         self.irreps_edge = o3.Irreps(irreps_edge)
         requested_irreps_out = o3.Irreps(irreps_out)
         self.magnetic_irreps = o3.Irreps(magnetic_irreps)
+        self.magnetic_weight_level = magnetic_weight_level
 
         paths: list[_CouplingPath] = []
         reference_intermediate = []
@@ -303,15 +311,39 @@ class O3Wigner6jScatterTensorProduct(torch.nn.Module):
     ) -> torch.Tensor:
         indices = self.source_weight_indices
         coefficients = self.recoupling_coefficients.to(dtype=radial_weights.dtype)
-        magnetic_intermediate = self.recoupled_mag_tp(
-            node_feats,
-            magnetic_moments,
-            magnetic_weights.index_select(-1, indices),
-        )
+        radial_weights = radial_weights.index_select(-1, indices)
+        if self.magnetic_weight_level == "edge":
+            if magnetic_weights.size(0) != edge_index.size(1):
+                raise ValueError(
+                    "edge magnetic weights must have one row per graph edge"
+                )
+            unit_weights = node_feats.new_ones(
+                1,
+                self.recoupled_mag_tp.weight_numel,
+            ).expand(node_feats.size(0), -1)
+            magnetic_intermediate = self.recoupled_mag_tp(
+                node_feats,
+                magnetic_moments,
+                unit_weights,
+            )
+            radial_weights = radial_weights * magnetic_weights.index_select(
+                -1,
+                indices,
+            )
+        else:
+            if magnetic_weights.size(0) != node_feats.size(0):
+                raise ValueError(
+                    "node magnetic weights must have one row per graph node"
+                )
+            magnetic_intermediate = self.recoupled_mag_tp(
+                node_feats,
+                magnetic_moments,
+                magnetic_weights.index_select(-1, indices),
+            )
         return self.recoupled_pos_tp(
             magnetic_intermediate,
             edge_attrs,
-            radial_weights.index_select(-1, indices) * coefficients,
+            radial_weights * coefficients,
             edge_index,
         )
 
@@ -328,10 +360,22 @@ class O3Wigner6jScatterTensorProduct(torch.nn.Module):
         pos_intermediate = self.reference_pos_tp(
             node_feats[source], edge_attrs, radial_weights
         )
+        if self.magnetic_weight_level == "edge":
+            if magnetic_weights.size(0) != edge_index.size(1):
+                raise ValueError(
+                    "edge magnetic weights must have one row per graph edge"
+                )
+            reference_magnetic_weights = magnetic_weights
+        else:
+            if magnetic_weights.size(0) != node_feats.size(0):
+                raise ValueError(
+                    "node magnetic weights must have one row per graph node"
+                )
+            reference_magnetic_weights = magnetic_weights[source]
         return self.reference_mag_tp(
             pos_intermediate,
             magnetic_moments[source],
-            magnetic_weights[source],
+            reference_magnetic_weights,
         )
 
     def forward(

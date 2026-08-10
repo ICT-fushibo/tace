@@ -294,7 +294,7 @@ model:
       type: linear    # [linear, nonlinear, tensor, so2_tensor], linear is safer
 
     edge_embedding: 
-      type: nonlinear # identity  # [identity, linear, nonlinear, element2], identity is safer
+      type: identity # identity  # [identity, linear, nonlinear, element2], identity is safer
 
     edge_update:
       type: element2  # [identity, element2], identity is safer
@@ -333,13 +333,11 @@ model:
       use_first_pre_norm: false 
           
     atomic_basis:
-      type: cgtp # [cgtp, so2] 
-      # type: [cgtp, so2, cgtp, so2 ...]
+      type: cgtp # (str or list[str]) [cgtp, uu_so2, uv_so2, o3_w6j_mag] 
       l1l2: null # [null, <=], restriction for each layer
       scatter_norm: avg_num_neighbors  # [avg_num_neighbors, density] density are from mace
       nonlinear: sigmoid_gate # [null, sigmoid_gate]
       edge_nonlinear: so2_sigmoid_gate # [null, so2_sigmoid_gate]
-      edge_info_type: mlp # [mlp, glu]
         
       # in test, not use
       node_wise_hidden: null
@@ -358,15 +356,13 @@ model:
       use_radial_phase: false # false is recommend
 
     product_basis:
-      type: cgtp  # [cgtp, gtp]
-      # type: [cgtp, gtp, cgtp, gtp ...]
+      type: cgtp  # (str or list[str]) [cgtp]
       l1l2: null  # [null, <=]
       correlation: 2 # (int) 3 is recommended for 2 layer, 2 is  is recommended for > 2 layer
       return_components: null # [null, list(int)], if not specify, last layer will only return target weight
       num_expert: null
       num_channel_per_expert: null
-      resolution: null # list[int, int] only useful for GtpACE, 
-      nonlinear: null
+      nonlinear: null # [null, silu_bilineargate]
       use_shared_expert: false
 
     readout_emlp:
