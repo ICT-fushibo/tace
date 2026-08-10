@@ -131,7 +131,7 @@ with those selections.
 
 .. important::
 
-   TACE AOTInductor compilation and export require **PyTorch 2.11 or newer**.
+   TACE AOTInductor compilation and export require ``torch>=2.13``.
    Earlier PyTorch versions are not supported for AOTI export.
    When OpenEquivariance is enabled for AOTI export, OEQ 0.6.4 or newer is
    required.

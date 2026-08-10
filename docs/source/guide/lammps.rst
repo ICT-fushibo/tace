@@ -26,7 +26,7 @@ Requirements
 * TACE ML-IAP currently requires the CUDA Kokkos backend.
 * One MPI rank on one GPU does not require CUDA-aware MPI. Any run with more
   than one rank requires a CUDA-aware MPI implementation.
-* AOTI export requires PyTorch 2.11 or newer. AOTI packages are specific to
+* AOTI export requires ``torch>=2.13``. AOTI packages are specific to
   their deployment software stack and accelerator target, so export on a
   machine compatible with the deployment nodes.
 

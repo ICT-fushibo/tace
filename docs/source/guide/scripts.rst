@@ -126,7 +126,7 @@ The three primary entry points are:
 
 Use ``tace-export-eval --backend aoti`` for native ASE/TorchSim deployment and
 ``tace-export-lammps --backend aoti`` for compiled LAMMPS inference. AOTI
-requires PyTorch 2.11 or newer. ASE/TorchSim AOTI export automatically creates
+requires ``torch>=2.13``. ASE/TorchSim AOTI export automatically creates
 dynamic synthetic graph inputs, so ``--sample`` is not required. Use ``-f`` or
 ``--fidelity_idx`` to select a fidelity during export.
 

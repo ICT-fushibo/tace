@@ -1,7 +1,7 @@
 project = "TACE"
 copyright = "2026, xuzemin"
 author = "xuzemin"
-release = "v0.2.0"
+release = "v0.2.1"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -19,7 +19,7 @@ myst_enable_extensions = [
     "amsmath",
 ]
 
-myst_heading_anchors = 3 
+myst_heading_anchors = 3
 
 autodoc_member_order = "bysource"
 autosummary_generate = True

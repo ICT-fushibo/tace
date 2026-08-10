@@ -7,7 +7,7 @@ Requirements
 ------------
 
 TACE requires Python 3.9 or newer and PyTorch 2.4 through 2.13. AOTInductor
-export additionally requires PyTorch 2.11 or newer. We recommend installing
+export additionally requires ``torch>=2.13``. We recommend installing
 TACE in a clean environment:
 
 .. code-block:: bash
