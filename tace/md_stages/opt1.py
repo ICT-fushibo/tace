@@ -146,7 +146,11 @@ class TACETorchSimEvaluator:
 
         # The MD state remains FP64; conversion to checkpoint precision is a
         # device-to-device operation immediately before the eager model call.
-        self.sim_state.positions.copy_(positions.to(dtype=self.model_dtype))
+        # TorchSim marks this leaf tensor as requiring gradients because TACE
+        # obtains forces through autograd. Updating a leaf in-place must happen
+        # under no_grad; the flag remains enabled for the following model call.
+        with torch.no_grad():
+            self.sim_state.positions.copy_(positions.to(dtype=self.model_dtype))
         outputs = self.calculator(self.sim_state)
         if "energy" not in outputs or "forces" not in outputs:
             raise RuntimeError(f"TACE model omitted energy/forces: {sorted(outputs)}")
