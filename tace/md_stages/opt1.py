@@ -82,7 +82,14 @@ class GPUMDState:
 class TACETorchSimEvaluator:
     """Evaluate checkpoint-precision TACE through its CUDA TorchSim interface."""
 
-    def __init__(self, atoms: Atoms, model_path: str, *, device: torch.device) -> None:
+    def __init__(
+        self,
+        atoms: Atoms,
+        model_path: str,
+        *,
+        device: torch.device,
+        compute_stress: bool,
+    ) -> None:
         try:
             import torch_sim as ts
             from torch_sim.neighbors import torchsim_nl
@@ -108,7 +115,7 @@ class TACETorchSimEvaluator:
             dtype=None,
             neighbor_list_fn=torchsim_nl,
             compute_forces=True,
-            compute_stress=True,
+            compute_stress=compute_stress,
             atomic_numbers=atomic_numbers,
             system_idx=system_idx,
             enable_oeq=False,
@@ -120,10 +127,10 @@ class TACETorchSimEvaluator:
         self.model_metadata = _validate_model_contract(
             self.calculator, requested_accelerators=set()
         )
-        if not self.model_metadata["supports_stress"]:
+        if compute_stress and not self.model_metadata["supports_stress"]:
             raise ValueError(
-                "TACE Opt1 requires a checkpoint with stress output so the same "
-                "route can satisfy the Matbench trajectory contract"
+                "TACE Opt1 was asked to compute stress, but the checkpoint does "
+                "not provide stress output"
             )
         self.model_dtype = self.calculator.model.get_model_dtype()
         self.sim_state = ts.io.atoms_to_state(
@@ -131,7 +138,7 @@ class TACETorchSimEvaluator:
         )
         self.device = device
         self.num_atoms = len(atoms)
-        self.torchsim_nl = torchsim_nl
+        self.compute_stress = compute_stress
 
     def __call__(self, positions: Tensor) -> tuple[Tensor, Tensor, Tensor | None]:
         if positions.device != self.device or positions.dtype != torch.float64:
@@ -144,13 +151,14 @@ class TACETorchSimEvaluator:
                 f"got {tuple(positions.shape)}"
             )
 
-        # The MD state remains FP64; conversion to checkpoint precision is a
-        # device-to-device operation immediately before the eager model call.
+        # The MD state remains FP64. Tensor.copy_ performs the checkpoint-dtype
+        # conversion in the device-to-device copy without allocating the
+        # temporary tensor that positions.to(dtype=...) would create each step.
         # TorchSim marks this leaf tensor as requiring gradients because TACE
         # obtains forces through autograd. Updating a leaf in-place must happen
         # under no_grad; the flag remains enabled for the following model call.
         with torch.no_grad():
-            self.sim_state.positions.copy_(positions.to(dtype=self.model_dtype))
+            self.sim_state.positions.copy_(positions)
         outputs = self.calculator(self.sim_state)
         if "energy" not in outputs or "forces" not in outputs:
             raise RuntimeError(f"TACE model omitted energy/forces: {sorted(outputs)}")
@@ -429,6 +437,9 @@ def _validate_request(request: MDRunRequest) -> None:
             "TACE Opt1 fixes model_dtype='checkpoint'; explicit model casting is "
             "a control, not the GPU-resident stage"
         )
+    compute_stress = request.options.get("compute_stress", False)
+    if not isinstance(compute_stress, bool):
+        raise ValueError("TACE Opt1 route option compute_stress must be a boolean")
 
 
 def _configure_opt1_runtime() -> None:
@@ -465,7 +476,18 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     ).clone()
     state = GPUMDState(positions=positions, momenta=momenta)
     initial_state = state.clone()
-    evaluator = TACETorchSimEvaluator(atoms, request.model_path, device=device)
+    # Stress is needed for Matbench trajectory frames, but it is not part of the
+    # Cu/H2O timing/statistics contract. Avoid the extra cell derivative there;
+    # callers that need stress without a trajectory can request it explicitly.
+    compute_stress = config.collect_trajectory or request.options.get(
+        "compute_stress", False
+    )
+    evaluator = TACETorchSimEvaluator(
+        atoms,
+        request.model_path,
+        device=device,
+        compute_stress=compute_stress,
+    )
     integrator = _build_integrator(request, masses)
 
     if config.warmup_steps:
@@ -572,6 +594,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "warmup_full_state_restored": True,
             "trajectory_initial_frame": bool(config.collect_trajectory),
             "trajectory_stress": bool(config.collect_trajectory),
+            "compute_stress": evaluator.compute_stress,
             "cutoff_a": evaluator.model_metadata["cutoff_a"],
             "target_properties": evaluator.model_metadata["target_properties"],
         },

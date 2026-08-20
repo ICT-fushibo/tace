@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import ast
+import inspect
+import sys
+import textwrap
+import types
+
 import numpy as np
 import pytest
 import torch
@@ -14,6 +20,7 @@ from tace.md_stages.opt1 import (
     BerendsenIntegrator,
     GPUMDState,
     NoseHooverChainIntegrator,
+    TACETorchSimEvaluator,
     _snapshot,
     _validate_request,
 )
@@ -156,3 +163,103 @@ def test_matbench_snapshot_contains_step_energy_forces_and_stress():
     assert frame.get_potential_energy() == -1.25
     np.testing.assert_allclose(frame.get_forces(), np.ones((2, 3)))
     np.testing.assert_allclose(frame.get_stress(voigt=False), np.eye(3))
+
+
+@pytest.mark.parametrize("compute_stress", [False, True])
+def test_evaluator_forwards_stress_flag_and_caches_static_inputs(
+    monkeypatch, compute_stress: bool
+):
+    captured: dict[str, object] = {}
+
+    class FakeModel:
+        def __init__(self, requested_stress: bool) -> None:
+            self.flags = types.SimpleNamespace(
+                compute_forces=True, compute_stress=requested_stress
+            )
+
+        def get_model_dtype(self):
+            return torch.float32
+
+        def get_target_property(self):
+            return ["energy", "forces", "stress"]
+
+        def get_cutoff(self):
+            return 5.0
+
+        def modules(self):
+            return []
+
+    class FakeCalculator:
+        def __init__(self, model_path, **kwargs) -> None:
+            captured["model_path"] = model_path
+            captured.update(kwargs)
+            self.compute_stress = kwargs["compute_stress"]
+            self.model = FakeModel(self.compute_stress)
+
+        def __call__(self, state):
+            outputs = {
+                "energy": state.positions.new_tensor([-1.0]),
+                "forces": torch.ones_like(state.positions),
+            }
+            if self.compute_stress:
+                outputs["stress"] = torch.eye(
+                    3, dtype=state.positions.dtype, device=state.positions.device
+                ).unsqueeze(0)
+            return outputs
+
+    def atoms_to_state(atoms, *, device, dtype):
+        return types.SimpleNamespace(
+            positions=torch.tensor(
+                atoms[0].positions,
+                device=device,
+                dtype=dtype,
+                requires_grad=True,
+            )
+        )
+
+    torch_sim_module = types.ModuleType("torch_sim")
+    torch_sim_module.io = types.SimpleNamespace(atoms_to_state=atoms_to_state)
+    neighbors_module = types.ModuleType("torch_sim.neighbors")
+    neighbors_module.torchsim_nl = object()
+    interface_module = types.ModuleType("tace.interface.torchsim")
+    interface_module.TACETorchSimCalc = FakeCalculator
+    monkeypatch.setitem(sys.modules, "torch_sim", torch_sim_module)
+    monkeypatch.setitem(sys.modules, "torch_sim.neighbors", neighbors_module)
+    monkeypatch.setitem(sys.modules, "tace.interface.torchsim", interface_module)
+
+    atoms = Atoms(
+        "H2", positions=[[0, 0, 0], [0, 0, 0.7]], cell=[5, 5, 5], pbc=True
+    )
+    evaluator = TACETorchSimEvaluator(
+        atoms,
+        "TACE-OAM-L.pt",
+        device=torch.device("cpu"),
+        compute_stress=compute_stress,
+    )
+    _, _, stress = evaluator(torch.tensor(atoms.positions, dtype=torch.float64))
+
+    assert captured["compute_stress"] is compute_stress
+    assert captured["compute_forces"] is True
+    assert torch.equal(
+        captured["atomic_numbers"], torch.tensor([1, 1], dtype=torch.int64)
+    )
+    assert torch.equal(captured["system_idx"], torch.zeros(2, dtype=torch.int64))
+    assert evaluator.calculator.model.flags.compute_stress is compute_stress
+    assert (stress is not None) is compute_stress
+
+
+def test_evaluator_hot_path_has_no_temporary_cast_or_host_transfer():
+    tree = ast.parse(textwrap.dedent(inspect.getsource(TACETorchSimEvaluator.__call__)))
+    forbidden = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert forbidden.isdisjoint({"to", "cpu", "numpy", "item", "tolist"})
+
+
+def test_opt1_rejects_non_boolean_compute_stress_option():
+    request = _request()
+    request.options["compute_stress"] = "false"
+    with pytest.raises(ValueError, match="compute_stress must be a boolean"):
+        _validate_request(request)
