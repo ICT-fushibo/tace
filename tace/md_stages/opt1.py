@@ -21,6 +21,11 @@ import torch
 from ase import Atoms, units
 from ase.calculators.singlepoint import SinglePointCalculator
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
+
+from md_benchmark.performance import (
+    CudaPhaseProfiler,
+    performance_profile_requested,
+)
 from torch import Tensor
 
 from md_benchmark.md_route import (
@@ -89,6 +94,7 @@ class TACETorchSimEvaluator:
         *,
         device: torch.device,
         compute_stress: bool,
+        profiler: CudaPhaseProfiler,
     ) -> None:
         try:
             import torch_sim as ts
@@ -124,6 +130,7 @@ class TACETorchSimEvaluator:
             enable_compile=False,
             enable_triton=False,
         )
+        self.calculator._md_opt_profiler = profiler
         self.model_metadata = _validate_model_contract(
             self.calculator, requested_accelerators=set()
         )
@@ -139,6 +146,7 @@ class TACETorchSimEvaluator:
         self.device = device
         self.num_atoms = len(atoms)
         self.compute_stress = compute_stress
+        self.profiler = profiler
 
     def __call__(self, positions: Tensor) -> tuple[Tensor, Tensor, Tensor | None]:
         if positions.device != self.device or positions.dtype != torch.float64:
@@ -157,9 +165,11 @@ class TACETorchSimEvaluator:
         # TorchSim marks this leaf tensor as requiring gradients because TACE
         # obtains forces through autograd. Updating a leaf in-place must happen
         # under no_grad; the flag remains enabled for the following model call.
-        with torch.no_grad():
-            self.sim_state.positions.copy_(positions)
-        outputs = self.calculator(self.sim_state)
+        with self.profiler.phase("model_input"):
+            with torch.no_grad():
+                self.sim_state.positions.copy_(positions)
+        with self.profiler.phase("calculator_force"):
+            outputs = self.calculator(self.sim_state)
         if "energy" not in outputs or "forces" not in outputs:
             raise RuntimeError(f"TACE model omitted energy/forces: {sorted(outputs)}")
         energy = outputs["energy"].reshape(-1)[0].to(torch.float64)
@@ -482,11 +492,16 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     compute_stress = config.collect_trajectory or request.options.get(
         "compute_stress", False
     )
+    profiler = CudaPhaseProfiler(
+        enabled=performance_profile_requested(request.options),
+        device=device,
+    )
     evaluator = TACETorchSimEvaluator(
         atoms,
         request.model_path,
         device=device,
         compute_stress=compute_stress,
+        profiler=profiler,
     )
     integrator = _build_integrator(request, masses)
 
@@ -525,6 +540,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     observations: list[MDObservation] = []
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.synchronize(device)
+    profiler.start()
     started = time.perf_counter()
 
     # Matbench requires step zero plus every record_interval frame.
@@ -532,14 +548,17 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         _ensure_evaluated(state, evaluator)
         write_frame(0)
     for step in range(1, config.steps + 1):
-        integrator.step(state, evaluator)
+        with profiler.phase("md_step"):
+            integrator.step(state, evaluator)
         if config.collect_statistics and step in observation_steps:
             observations.append(_record_observation(state, step, masses))
         if config.collect_trajectory and step % config.record_interval == 0:
             write_frame(step)
 
     torch.cuda.synchronize(device)
+    profiler.stop()
     elapsed = time.perf_counter() - started
+    performance_profile = profiler.summary(synchronize=False)
     peak_memory_gb = torch.cuda.max_memory_allocated(device) / 1.0e9
     _validate_final_state(state)
     if trajectory_path is not None and partial_path is not None:
@@ -595,6 +614,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "trajectory_initial_frame": bool(config.collect_trajectory),
             "trajectory_stress": bool(config.collect_trajectory),
             "compute_stress": evaluator.compute_stress,
+            "performance_profile": performance_profile,
             "cutoff_a": evaluator.model_metadata["cutoff_a"],
             "target_properties": evaluator.model_metadata["target_properties"],
         },

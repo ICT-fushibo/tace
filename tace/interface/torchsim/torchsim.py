@@ -3,6 +3,7 @@
 # License: MIT, see LICENSE.md
 ################################################################################
 
+import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Union
@@ -247,13 +248,16 @@ class TACETorchSimCalc(ModelInterface):
                 self._setup_ptr(system_idx)
                 self.system_idx = system_idx
 
-        edge_index, mapping_system, unit_shifts = self.neighbor_list_fn(
-            state.positions,
-            state.row_vector_cell,
-            state.pbc,
-            self.r_max,
-            self.system_idx,
-        )
+        profiler = getattr(self, "_md_opt_profiler", None)
+        phase = contextlib.nullcontext if profiler is None else profiler.phase
+        with phase("neighbor_list"):
+            edge_index, mapping_system, unit_shifts = self.neighbor_list_fn(
+                state.positions,
+                state.row_vector_cell,
+                state.pbc,
+                self.r_max,
+                self.system_idx,
+            )
         # shifts = ts.transforms.compute_cell_shifts(
         #     state.row_vector_cell, unit_shifts, mapping_system
         # )
@@ -273,7 +277,8 @@ class TACETorchSimCalc(ModelInterface):
         )
 
         # Get model output
-        out = self.model(data_dict)
+        with phase("model_energy_force"):
+            out = self.model(data_dict)
 
         results: dict[str, torch.Tensor] = {}
 
