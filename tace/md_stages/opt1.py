@@ -94,7 +94,7 @@ class TACETorchSimEvaluator:
         *,
         device: torch.device,
         compute_stress: bool,
-        profiler: CudaPhaseProfiler,
+        profiler: CudaPhaseProfiler | None = None,
     ) -> None:
         try:
             import torch_sim as ts
@@ -146,7 +146,10 @@ class TACETorchSimEvaluator:
         self.device = device
         self.num_atoms = len(atoms)
         self.compute_stress = compute_stress
-        self.profiler = profiler
+        self.profiler = profiler or CudaPhaseProfiler(
+            enabled=False,
+            device=device,
+        )
 
     def __call__(self, positions: Tensor) -> tuple[Tensor, Tensor, Tensor | None]:
         if positions.device != self.device or positions.dtype != torch.float64:
