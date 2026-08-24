@@ -201,5 +201,6 @@ def test_padding_mask_is_enabled_for_density_normalization_modules():
 
     model = torch.nn.Sequential(Interaction(), torch.nn.Linear(1, 1))
     assert _enable_padding_density_masks_(model) == 1
-    assert model[0].apply_density_cutoff is True
+    assert model[0]._opt2_binary_density_mask is True
+    assert model[0].apply_density_cutoff is False
     assert _enable_padding_density_masks_(model) == 0

@@ -180,10 +180,8 @@ def _enable_padding_density_masks_(model: torch.nn.Module) -> int:
     for module in model.modules():
         if not hasattr(module, "edge_density"):
             continue
-        if not hasattr(module, "apply_density_cutoff"):
-            continue
-        if not bool(module.apply_density_cutoff):
-            module.apply_density_cutoff = True
+        if not bool(getattr(module, "_opt2_binary_density_mask", False)):
+            module._opt2_binary_density_mask = True
             patched += 1
     return patched
 

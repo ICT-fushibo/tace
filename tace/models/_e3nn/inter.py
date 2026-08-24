@@ -218,8 +218,11 @@ class CgtpInteraction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            if cutoff is not None and self.apply_density_cutoff:
-                density = density * cutoff
+            if cutoff is not None:
+                if getattr(self, "_opt2_binary_density_mask", False):
+                    density = density * (cutoff != 0).to(dtype=density.dtype)
+                elif self.apply_density_cutoff:
+                    density = density * cutoff
             density = scatter_sum(
                 density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0)
             )
@@ -452,8 +455,11 @@ class uuSO2Interaction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            if cutoff is not None and self.apply_density_cutoff:
-                density = density * cutoff
+            if cutoff is not None:
+                if getattr(self, "_opt2_binary_density_mask", False):
+                    density = density * (cutoff != 0).to(dtype=density.dtype)
+                elif self.apply_density_cutoff:
+                    density = density * cutoff
             density = scatter_sum(
                 density, edge_index[1], dim=0, dim_size=node_attrs_total.size(0)
             )
