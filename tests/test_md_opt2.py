@@ -16,6 +16,7 @@ from tace.md_stages.opt2 import (
     TACEModelOnlyGraphEvaluator,
     _capture_model_graph,
     _edge_capacity,
+    _enable_padding_density_masks_,
     _NeutralPaddingRadialBasis,
     _validate_request,
 )
@@ -189,3 +190,16 @@ def test_neutral_padding_radial_basis_preserves_real_and_masks_far_edges():
     )
     torch.testing.assert_close(radial, torch.tensor([[2.0], [0.0]]))
     torch.testing.assert_close(valid, torch.tensor([[1.0], [0.0]]))
+
+
+def test_padding_mask_is_enabled_for_density_normalization_modules():
+    class Interaction(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.edge_density = torch.nn.Linear(2, 1)
+            self.apply_density_cutoff = False
+
+    model = torch.nn.Sequential(Interaction(), torch.nn.Linear(1, 1))
+    assert _enable_padding_density_masks_(model) == 1
+    assert model[0].apply_density_cutoff is True
+    assert _enable_padding_density_masks_(model) == 0

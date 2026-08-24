@@ -165,6 +165,29 @@ class _NeutralPaddingRadialBasis(torch.nn.Module):
         return radial, valid
 
 
+def _enable_padding_density_masks_(model: torch.nn.Module) -> int:
+    """Make density-based scatter normalization ignore padded edges.
+
+    Released checkpoints with an already-applied radial cutoff can leave
+    ``apply_density_cutoff`` disabled.  Once Opt2 exposes a binary validity
+    mask, biased density projections must consume that mask too; otherwise
+    every fixed-capacity padding edge changes the normalization denominator.
+    Exact-edge validation below guarantees that enabling it is a no-op for all
+    real neighbors.
+    """
+
+    patched = 0
+    for module in model.modules():
+        if not hasattr(module, "edge_density"):
+            continue
+        if not hasattr(module, "apply_density_cutoff"):
+            continue
+        if not bool(module.apply_density_cutoff):
+            module.apply_density_cutoff = True
+            patched += 1
+    return patched
+
+
 def _edge_capacity(initial_edges: int, options: dict[str, Any]) -> int:
     explicit = options.get("edge_capacity")
     if explicit is not None:
@@ -404,6 +427,9 @@ class TACEModelOnlyGraphEvaluator:
             released_radial_basis,
             self.model_metadata["cutoff_a"],
         ).to(device=device, dtype=self.model_dtype)
+        self.padding_density_masks_enabled = _enable_padding_density_masks_(
+            self.model
+        )
         with torch.enable_grad():
             exact_outputs = self.model(exact_data)
             padded_outputs = self.model(self.static_data)
@@ -776,6 +802,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "max_observed_edge_count": evaluator.max_observed_edges,
             "edge_padding": "self_edge_shifted_beyond_cutoff",
             "edge_padding_neutralization": "binary_post_mlp_edge_mask",
+            "padding_density_masks_enabled": (
+                evaluator.padding_density_masks_enabled
+            ),
             "edge_overflow_policy": "error_no_fallback",
             "capture_failure_policy": "error_no_fallback",
             "validation_failure_policy": "error_no_fallback",
