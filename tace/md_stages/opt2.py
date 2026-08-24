@@ -34,7 +34,6 @@ from tace.md_stages.opt1 import (
     _validate_final_state,
 )
 
-
 _DEFAULT_EDGE_CAPACITY_MULTIPLIER = 1.10
 _DEFAULT_EDGE_CAPACITY_PADDING = 32
 _DEFAULT_GRAPH_WARMUP_STEPS = 3
