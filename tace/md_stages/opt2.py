@@ -18,14 +18,14 @@ from typing import Any, Callable
 import numpy as np
 import torch
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
-from torch import Tensor
-
 from md_benchmark.md_route import (
     MDRunRequest,
     MDRunResult,
     configure_torch_baseline,
     validate_result,
 )
+from torch import Tensor
+
 from tace.md_route import _set_exact_acceleration_environment, _validate_model_contract
 from tace.md_stages.opt1 import (
     GPUMDState,

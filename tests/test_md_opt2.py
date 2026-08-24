@@ -8,15 +8,15 @@ import numpy as np
 import pytest
 import torch
 from ase import Atoms
-
 from md_benchmark.md_route import MDConfig, MDRunRequest
+
 from tace import md_route
 from tace.md_stages.opt2 import (
     FixedEdgeBuffers,
     TACEModelOnlyGraphEvaluator,
-    _NeutralPaddingRadialBasis,
     _capture_model_graph,
     _edge_capacity,
+    _NeutralPaddingRadialBasis,
     _validate_request,
 )
 
