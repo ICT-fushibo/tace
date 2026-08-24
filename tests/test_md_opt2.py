@@ -20,6 +20,7 @@ from tace.md_stages.opt2 import (
     _NeutralPaddingRadialBasis,
     _validate_request,
 )
+from tace.models.blocks import ScaleShift
 
 
 def _request(
@@ -204,3 +205,93 @@ def test_padding_mask_is_enabled_for_density_normalization_modules():
     assert model[0]._opt2_binary_density_mask is True
     assert model[0].apply_density_cutoff is False
     assert _enable_padding_density_masks_(model) == 0
+
+
+def test_scale_shift_single_graph_uses_static_edge_count(monkeypatch):
+    """The single-system MD path must not invoke capture-unsafe bincount."""
+
+    layer = ScaleShift(
+        atomic_numbers=[29],
+        scale_dicts=[{29: 2.0}],
+        shift_dicts=[{29: 3.0}],
+    )
+    node_energy = torch.tensor([1.0, 2.0])
+    node_attrs = torch.ones(2, 1)
+    ptr = torch.tensor([0, 2], dtype=torch.int64)
+    edge_index = torch.tensor([[0, 1], [1, 0]], dtype=torch.int64)
+    batch = torch.zeros(2, dtype=torch.int64)
+    node_fidelity = torch.zeros(2, dtype=torch.int64)
+
+    def forbidden_bincount(*_args, **_kwargs):
+        raise AssertionError("single-graph ScaleShift called torch.bincount")
+
+    monkeypatch.setattr(torch, "bincount", forbidden_bincount)
+    actual = layer(
+        node_energy,
+        node_attrs,
+        ptr,
+        edge_index,
+        batch,
+        node_fidelity,
+    )
+    torch.testing.assert_close(actual, torch.tensor([5.0, 7.0]))
+
+
+def test_scale_shift_single_isolated_atom_preserves_released_semantics():
+    layer = ScaleShift(
+        atomic_numbers=[29],
+        scale_dicts=[{29: 2.0}],
+        shift_dicts=[{29: 3.0}],
+    )
+    actual = layer(
+        torch.tensor([4.0]),
+        torch.ones(1, 1),
+        torch.tensor([0, 1], dtype=torch.int64),
+        torch.empty(2, 0, dtype=torch.int64),
+        torch.zeros(1, dtype=torch.int64),
+        torch.zeros(1, dtype=torch.int64),
+    )
+    torch.testing.assert_close(actual, torch.zeros(1))
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+def test_scale_shift_single_graph_is_cuda_graph_capture_safe():
+    device = torch.device("cuda:0")
+    layer = ScaleShift(
+        atomic_numbers=[29],
+        scale_dicts=[{29: 2.0}],
+        shift_dicts=[{29: 3.0}],
+    ).to(device)
+    node_energy = torch.tensor([1.0, 2.0], device=device)
+    node_attrs = torch.ones(2, 1, device=device)
+    ptr = torch.tensor([0, 2], dtype=torch.int64, device=device)
+    edge_index = torch.tensor(
+        [[0, 1], [1, 0]], dtype=torch.int64, device=device
+    )
+    batch = torch.zeros(2, dtype=torch.int64, device=device)
+    node_fidelity = torch.zeros(2, dtype=torch.int64, device=device)
+
+    for _ in range(3):
+        output = layer(
+            node_energy,
+            node_attrs,
+            ptr,
+            edge_index,
+            batch,
+            node_fidelity,
+        )
+    torch.cuda.synchronize(device)
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        output = layer(
+            node_energy,
+            node_attrs,
+            ptr,
+            edge_index,
+            batch,
+            node_fidelity,
+        )
+    graph.replay()
+    torch.cuda.synchronize(device)
+    torch.testing.assert_close(output, torch.tensor([5.0, 7.0], device=device))

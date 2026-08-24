@@ -349,6 +349,14 @@ class ScaleShift(torch.nn.Module):
                 num_edges = torch.zeros(
                     num_graphs, dtype=torch.int64, device=node_energy.device
                 )
+            elif num_graphs == 1:
+                # ``torch.bincount`` determines its CUDA output size from the
+                # input data and therefore performs a device-to-host query even
+                # when ``minlength`` is supplied.  That query is forbidden
+                # during CUDA Graph capture.  For one graph every edge belongs
+                # to graph zero, so the statically known edge tensor length is
+                # exactly equivalent to bincount([0, ...], minlength=1).
+                num_edges = torch.full_like(num_nodes, edge_index.shape[1])
             else:
                 edge_batch = batch[edge_index[1]]
                 num_edges = torch.bincount(edge_batch, minlength=num_graphs)
