@@ -30,6 +30,7 @@ from tace.md_route import _set_exact_acceleration_environment, _validate_model_c
 from tace.md_stages.opt1 import (
     GPUMDState,
     _build_integrator,
+    _ensure_evaluated,
     _record_observation,
     _validate_final_state,
 )
