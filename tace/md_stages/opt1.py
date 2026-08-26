@@ -547,8 +547,13 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     started = time.perf_counter()
 
     # Matbench requires step zero plus every record_interval frame.
-    if config.collect_trajectory:
+    if config.collect_trajectory or (
+        config.collect_statistics and 0 in observation_steps
+    ):
         _ensure_evaluated(state, evaluator)
+    if config.collect_statistics and 0 in observation_steps:
+        observations.append(_record_observation(state, 0, masses))
+    if config.collect_trajectory:
         write_frame(0)
     for step in range(1, config.steps + 1):
         with profiler.phase("md_step"):
