@@ -17,6 +17,7 @@ from tace.md_stages.opt2 import (
     _capture_model_graph,
     _edge_capacity,
     _enable_padding_density_masks_,
+    _maximum_neighbors_per_atom,
     _NeutralPaddingRadialBasis,
     _validate_request,
 )
@@ -82,6 +83,13 @@ def test_edge_capacity_validation_and_rounding():
         _edge_capacity(100, {"edge_capacity_multiplier": 0.9})
 
 
+def test_probe_maximum_neighbors_uses_tace_receiver_axis():
+    edge_index = torch.tensor(
+        [[1, 2, 0, 2, 0, 1], [0, 0, 1, 1, 2, 2]], dtype=torch.long
+    )
+    assert _maximum_neighbors_per_atom(edge_index, num_atoms=3) == 2
+
+
 def test_fixed_edge_buffers_pad_shrink_and_fail_on_overflow():
     edge_index = torch.tensor([[0, 1, 0], [1, 0, 1]], dtype=torch.int64)
     edge_shifts = torch.zeros(3, 3, dtype=torch.float32)
@@ -129,9 +137,12 @@ def test_runtime_counter_reset_excludes_capture_and_md_warmup_replays():
     evaluator.production_replays = 9
     evaluator.initial_edges = 12
     evaluator.max_observed_edges = 18
+    evaluator.initial_max_neighbors = 7
+    evaluator.max_observed_neighbors = 9
     evaluator.reset_runtime_counters()
     assert evaluator.production_replays == 0
     assert evaluator.max_observed_edges == evaluator.initial_edges
+    assert evaluator.max_observed_neighbors == evaluator.initial_max_neighbors
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")

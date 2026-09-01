@@ -46,13 +46,12 @@ from tace.md_stages.opt1 import (
 from tace.md_stages.opt2 import (
     _DEFAULT_GRAPH_ENERGY_ATOL,
     _DEFAULT_GRAPH_FORCE_ATOL,
-    _NeutralPaddingRadialBasis,
     _assert_close,
     _enable_padding_density_masks_,
+    _NeutralPaddingRadialBasis,
     _positive_float,
     _positive_int,
 )
-
 
 _BACKEND = "whole-step-cuda-graph"
 _DEFAULT_CAPTURE_WARMUP = 3
@@ -66,9 +65,9 @@ def _slots_from_total_edge_capacity(
     num_atoms: int,
     *,
     slot_step: int,
-    guard_slots: int = 1,
+    guard_slots: int = 0,
 ) -> int:
-    """Convert an Opt2 total-edge CAP into guarded per-centre slots."""
+    """Convert an already guarded Opt2 total CAP into aligned slots."""
 
     if total_capacity < 1 or num_atoms < 1:
         raise ValueError("total_capacity and num_atoms must be positive")
@@ -237,6 +236,7 @@ class TACEWholeStepPotential:
             ):
                 raise ValueError("TACE Opt3 neighbors_per_atom must be positive")
             slots = explicit_slots
+            capacity_source = "trajectory-per-atom-probe"
         else:
             total_capacity = options.get("edge_capacity")
             if total_capacity is not None:
@@ -250,11 +250,12 @@ class TACEWholeStepPotential:
                     total_capacity,
                     self.num_atoms,
                     slot_step=slot_step,
-                    guard_slots=1,
+                    guard_slots=0,
                 )
             else:
                 total_floor = 0
             slots = max(inferred_slots, total_floor)
+            capacity_source = "total-edge-plus-initial-per-atom"
         if slots < initial_maximum:
             raise RuntimeError(
                 "TACE Opt3 per-centre capacity is smaller than the initial graph: "
@@ -262,6 +263,7 @@ class TACEWholeStepPotential:
             )
         self.initial_max_neighbors = initial_maximum
         self.neighbors_per_atom = int(slots)
+        self.capacity_source = capacity_source
         self.edge_capacity = self.num_atoms * self.neighbors_per_atom
         sink_count = _positive_int(
             options, "graph_sink_count", _DEFAULT_SINK_COUNT
@@ -891,8 +893,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "initial_edge_count": potential.initial_edge_count,
             "initial_max_neighbors": potential.initial_max_neighbors,
             "neighbors_per_atom": potential.neighbors_per_atom,
+            "capacity_source": potential.capacity_source,
             "capacity_policy": "esen_uniform_per_centre_cap",
-            "capacity_total_to_per_atom_guard_slots": 1,
+            "capacity_total_to_per_atom_guard_slots": 0,
             "edge_padding": "distributed_far_shifted_self_edge_sink",
             "sink_padding": "distributed_far_shifted_self_edges",
             "padding_node_policy": "real_nodes_only_no_dummy_readout_atoms",

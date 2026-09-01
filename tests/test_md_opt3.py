@@ -70,13 +70,13 @@ def test_esen_capacity_policy_rounds_with_headroom():
         neighbor_capacity_from_probe(0)
 
 
-def test_total_edge_capacity_is_aligned_per_atom_then_guarded():
+def test_guarded_total_edge_capacity_is_aligned_without_second_guard():
     assert _slots_from_total_edge_capacity(
-        8960, 108, slot_step=8, guard_slots=1
-    ) == 96
+        8960, 108, slot_step=8, guard_slots=0
+    ) == 88
     assert _slots_from_total_edge_capacity(
-        256, 32, slot_step=8, guard_slots=1
-    ) == 16
+        256, 32, slot_step=8, guard_slots=0
+    ) == 8
 
 
 def test_fixed_builder_distributes_padding_without_dummy_nodes():

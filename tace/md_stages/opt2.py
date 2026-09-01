@@ -400,6 +400,17 @@ class TACEModelOnlyGraphEvaluator:
         self.static_data["edge_shifts"] = self.edges.edge_shifts
         self.initial_edges = int(initial_edge_index.shape[1])
         self.max_observed_edges = self.initial_edges
+        self.track_neighbor_capacity = bool(
+            options.get("capacity_probe_collect_per_atom", False)
+        )
+        self.initial_max_neighbors: int | None = None
+        self.max_observed_neighbors: int | None = None
+        if self.track_neighbor_capacity:
+            self.initial_max_neighbors = _maximum_neighbors_per_atom(
+                initial_edge_index,
+                num_atoms=self.num_atoms,
+            )
+            self.max_observed_neighbors = self.initial_max_neighbors
 
         rtol = _positive_float(options, "graph_rtol", _DEFAULT_GRAPH_RTOL)
         energy_atol = _positive_float(
@@ -616,6 +627,16 @@ class TACEModelOnlyGraphEvaluator:
         with torch.no_grad():
             self.static_positions.copy_(positions)
         edge_index, edge_shifts = self._build_edges()
+        if self.track_neighbor_capacity:
+            maximum = _maximum_neighbors_per_atom(
+                edge_index,
+                num_atoms=self.num_atoms,
+            )
+            assert self.max_observed_neighbors is not None
+            self.max_observed_neighbors = max(
+                self.max_observed_neighbors,
+                maximum,
+            )
         edge_count = self.edges.update(edge_index, edge_shifts)
         self.max_observed_edges = max(self.max_observed_edges, edge_count)
         try:
@@ -633,6 +654,23 @@ class TACEModelOnlyGraphEvaluator:
     def reset_runtime_counters(self) -> None:
         self.production_replays = 0
         self.max_observed_edges = self.initial_edges
+        self.max_observed_neighbors = self.initial_max_neighbors
+
+
+def _maximum_neighbors_per_atom(
+    edge_index: Tensor,
+    *,
+    num_atoms: int,
+) -> int:
+    """Return the largest TACE receiver degree during a capacity probe."""
+    if num_atoms < 1:
+        raise ValueError("num_atoms must be positive")
+    if edge_index.ndim != 2 or edge_index.shape[0] != 2:
+        raise ValueError("edge_index must have shape [2, num_edges]")
+    if edge_index.shape[1] == 0:
+        return 0
+    counts = torch.bincount(edge_index[1], minlength=num_atoms)[:num_atoms]
+    return int(counts.max().item())
 
 
 def _positive_float(options: dict[str, Any], key: str, default: float) -> float:
@@ -806,6 +844,12 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "fixed_edge_capacity": evaluator.edges.capacity,
             "initial_edge_count": evaluator.initial_edges,
             "max_observed_edge_count": evaluator.max_observed_edges,
+            "max_observed_neighbors_per_atom": (
+                evaluator.max_observed_neighbors
+            ),
+            "capacity_probe_collect_per_atom": (
+                evaluator.track_neighbor_capacity
+            ),
             "edge_padding": "self_edge_shifted_beyond_cutoff",
             "edge_padding_neutralization": "binary_post_mlp_edge_mask",
             "padding_density_masks_enabled": (
