@@ -102,7 +102,7 @@ def test_fixed_builder_distributes_padding_without_dummy_nodes():
     real = lengths <= 1.0
     assert int(real.sum()) == 2
     torch.testing.assert_close(
-        lengths[real], torch.full((2,), 0.7, dtype=torch.float64)
+        lengths[real], torch.full((2,), 0.3, dtype=torch.float64)
     )
     assert bool((lengths[~real] > 1.0).all())
     assert int(edge_index.max()) < 2
