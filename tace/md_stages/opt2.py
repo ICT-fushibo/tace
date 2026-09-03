@@ -405,12 +405,19 @@ class TACEModelOnlyGraphEvaluator:
         )
         self.initial_max_neighbors: int | None = None
         self.max_observed_neighbors: int | None = None
+        self.initial_neighbors_by_atom: list[int] | None = None
+        self.max_neighbors_by_atom: list[int] | None = None
         if self.track_neighbor_capacity:
             self.initial_max_neighbors = _maximum_neighbors_per_atom(
                 initial_edge_index,
                 num_atoms=self.num_atoms,
             )
             self.max_observed_neighbors = self.initial_max_neighbors
+            counts = torch.bincount(
+                initial_edge_index[1], minlength=self.num_atoms
+            )[: self.num_atoms]
+            self.initial_neighbors_by_atom = counts.detach().cpu().tolist()
+            self.max_neighbors_by_atom = list(self.initial_neighbors_by_atom)
 
         rtol = _positive_float(options, "graph_rtol", _DEFAULT_GRAPH_RTOL)
         energy_atol = _positive_float(
@@ -637,6 +644,12 @@ class TACEModelOnlyGraphEvaluator:
                 self.max_observed_neighbors,
                 maximum,
             )
+            counts = torch.bincount(edge_index[1], minlength=self.num_atoms)[: self.num_atoms]
+            values = counts.detach().cpu().tolist()
+            self.max_neighbors_by_atom = [
+                max(old, new)
+                for old, new in zip(self.max_neighbors_by_atom or values, values)
+            ]
         edge_count = self.edges.update(edge_index, edge_shifts)
         self.max_observed_edges = max(self.max_observed_edges, edge_count)
         try:
@@ -655,6 +668,11 @@ class TACEModelOnlyGraphEvaluator:
         self.production_replays = 0
         self.max_observed_edges = self.initial_edges
         self.max_observed_neighbors = self.initial_max_neighbors
+        self.max_neighbors_by_atom = (
+            None
+            if self.initial_neighbors_by_atom is None
+            else list(self.initial_neighbors_by_atom)
+        )
 
 
 def _maximum_neighbors_per_atom(
@@ -847,6 +865,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "max_observed_neighbors_per_atom": (
                 evaluator.max_observed_neighbors
             ),
+            "maximum_neighbors_by_atom": evaluator.max_neighbors_by_atom,
             "capacity_probe_collect_per_atom": (
                 evaluator.track_neighbor_capacity
             ),

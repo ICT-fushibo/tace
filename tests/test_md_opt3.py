@@ -90,7 +90,7 @@ def test_fixed_builder_distributes_padding_without_dummy_nodes():
         sink_count=2,
     )
     positions = torch.tensor(
-        [[0.0, 0.0, 0.0], [0.7, 0.0, 0.0]], dtype=torch.float64
+        [[0.1, 0.0, 0.0], [4.8, 0.0, 0.0]], dtype=torch.float64
     )
     edge_index, shifts = builder.build(positions)
     vectors = (
@@ -108,6 +108,32 @@ def test_fixed_builder_distributes_padding_without_dummy_nodes():
     assert int(edge_index.max()) < 2
     padding_nodes = edge_index[0, ~real]
     assert set(padding_nodes.tolist()) == {0, 1}
+
+
+def test_skin_builder_matches_full_search_with_per_atom_cap():
+    positions = torch.tensor(
+        [[0.0, 0.0, 0.0], [0.7, 0.0, 0.0]], dtype=torch.float64
+    )
+    options = dict(
+        num_atoms=2,
+        cell=torch.eye(3, dtype=torch.float64) * 5.0,
+        pbc=torch.ones(3, dtype=torch.bool),
+        cutoff=1.0,
+        neighbors_per_atom=2,
+        neighbor_capacities=[1, 2],
+        sink_count=2,
+    )
+    full = FixedShapeTACENeighborBuilder(**options)
+    skin = FixedShapeTACENeighborBuilder(
+        **options, verlet_skin=0.5, verlet_candidate_capacity=4
+    )
+    skin.initialize_skin(positions)
+
+    full_output = full.build(positions)
+    skin_output = skin.build(positions)
+    for actual, expected in zip(skin_output, full_output):
+        torch.testing.assert_close(actual, expected)
+    assert skin.edge_capacity == 3
 
 
 def test_fixed_builder_records_per_centre_overflow_on_device():

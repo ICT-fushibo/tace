@@ -26,6 +26,10 @@ from md_benchmark.md_route import (
     configure_torch_baseline,
     validate_result,
 )
+from md_benchmark.neighbor_utils import (
+    capacities_from_counts,
+    normalize_neighbor_capacities,
+)
 from torch import Tensor
 
 from tace.md_route import _set_exact_acceleration_environment, _validate_model_contract
@@ -261,10 +265,40 @@ class TACEWholeStepPotential:
                 "TACE Opt3 per-centre capacity is smaller than the initial graph: "
                 f"required={initial_maximum}, capacity={slots}"
             )
+        initial_counts = torch.bincount(
+            initial_edge_index[1], minlength=self.num_atoms
+        )[: self.num_atoms]
+        explicit_caps = options.get("neighbor_capacities")
+        if explicit_caps is None and options.get("per_atom_cap", False):
+            capacities = capacities_from_counts(
+                initial_counts,
+                factor=float(margin) + 1.0,
+                headroom=1,
+                alignment=int(slot_step),
+            )
+        else:
+            capacities = normalize_neighbor_capacities(
+                explicit_caps,
+                num_atoms=self.num_atoms,
+                default=int(slots),
+            )
+        initial_excess = torch.clamp_min(
+            initial_counts
+            - torch.as_tensor(capacities, dtype=torch.long, device=self.device),
+            0,
+        )
+        if bool(initial_excess.max().item() > 0):
+            raise RuntimeError(
+                "TACE Opt3 per-centre capacity vector is smaller than the "
+                "initial graph"
+            )
         self.initial_max_neighbors = initial_maximum
-        self.neighbors_per_atom = int(slots)
+        self.neighbor_capacities = capacities
+        self.neighbors_per_atom = int(max(capacities))
         self.capacity_source = capacity_source
-        self.edge_capacity = self.num_atoms * self.neighbors_per_atom
+        if explicit_caps is None and options.get("per_atom_cap", False):
+            self.capacity_source = "initial-per-atom-cap-vector"
+        self.edge_capacity = int(sum(capacities))
         sink_count = _positive_int(
             options, "graph_sink_count", _DEFAULT_SINK_COUNT
         )
@@ -274,8 +308,12 @@ class TACEWholeStepPotential:
             pbc=self.pbc,
             cutoff=self.model_metadata["cutoff_a"],
             neighbors_per_atom=self.neighbors_per_atom,
+            neighbor_capacities=self.neighbor_capacities,
             sink_count=sink_count,
+            verlet_skin=float(options.get("verlet_skin", 0.0)),
+            verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
         )
+        self.builder.initialize_skin(self.static_positions)
         self.static_data["edge_index"] = self.builder.edge_index
         self.static_data["edge_shifts"] = self.builder.edge_shifts
 
@@ -366,6 +404,7 @@ class TACEWholeStepGraph:
         integrator: BerendsenIntegrator | NoseHooverChainIntegrator,
         *,
         capture_warmup: int,
+        verlet_rebuild_interval: int,
     ) -> None:
         if state.forces is None or state.potential_energy is None:
             raise ValueError("TACE Opt3 requires an evaluated initial state")
@@ -374,6 +413,11 @@ class TACEWholeStepGraph:
         self.integrator = integrator
         self.device = state.positions.device
         self.capture_warmup = int(capture_warmup)
+        self.verlet_rebuild_interval = int(verlet_rebuild_interval)
+        if self.verlet_rebuild_interval < 0:
+            raise ValueError("verlet_rebuild_interval must be non-negative")
+        if self.potential.builder.verlet_skin <= 0:
+            self.verlet_rebuild_interval = 0
         self.initial_positions = state.positions.clone()
         self.initial_momenta = state.momenta.clone()
         self.initial_forces = state.forces.clone()
@@ -661,6 +705,7 @@ class TACEWholeStepGraph:
             raise RuntimeError("Capture must complete before production")
         self.restore_initial_()
         self.potential.builder.reset_stats()
+        self.potential.builder.initialize_skin(self.state.positions)
         self.production_replays = 0
 
     def evaluate_initial(self) -> None:
@@ -673,6 +718,12 @@ class TACEWholeStepGraph:
     def step(self) -> None:
         if self.graph is None:
             raise RuntimeError("Capture must complete before replay")
+        if (
+            self.verlet_rebuild_interval
+            and self.production_replays > 0
+            and self.production_replays % self.verlet_rebuild_interval == 0
+        ):
+            self.potential.builder.initialize_skin(self.state.positions)
         try:
             self.graph.replay()
         except Exception as exc:
@@ -698,6 +749,7 @@ class TACEWholeStepGraph:
             **self.potential.builder.stats(),
             "cuda_graph_capture_count": self.capture_count,
             "cuda_graph_capture_wall_time_s": self.capture_wall_time_s,
+            "verlet_rebuild_interval": self.verlet_rebuild_interval,
             "cuda_graph_total_replays": self.total_replays,
             "cuda_graph_production_replays": self.production_replays,
             "cuda_graph_replay_output_addresses_stable": (
@@ -809,6 +861,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         state,
         integrator,
         capture_warmup=capture_warmup,
+        verlet_rebuild_interval=int(
+            request.options.get("verlet_rebuild_interval", 0)
+        ),
     )
     runner.capture()
     if config.warmup_steps:
@@ -894,7 +949,12 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "initial_max_neighbors": potential.initial_max_neighbors,
             "neighbors_per_atom": potential.neighbors_per_atom,
             "capacity_source": potential.capacity_source,
-            "capacity_policy": "esen_uniform_per_centre_cap",
+            "capacity_policy": (
+                "esen_per_atom_cap"
+                if len(set(potential.neighbor_capacities)) > 1
+                else "esen_uniform_per_centre_cap"
+            ),
+            "neighbor_capacities": potential.neighbor_capacities,
             "capacity_total_to_per_atom_guard_slots": 0,
             "edge_padding": "distributed_far_shifted_self_edge_sink",
             "sink_padding": "distributed_far_shifted_self_edges",
