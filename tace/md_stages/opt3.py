@@ -166,27 +166,36 @@ class TACEWholeStepPotential:
 
         self.device = device
         self.num_atoms = len(atoms)
+        enable_cue = bool(options.get("_opt4_enable_cue", False))
+        self.enable_cue = enable_cue
         atomic_numbers = torch.as_tensor(
             atoms.get_atomic_numbers(), dtype=torch.int64, device=device
         )
         system_idx = torch.zeros(self.num_atoms, dtype=torch.int64, device=device)
-        calculator = TACETorchSimCalc(
-            model_path,
-            device=device,
-            dtype=None,
-            neighbor_list_fn=torchsim_nl,
-            compute_forces=True,
-            compute_stress=False,
-            atomic_numbers=atomic_numbers,
-            system_idx=system_idx,
-            enable_oeq=False,
-            enable_cue=False,
-            enable_eqt=False,
-            enable_compile=False,
-            enable_triton=False,
-        )
+        try:
+            calculator = TACETorchSimCalc(
+                model_path,
+                device=device,
+                dtype=None,
+                neighbor_list_fn=torchsim_nl,
+                compute_forces=True,
+                compute_stress=False,
+                atomic_numbers=atomic_numbers,
+                system_idx=system_idx,
+                enable_oeq=False,
+                enable_cue=enable_cue,
+                enable_eqt=False,
+                enable_compile=False,
+                enable_triton=False,
+            )
+        except Exception as exc:
+            if enable_cue:
+                raise RuntimeError(
+                    "TACE Opt4 cuEquivariance fusion could not be enabled"
+                ) from exc
+            raise
         self.model_metadata = _validate_model_contract(
-            calculator, requested_accelerators=set()
+            calculator, requested_accelerators={"cueq"} if enable_cue else set()
         )
         self.model = calculator.model
         self.model_dtype = self.model.get_model_dtype()
@@ -812,8 +821,8 @@ def _validate_request(request: MDRunRequest) -> None:
     _positive_int(request.options, "graph_sink_count", _DEFAULT_SINK_COUNT)
 
 
-def _configure_opt3_runtime() -> None:
-    _set_exact_acceleration_environment(set())
+def _configure_opt3_runtime(*, enable_cue: bool = False) -> None:
+    _set_exact_acceleration_environment({"cueq"} if enable_cue else set())
     configure_torch_baseline()
 
 
@@ -825,7 +834,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         raise RuntimeError("CUDA is unavailable; TACE Opt3 never falls back to eager")
     if not hasattr(torch.cuda, "CUDAGraph"):
         raise RuntimeError("This PyTorch build does not provide CUDA Graph support")
-    _configure_opt3_runtime()
+    _configure_opt3_runtime(
+        enable_cue=bool(request.options.get("_opt4_enable_cue", False))
+    )
     device = torch.device(request.config.device)
     config = request.config
     atoms = request.atoms.copy()
@@ -969,19 +980,19 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "validation_failure_policy": "report_only_energy_force",
             "eager_fixed_builder_validation": potential.validation,
             "model_implementation": "native_e3nn_eager",
-            "tace_accelerators": [],
+            "tace_accelerators": ["cueq"] if potential.enable_cue else [],
             "detected_acceleration_modules": potential.model_metadata[
                 "detected_acceleration_modules"
             ],
             "openequivariance": False,
-            "cuequivariance": False,
+            "cuequivariance": bool(potential.enable_cue),
             "equitorch": False,
             "triton": False,
             "compile": False,
             "aoti": False,
             "amp": False,
             "tf32": False,
-            "model_specific_fusion": False,
+            "model_specific_fusion": bool(potential.enable_cue),
             "compute_stress": False,
             "integrator": config.integrator,
             "integrator_implementation": "tace.md_stages.opt3",
