@@ -30,6 +30,14 @@ from md_benchmark.neighbor_utils import (
     capacities_from_counts,
     normalize_neighbor_capacities,
 )
+from md_benchmark.opt3_profile import (
+    model_nvtx_ranges,
+    nvtx_range,
+    nvtx_stage,
+    nvtx_steps,
+    profile_opt3,
+)
+from md_benchmark.performance import CudaPhaseProfiler, performance_profile_requested
 from torch import Tensor
 
 from tace.md_route import _set_exact_acceleration_environment, _validate_model_contract
@@ -396,8 +404,9 @@ class TACEWholeStepPotential:
 
         with torch.no_grad():
             self.static_positions.copy_(positions)
-        self.builder.build(self.static_positions, step=step)
-        with torch.enable_grad():
+        with nvtx_range("neighbor_geometry"):
+            self.builder.build(self.static_positions, step=step)
+        with model_nvtx_ranges(self.model), torch.enable_grad():
             outputs = self.model(self.static_data)
         energy, forces = self._extract(outputs)
         return forces.to(torch.float64), energy.to(torch.float64)
@@ -545,6 +554,7 @@ class TACEWholeStepGraph:
         momenta = state.momenta + self.advance * (momenta - state.momenta)
         return positions, momenta, forces, energy, eta_final, p_eta_final
 
+    @nvtx_stage("integrator_thermostat")
     def _graph_body(self) -> None:
         state = self.state
         assert state.forces is not None and state.potential_energy is not None
@@ -826,6 +836,7 @@ def _configure_opt3_runtime(*, enable_cue: bool = False) -> None:
     configure_torch_baseline()
 
 
+@profile_opt3
 def run_md(request: MDRunRequest) -> MDRunResult:
     """Run native TACE with one whole-step CUDA Graph per request."""
 
@@ -839,6 +850,11 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     )
     device = torch.device(request.config.device)
     config = request.config
+    profiler = CudaPhaseProfiler(
+        enabled=performance_profile_requested(request.options),
+        device=device,
+        prefix="opt3",
+    )
     atoms = request.atoms.copy()
     MaxwellBoltzmannDistribution(
         atoms,
@@ -889,17 +905,21 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     observations = []
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.synchronize(device)
+    profiler.start()
     started = time.perf_counter()
-    runner.evaluate_initial()
+    with profiler.phase("initial_force"):
+        runner.evaluate_initial()
     runner.raise_if_overflow()
     if config.collect_statistics and 0 in observation_steps:
         observations.append(_record_observation(state, 0, masses))
-    for step in range(1, config.steps + 1):
-        runner.step()
+    for step in nvtx_steps(config.steps, device):
+        with profiler.phase("whole_step_replay"):
+            runner.step()
         if config.collect_statistics and step in observation_steps:
             runner.raise_if_overflow()
             observations.append(_record_observation(state, step, masses))
     torch.cuda.synchronize(device)
+    profiler.stop()
     elapsed = time.perf_counter() - started
     runner.raise_if_overflow()
     peak_memory_gb = torch.cuda.max_memory_allocated(device) / 1.0e9
@@ -936,6 +956,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "neighborlist_backend": "fixed_shape_pbc_candidate_builder",
             "neighborlist_device": "cuda",
             "neighborlist_in_cuda_graph": True,
+            "performance_profile": profiler.summary(synchronize=False),
             "integrator_in_cuda_graph": True,
             "state_update_in_cuda_graph": True,
             "model_in_cuda_graph": True,
