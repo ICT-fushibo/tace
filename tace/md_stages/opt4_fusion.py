@@ -15,13 +15,15 @@ class RadialCutoff(nn.Module):
 
 def install(model, passes, report):
     install_tp_regions(model, passes, report,
-        lambda path: "rejector.tp" in path or ".aces." in path or ".tp." in path)
+        lambda path: "rejector.tp" in path or ".aces." in path or ".tp." in path,
+        backward_policy="aten")
     if "radial_cutoff" in passes:
         modules = []
         for path, module in list(model.named_modules()):
             if type(module).__name__ == "CgtpInteraction" and hasattr(module, "edge_info"):
                 detail = {"module": path, "validated_shapes": 0,"benchmark_requested":report.get("benchmark_boundaries",False)}
-                module._opt4_radial_cutoff = CheckedRegion(RadialCutoff(module.edge_info), detail)
+                module._opt4_radial_cutoff = CheckedRegion(RadialCutoff(module.edge_info), detail,
+                                                         backward_policy="aten")
                 modules.append(detail)
         record(report, "radial_cutoff", len(modules), "inductor-triton-epilogue", modules=modules,
-               gemm="original Linear, no autotuned GEMM")
+               gemm="original Linear, no autotuned GEMM", backward_policy="aten", fusion_scope="forward-only")
