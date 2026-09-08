@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sys
 import textwrap
+from types import ModuleType
 
 import numpy as np
 import pytest
@@ -196,16 +198,53 @@ def test_initial_force_is_a_measured_replay_before_physical_steps():
     assert "self.advance.fill_(1.0)" in source
 
 
-def test_opt3_module_does_not_enable_model_specific_acceleration():
-    source = inspect.getsource(TACEWholeStepPotential.__init__)
-    for accelerator in (
-        "enable_oeq=False",
-        "enable_cue=False",
-        "enable_eqt=False",
-        "enable_compile=False",
-        "enable_triton=False",
+@pytest.mark.parametrize("route", ["opt3", "opt4-off", "opt4-candidate"])
+def test_opt3_module_does_not_enable_model_specific_acceleration(monkeypatch, route):
+    # Check actual calculator arguments, not whether False is spelled literally
+    # at the call site. Stop before checkpoint loading or CUDA initialization.
+    options = {}
+    if route != "opt3":
+        from md_benchmark.opt4_policy import resolve_opt4_policy, translate_opt4_options
+
+        requested = {"opt4_fusion": "off"}
+        if route == "opt4-candidate":
+            requested = {"opt4_fusion": "strict", "opt4_passes": ["radial_cutoff"]}
+        options = translate_opt4_options(
+            "tace", requested, resolve_opt4_policy("tace", requested)
+        )
+
+    class StopBeforeModelLoad(Exception):
+        pass
+
+    captured = {}
+    sentinel = StopBeforeModelLoad()
+
+    def calculator(*args, **kwargs):
+        captured.update(kwargs)
+        raise sentinel
+
+    torch_sim = ModuleType("torch_sim")
+    neighbors = ModuleType("torch_sim.neighbors")
+    neighbors.torchsim_nl = object()
+    torch_sim.neighbors = neighbors
+    interface = ModuleType("tace.interface.torchsim")
+    interface.TACETorchSimCalc = calculator
+    for name, module in (
+        ("torch_sim", torch_sim),
+        ("torch_sim.neighbors", neighbors),
+        ("tace.interface.torchsim", interface),
     ):
-        assert accelerator in source
+        monkeypatch.setitem(sys.modules, name, module)
+
+    with pytest.raises(StopBeforeModelLoad) as caught:
+        TACEWholeStepPotential(
+            _request().atoms, "not-loaded.pt", device=torch.device("cpu"), options=options
+        )
+    assert caught.value is sentinel
+    for name in ("enable_oeq", "enable_cue", "enable_eqt", "enable_compile", "enable_triton"):
+        assert captured[name] is False, (route, name, captured[name])
+    assert captured["dtype"] is None
+    assert captured["compute_forces"] is True
 
 
 def test_full_periodicity_is_required():
