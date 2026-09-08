@@ -206,6 +206,10 @@ class TACEWholeStepPotential:
             calculator, requested_accelerators={"cueq"} if enable_cue else set()
         )
         self.model = calculator.model
+        if options.get("_opt4_passes"):
+            from md_benchmark.opt4_registry import prepare_model
+            from .opt4_fusion import install
+            prepare_model(self.model, options, install)
         self.model_dtype = self.model.get_model_dtype()
         self.neighbor_list_fn = torchsim_nl
         self.system_idx = calculator.system_idx

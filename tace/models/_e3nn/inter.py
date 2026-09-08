@@ -150,9 +150,12 @@ class CgtpInteraction(Interaction):
         wigner: Union[torch.Tensor, None] = None,
         wigner_inv: Union[torch.Tensor, None] = None,
     ) -> torch.Tensor:
-        conv_weights = self.edge_info(edge_feats)
-        if cutoff is not None:
-            conv_weights = conv_weights * cutoff
+        if cutoff is not None and hasattr(self, "_opt4_radial_cutoff"):
+            conv_weights = self._opt4_radial_cutoff(edge_feats, cutoff)
+        else:
+            conv_weights = self.edge_info(edge_feats)
+            if cutoff is not None:
+                conv_weights = conv_weights * cutoff
         return self.rejector(node_feats, edge_attrs, conv_weights, edge_index)
 
     def forward(
