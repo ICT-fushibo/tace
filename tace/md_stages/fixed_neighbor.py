@@ -21,6 +21,7 @@ from md_benchmark.neighbor_utils import (
     normalize_neighbor_capacities,
     select_skin_candidates,
 )
+from md_benchmark.cap1_rob1 import VerletCandidateCapacityError
 
 
 def neighbor_capacity_from_probe(
@@ -100,6 +101,7 @@ class FixedShapeTACENeighborBuilder:
         sink_count: int = 32,
         output_edge_index: Tensor | None = None,
         output_edge_shifts: Tensor | None = None,
+        overflow_to_dummy_only: bool = False,
     ) -> None:
         if num_atoms < 1:
             raise ValueError("num_atoms must be positive")
@@ -126,6 +128,7 @@ class FixedShapeTACENeighborBuilder:
         self.neighbor_capacities = torch.as_tensor(
             capacities, dtype=torch.long, device=cell.device
         )
+        self.overflow_to_dummy_only = bool(overflow_to_dummy_only)
         if verlet_skin < 0:
             raise ValueError("verlet_skin must be non-negative")
         self.verlet_skin = float(verlet_skin)
@@ -225,6 +228,18 @@ class FixedShapeTACENeighborBuilder:
         self.maximum_neighbors_by_atom = torch.zeros(
             self.num_atoms, device=self.device, dtype=torch.long
         )
+        self.overflow_dummy_only_replays = torch.zeros(
+            (), device=self.device, dtype=torch.long
+        )
+        self.window_capacity_misses = torch.zeros(
+            (), device=self.device, dtype=torch.long
+        )
+        self.window_overflow_dummy_only_replays = torch.zeros(
+            (), device=self.device, dtype=torch.long
+        )
+        self.window_maximum_neighbors_by_atom = torch.zeros(
+            self.num_atoms, device=self.device, dtype=torch.long
+        )
 
     @torch.no_grad()
     def initialize_skin(self, positions: Tensor) -> None:
@@ -243,11 +258,11 @@ class FixedShapeTACENeighborBuilder:
             cutoff=self.cutoff + self.verlet_skin,
             slots_per_atom=slots,
         )
-        torch._assert_async(
-            (counts <= slots).all(),
-            "TACE Opt3 Verlet candidate capacity is smaller than the "
-            "cutoff+skin candidate count",
-        )
+        if bool((counts > slots).any().item()):
+            raise VerletCandidateCapacityError(
+                "TACE Opt3 Verlet candidate capacity is smaller than the "
+                "cutoff+skin candidate count"
+            )
         if self.skin_candidate_ids is None:
             self.skin_candidate_ids = selected
             self.skin_candidate_mask = selected_valid
@@ -274,6 +289,13 @@ class FixedShapeTACENeighborBuilder:
         self.maximum_neighbors_by_atom.zero_()
         self.skin_misses.zero_()
         self.skin_rebuilds = 0
+        self.overflow_dummy_only_replays.zero_()
+        self.reset_window_stats()
+
+    def reset_window_stats(self) -> None:
+        self.window_capacity_misses.zero_()
+        self.window_overflow_dummy_only_replays.zero_()
+        self.window_maximum_neighbors_by_atom.zero_()
 
     def build(
         self, positions: Tensor, *, step: Tensor | None = None
@@ -299,10 +321,11 @@ class FixedShapeTACENeighborBuilder:
                     self.inverse_cell,
                 )
                 self.skin_misses.add_(skin_miss.to(torch.long))
-                torch._assert_async(
-                    ~skin_miss,
-                    "TACE Opt3 Verlet skin exhausted; rebuild the candidate list",
-                )
+                if not self.overflow_to_dummy_only:
+                    torch._assert_async(
+                        ~skin_miss,
+                        "TACE Opt3 Verlet skin exhausted; rebuild the candidate list",
+                    )
                 cached = self.skin_candidate_ids.reshape(-1)
                 candidate_sources = self.candidate_sources.index_select(
                     0, cached
@@ -380,28 +403,33 @@ class FixedShapeTACENeighborBuilder:
             offsets = selected_offsets.reshape(-1, 3).index_select(
                 0, self.selection_indices
             )
-            self.edge_index[0].copy_(
-                torch.where(selected_valid, sources, self.sink_ids)
-            )
-            self.edge_index[1].copy_(
-                torch.where(selected_valid, self.slot_centres, self.sink_ids)
-            )
-            # TACE forms r_target - r_source + shift @ cell.  The candidate
-            # universe above uses r_source + offset @ cell - r_target.
-            self.edge_shifts.copy_(
-                torch.where(
-                    selected_valid.unsqueeze(1),
-                    -offsets.to(dtype=self.edge_shifts.dtype),
-                    self.padding_edge_shifts,
-                )
-            )
-
-            real_edges = selected_valid.sum()
             maximum = counts.max()
             maximum_excess = torch.clamp_min(
                 counts - self.neighbor_capacities, 0
             ).max()
             overflow = maximum_excess > 0
+            output_valid = (
+                selected_valid & ~overflow
+                if self.overflow_to_dummy_only
+                else selected_valid
+            )
+            self.edge_index[0].copy_(
+                torch.where(output_valid, sources, self.sink_ids)
+            )
+            self.edge_index[1].copy_(
+                torch.where(output_valid, self.slot_centres, self.sink_ids)
+            )
+            # TACE forms r_target - r_source + shift @ cell.  The candidate
+            # universe above uses r_source + offset @ cell - r_target.
+            self.edge_shifts.copy_(
+                torch.where(
+                    output_valid.unsqueeze(1),
+                    -offsets.to(dtype=self.edge_shifts.dtype),
+                    self.padding_edge_shifts,
+                )
+            )
+
+            real_edges = output_valid.sum()
             call_step = self.build_calls if step is None else step
             self.minimum_real_edges.copy_(
                 torch.minimum(self.minimum_real_edges, real_edges)
@@ -419,12 +447,36 @@ class FixedShapeTACENeighborBuilder:
                 torch.maximum(self.maximum_overflow_required, maximum)
             )
             self.capacity_misses.add_(overflow.to(dtype=torch.long))
+            self.window_maximum_neighbors_by_atom.copy_(
+                torch.maximum(self.window_maximum_neighbors_by_atom, counts)
+            )
+            if self.overflow_to_dummy_only:
+                self.window_capacity_misses.add_(overflow.to(dtype=torch.long))
+                self.overflow_dummy_only_replays.add_(overflow.to(dtype=torch.long))
+                self.window_overflow_dummy_only_replays.add_(
+                    overflow.to(dtype=torch.long)
+                )
             first = (self.first_overflow_step < 0) & overflow
             self.first_overflow_step.copy_(
                 torch.where(first, call_step, self.first_overflow_step)
             )
             self.build_calls.add_(1)
         return self.edge_index, self.edge_shifts
+
+    def window_stats(self) -> dict[str, Any]:
+        return {
+            "fixed_builder_window_capacity_misses": int(
+                self.window_capacity_misses.item()
+            ),
+            "fixed_builder_window_overflow_dummy_only_replays": int(
+                self.window_overflow_dummy_only_replays.item()
+            ),
+            "fixed_builder_window_maximum_neighbors_by_atom": (
+                self.window_maximum_neighbors_by_atom.detach()
+                .to(device="cpu")
+                .tolist()
+            ),
+        }
 
     def stats(self) -> dict[str, Any]:
         calls = int(self.build_calls.item())
@@ -434,6 +486,10 @@ class FixedShapeTACENeighborBuilder:
         return {
             "fixed_builder_build_calls": calls,
             "fixed_builder_capacity_misses": int(self.capacity_misses.item()),
+            "overflow_to_dummy_only": self.overflow_to_dummy_only,
+            "overflow_dummy_only_replays": int(
+                self.overflow_dummy_only_replays.item()
+            ),
             "fixed_builder_first_overflow_step": first if first >= 0 else None,
             "fixed_builder_edge_capacity": self.edge_capacity,
             "fixed_builder_neighbors_per_atom": self.neighbors_per_atom,

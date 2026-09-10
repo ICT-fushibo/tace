@@ -26,6 +26,14 @@ from md_benchmark.md_route import (
     configure_torch_baseline,
     validate_result,
 )
+from md_benchmark.cap1_rob1 import (
+    FixedAddressStateSnapshot,
+    Rob1Controller,
+    Rob1WindowStatus,
+    read_rob1_window_status,
+    transaction_boundaries,
+    verlet_rebuild_due,
+)
 from md_benchmark.neighbor_utils import (
     capacities_from_counts,
     normalize_neighbor_capacities,
@@ -174,6 +182,10 @@ class TACEWholeStepPotential:
 
         self.device = device
         self.num_atoms = len(atoms)
+        # Keep the fixed-candidate selection cost separate from graph capture.
+        # TACE's builder uses torch.topk while creating the Verlet candidate
+        # bank; on a recovery this is setup work, not a CAP overflow replay.
+        self.capacity_generation_setup_history: list[dict[str, Any]] = []
         enable_cue = bool(options.get("_opt4_enable_cue", False))
         self.enable_cue = enable_cue
         atomic_numbers = torch.as_tensor(
@@ -333,8 +345,14 @@ class TACEWholeStepPotential:
             sink_count=sink_count,
             verlet_skin=float(options.get("verlet_skin", 0.0)),
             verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
+            overflow_to_dummy_only=bool(
+                options.get("overflow_to_dummy_only", False)
+            ),
         )
-        self.builder.initialize_skin(self.static_positions)
+        self._initialize_capacity_generation_skin_(
+            self.static_positions,
+            phase="setup",
+        )
         self.static_data["edge_index"] = self.builder.edge_index
         self.static_data["edge_shifts"] = self.builder.edge_shifts
 
@@ -388,6 +406,70 @@ class TACEWholeStepPotential:
             ),
             "numerical_validation_failure_policy": "report_only",
         }
+        self.builder.reset_stats()
+
+    def _initialize_capacity_generation_skin_(
+        self,
+        positions: Tensor,
+        *,
+        phase: str,
+    ) -> None:
+        """Time candidate-bank initialization outside graph replay."""
+
+        torch.cuda.synchronize(self.device)
+        started = time.perf_counter()
+        self.builder.initialize_skin(positions)
+        torch.cuda.synchronize(self.device)
+        self.capacity_generation_setup_history.append(
+            {
+                "phase": phase,
+                "wall_time_s": time.perf_counter() - started,
+                "edge_capacity": self.edge_capacity,
+                "candidate_capacity": self.builder.verlet_candidate_capacity,
+                "implementation": "torch.topk-fixed-verlet-candidates",
+            }
+        )
+
+    def rebuild_capacity_(
+        self,
+        capacities: list[int] | tuple[int, ...],
+        positions: Tensor,
+        *,
+        options: dict[str, Any],
+    ) -> None:
+        """Replace only fixed-layout state; keep the loaded/fused model."""
+
+        selected = normalize_neighbor_capacities(
+            capacities,
+            num_atoms=self.num_atoms,
+            default=max(capacities),
+        )
+        self.neighbor_capacities = selected
+        self.neighbors_per_atom = max(selected)
+        self.edge_capacity = sum(selected)
+        self.capacity_source = "rob1-promoted-per-atom-vector"
+        self.builder = FixedShapeTACENeighborBuilder(
+            num_atoms=self.num_atoms,
+            cell=self.cell,
+            pbc=self.pbc,
+            cutoff=self.model_metadata["cutoff_a"],
+            neighbors_per_atom=self.neighbors_per_atom,
+            neighbor_capacities=selected,
+            sink_count=_positive_int(
+                options, "graph_sink_count", _DEFAULT_SINK_COUNT
+            ),
+            verlet_skin=float(options.get("verlet_skin", 0.0)),
+            verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
+            overflow_to_dummy_only=True,
+        )
+        with torch.no_grad():
+            self.static_positions.copy_(positions)
+        self._initialize_capacity_generation_skin_(
+            self.static_positions,
+            phase="rob1-recovery",
+        )
+        self.static_data["edge_index"] = self.builder.edge_index
+        self.static_data["edge_shifts"] = self.builder.edge_shifts
         self.builder.reset_stats()
 
     def _extract(self, outputs: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
@@ -741,11 +823,19 @@ class TACEWholeStepGraph:
     def step(self) -> None:
         if self.graph is None:
             raise RuntimeError("Capture must complete before replay")
-        if (
-            self.verlet_rebuild_interval
-            and self.production_replays > 0
-            and self.production_replays % self.verlet_rebuild_interval == 0
-        ):
+        if self.potential.builder.overflow_to_dummy_only:
+            rebuild = verlet_rebuild_due(
+                self.production_replays,
+                self.verlet_rebuild_interval,
+                includes_initial_force=True,
+            )
+        else:
+            rebuild = bool(
+                self.verlet_rebuild_interval
+                and self.production_replays > 0
+                and self.production_replays % self.verlet_rebuild_interval == 0
+            )
+        if rebuild:
             self.potential.builder.initialize_skin(self.state.positions)
         try:
             self.graph.replay()
@@ -780,6 +870,42 @@ class TACEWholeStepGraph:
             ),
             "whole_step_eager_graph_validation": self.validation,
         }
+
+    def state_tensors(self) -> dict[str, Tensor]:
+        assert self.state.forces is not None
+        assert self.state.potential_energy is not None
+        state = {
+            "positions": self.state.positions,
+            "momenta": self.state.momenta,
+            "forces": self.state.forces,
+            "energy": self.state.potential_energy,
+            "step_counter": self.step_counter,
+            "advance": self.advance,
+        }
+        if isinstance(self.integrator, NoseHooverChainIntegrator):
+            state["eta"] = self.integrator.eta
+            state["p_eta"] = self.integrator.p_eta
+        return state
+
+    def reset_window_stats(self) -> None:
+        self.potential.builder.reset_window_stats()
+
+    def window_status(self) -> Rob1WindowStatus:
+        builder = self.potential.builder
+        return read_rob1_window_status(
+            capacity_misses=builder.window_capacity_misses,
+            overflow_dummy_only_replays=(
+                builder.window_overflow_dummy_only_replays
+            ),
+            maximum_required_by_atom=(
+                builder.window_maximum_neighbors_by_atom
+            ),
+            verlet_skin_misses=builder.skin_misses,
+        )
+
+    def release(self) -> None:
+        self.graph = None
+        self.capture_stream = None
 
 
 def _nonnegative_float(
@@ -897,13 +1023,72 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         ),
     )
     runner.capture()
-    if config.warmup_steps:
-        runner.advance.fill_(1.0)
-        for _ in range(config.warmup_steps):
-            runner.step()
-        torch.cuda.synchronize(device)
-        runner.raise_if_overflow()
-    runner.reset_production()
+    rob1_enabled = bool(request.options.get("_opt4_rob1", False))
+    controller: Rob1Controller | None = None
+    if rob1_enabled:
+
+        def generation_factory(
+            promoted: tuple[int, ...], snapshot: dict[str, Tensor]
+        ) -> TACEWholeStepGraph:
+            potential.rebuild_capacity_(
+                promoted,
+                snapshot["positions"],
+                options=request.options,
+            )
+            recovery_state = GPUMDState(
+                positions=snapshot["positions"].clone(),
+                momenta=snapshot["momenta"].clone(),
+                forces=snapshot["forces"].clone(),
+                potential_energy=snapshot["energy"].clone(),
+            )
+            recovery_integrator = _build_integrator(request, masses)
+            generation = TACEWholeStepGraph(
+                potential,
+                recovery_state,
+                recovery_integrator,
+                capture_warmup=capture_warmup,
+                verlet_rebuild_interval=int(
+                    request.options.get("verlet_rebuild_interval", 0)
+                ),
+            )
+            generation.capture()
+            generation.production_replays = int(
+                snapshot["step_counter"].detach().cpu()
+            ) + 1
+            return generation
+
+        controller = Rob1Controller(
+            runner,
+            generation_factory=generation_factory,
+            atomic_numbers=atoms.get_atomic_numbers(),
+            neighbor_capacities=potential.neighbor_capacities,
+        )
+        physical_initial = FixedAddressStateSnapshot(runner.state_tensors())
+        if config.warmup_steps:
+            controller.evaluate_initial()
+            warmup_done = 0
+            for boundary in transaction_boundaries(
+                config.warmup_steps,
+                window_steps=int(request.options["rob1_window_steps"]),
+                verlet_rebuild_interval=runner.verlet_rebuild_interval,
+            ):
+                controller.run_steps(boundary - warmup_done)
+                warmup_done = boundary
+        physical_initial.restore_into_(controller.generation.state_tensors())
+        runner = controller.generation
+        state = runner.state
+        runner.potential.builder.reset_stats()
+        runner.potential.builder.initialize_skin(state.positions)
+        runner.production_replays = 0
+        controller.begin_production()
+    else:
+        if config.warmup_steps:
+            runner.advance.fill_(1.0)
+            for _ in range(config.warmup_steps):
+                runner.step()
+            torch.cuda.synchronize(device)
+            runner.raise_if_overflow()
+        runner.reset_production()
 
     observation_steps = set(config.observation_steps)
     observations = []
@@ -912,29 +1097,59 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     profiler.start()
     started = time.perf_counter()
     with profiler.phase("initial_force"):
-        runner.evaluate_initial()
-    runner.raise_if_overflow()
+        if controller is None:
+            runner.evaluate_initial()
+        else:
+            controller.evaluate_initial()
+            runner = controller.generation
+            state = runner.state
+    if controller is None:
+        runner.raise_if_overflow()
     if config.collect_statistics and 0 in observation_steps:
         observations.append(_record_observation(state, 0, masses))
-    for step in nvtx_steps(config.steps, device):
-        with profiler.phase("whole_step_replay"):
-            runner.step()
-        if config.collect_statistics and step in observation_steps:
-            runner.raise_if_overflow()
-            observations.append(_record_observation(state, step, masses))
+    if controller is None:
+        for step in nvtx_steps(config.steps, device):
+            with profiler.phase("whole_step_replay"):
+                runner.step()
+            if config.collect_statistics and step in observation_steps:
+                runner.raise_if_overflow()
+                observations.append(_record_observation(state, step, masses))
+    else:
+        completed = 0
+        for step in transaction_boundaries(
+            config.steps,
+            window_steps=int(request.options["rob1_window_steps"]),
+            observation_steps=(
+                config.observation_steps if config.collect_statistics else ()
+            ),
+            verlet_rebuild_interval=runner.verlet_rebuild_interval,
+        ):
+            with profiler.phase("whole_step_replay"):
+                controller.run_steps(step - completed)
+            completed = step
+            runner = controller.generation
+            state = runner.state
+            if config.collect_statistics and step in observation_steps:
+                observations.append(_record_observation(state, step, masses))
     torch.cuda.synchronize(device)
     profiler.stop()
     elapsed = time.perf_counter() - started
-    runner.raise_if_overflow()
+    if controller is None:
+        runner.raise_if_overflow()
     peak_memory_gb = torch.cuda.max_memory_allocated(device) / 1.0e9
     expected_replays = config.steps + 1
-    if runner.production_replays != expected_replays:
+    actual_replays = (
+        runner.production_replays
+        if controller is None
+        else controller.committed_replays
+    )
+    if actual_replays != expected_replays:
         raise RuntimeError(
             "TACE Opt3 replay count mismatch: "
-            f"observed={runner.production_replays}, expected={expected_replays}"
+            f"observed={actual_replays}, expected={expected_replays}"
         )
     _validate_final_state(state)
-    graph_stats = runner.stats()
+    graph_stats = runner.stats() if controller is None else controller.stats()
 
     final_atoms = atoms.copy()
     final_atoms.set_positions(state.positions.detach().cpu().numpy())
@@ -967,10 +1182,12 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "force_autograd_in_cuda_graph": True,
             "cuda_graph_scope": "whole_step",
             "graph_capture_scope": "whole-md-step",
-            "capture_count": runner.capture_count,
-            "production_replays": runner.production_replays,
+            "capture_count": graph_stats.get(
+                "rob1_total_capture_count", runner.capture_count
+            ),
+            "production_replays": actual_replays,
             "expected_production_replays": expected_replays,
-            "production_graph_replay_count": runner.production_replays,
+            "production_graph_replay_count": actual_replays,
             "expected_production_graph_replay_count": expected_replays,
             "production_graph_replay_count_verified": True,
             "initial_force_evaluation_in_measured_region": True,
@@ -992,14 +1209,25 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             ),
             "neighbor_capacities": potential.neighbor_capacities,
             "capacity_total_to_per_atom_guard_slots": 0,
+            "capacity_generation_setup_history": list(
+                potential.capacity_generation_setup_history
+            ),
+            "capacity_generation_setup_wall_time_s": sum(
+                float(item["wall_time_s"])
+                for item in potential.capacity_generation_setup_history
+            ),
             "edge_padding": "distributed_far_shifted_self_edge_sink",
             "sink_padding": "distributed_far_shifted_self_edges",
             "padding_node_policy": "real_nodes_only_no_dummy_readout_atoms",
             "padding_density_masks_enabled": (
                 potential.padding_density_masks_enabled
             ),
-            "edge_overflow_policy": "device_detect_error_no_fallback",
-            "transaction_rollback": False,
+            "edge_overflow_policy": (
+                "rob1_rollback_promote_recapture_no_fallback"
+                if rob1_enabled
+                else "device_detect_error_no_fallback"
+            ),
+            "transaction_rollback": rob1_enabled,
             "graph_buckets": False,
             "capture_failure_policy": "error_no_fallback",
             "validation_failure_policy": "report_only_energy_force",
