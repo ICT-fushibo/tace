@@ -462,6 +462,13 @@ class TACEWholeStepPotential:
             verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
             overflow_to_dummy_only=True,
         )
+        if options.get("_opt4_passes"):
+            from .opt4_fusion import refresh
+
+            refresh(
+                self.model,
+                {**options, "neighbor_capacities": list(selected)},
+            )
         with torch.no_grad():
             self.static_positions.copy_(positions)
         self._initialize_capacity_generation_skin_(

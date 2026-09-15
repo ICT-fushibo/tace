@@ -208,7 +208,10 @@ def test_opt3_module_does_not_enable_model_specific_acceleration(monkeypatch, ro
 
         requested = {"opt4_fusion": "off"}
         if route == "opt4-candidate":
-            requested = {"opt4_fusion": "strict", "opt4_passes": ["radial_cutoff"]}
+            requested = {
+                "opt4_fusion": "strict",
+                "opt4_passes": ["rejector_tp_reduce_vjp"],
+            }
         options = translate_opt4_options(
             "tace", requested, resolve_opt4_policy("tace", requested)
         )
