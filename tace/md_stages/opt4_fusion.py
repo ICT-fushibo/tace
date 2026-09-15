@@ -45,6 +45,7 @@ def refresh(model, options):
     for module in model.modules():
         region = getattr(module, "_opt4_rejector_csr", None)
         if isinstance(region, CheckedRegion):
+            module._opt4_edge_capacity = int(edge_rows.numel())
             region.reference.edge_rows = edge_rows
             region.reference.rows = row_ptr.shape[0] - 1
             region.compiled.set_layout(row_ptr, edge_rows, max_row)
@@ -73,6 +74,7 @@ def install(model, passes, report, options):
             detail,
             _FixedCSR(row_ptr, edge_rows, max_row),
         )
+        module._opt4_edge_capacity = int(edge_rows.numel())
         modules.append(detail)
     record(
         report,
