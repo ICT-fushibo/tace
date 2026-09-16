@@ -11,7 +11,7 @@ from torch import nn
 from md_benchmark.opt4_fx import (
     CheckedRegion,
     assert_associative_sum_close,
-    assert_sparse_float32_reassociation_close,
+    assert_float32_vjp_reassociation_close,
 )
 from md_benchmark.opt4_registry import FusionSetupError, fixed_csr_layout, record
 
@@ -54,7 +54,7 @@ class _Uniform1DRejector(nn.Module):
         )
 
     def validate_vjp(self, actual, expected, args, index, output_probes):
-        metrics = assert_sparse_float32_reassociation_close(actual, expected)
+        metrics = assert_float32_vjp_reassociation_close(actual, expected)
         rows = self._detail.setdefault("vjp_reassociation_validation", [])
         entry = {"input_index": int(index), **metrics}
         if entry not in rows:
