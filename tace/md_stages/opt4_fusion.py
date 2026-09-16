@@ -8,17 +8,22 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from md_benchmark.opt4_fx import CheckedRegion, assert_associative_sum_close
+from md_benchmark.opt4_fx import (
+    CheckedRegion,
+    assert_associative_sum_close,
+    assert_sparse_float32_reassociation_close,
+)
 from md_benchmark.opt4_registry import FusionSetupError, fixed_csr_layout, record
 
 
 class _Uniform1DRejector(nn.Module):
-    def __init__(self, tp, edge_rows, rows, max_terms):
+    def __init__(self, tp, edge_rows, rows, max_terms, detail):
         super().__init__()
         object.__setattr__(self, "_tp", tp)
         self.register_buffer("edge_rows", edge_rows, persistent=False)
         self.rows = int(rows)
         self.max_terms = int(max_terms)
+        object.__setattr__(self, "_detail", detail)
 
     def set_layout(self, edge_rows, rows, max_terms):
         self.edge_rows = edge_rows
@@ -47,6 +52,14 @@ class _Uniform1DRejector(nn.Module):
             self.rows,
             self.max_terms,
         )
+
+    def validate_vjp(self, actual, expected, args, index, output_probes):
+        metrics = assert_sparse_float32_reassociation_close(actual, expected)
+        rows = self._detail.setdefault("vjp_reassociation_validation", [])
+        entry = {"input_index": int(index), **metrics}
+        if entry not in rows:
+            rows.append(entry)
+        return True
 
 
 def _layout(options, parameter):
@@ -81,12 +94,12 @@ def install(model, passes, report, options):
             "validated_shapes": 0,
             "benchmark_requested": report.get("benchmark_boundaries", False),
         }
-        boundary = _Uniform1DRejector(module.tp, edge_rows, rows, max_terms)
+        boundary = _Uniform1DRejector(module.tp, edge_rows, rows, max_terms, detail)
         module._opt4_fasteq_uniform1d = CheckedRegion(
             boundary,
             detail,
             output_validator=boundary.validate_output,
-            vjp_atol=5e-6,
+            vjp_validator=boundary.validate_vjp,
         )
         module._opt4_edge_capacity = int(edge_rows.numel())
         modules.append(detail)
