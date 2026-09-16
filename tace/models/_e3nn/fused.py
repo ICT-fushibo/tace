@@ -208,12 +208,12 @@ class O3ScatterTensorProduct(torch.nn.Module):
 
         if hasattr(self, "fused_tp"):
             return self.fused_tp(x, y, w, edge_index)
-        edge_features = self.tp(x[edge_index[0]], y, w)
         if (
-            hasattr(self, "_opt4_rejector_csr")
-            and edge_features.shape[0] == self._opt4_edge_capacity
+            hasattr(self, "_opt4_fasteq_uniform1d")
+            and edge_index.shape[1] == self._opt4_edge_capacity
         ):
-            return self._opt4_rejector_csr(edge_features)
+            return self._opt4_fasteq_uniform1d(x, y, w, edge_index[0])
+        edge_features = self.tp(x[edge_index[0]], y, w)
         return scatter_sum(edge_features, edge_index[1], dim=0, dim_size=x.size(0))
 
 
