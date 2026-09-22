@@ -12,12 +12,14 @@ eager fallback are intentionally outside this stage.
 from __future__ import annotations
 
 import math
+import os
 import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
+import ase.io
 from ase import units
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from md_benchmark.md_route import (
@@ -58,9 +60,11 @@ from tace.md_stages.opt1 import (
     BerendsenIntegrator,
     GPUMDState,
     NoseHooverChainIntegrator,
+    TACETorchSimEvaluator,
     _build_integrator,
     _distribution_version,
     _record_observation,
+    _snapshot,
     _validate_final_state,
 )
 from tace.md_stages.opt2 import (
@@ -942,13 +946,10 @@ def _validate_request(request: MDRunRequest) -> None:
         raise ValueError("NVT MD requires at least two atoms")
     if not bool(np.all(request.atoms.pbc)):
         raise ValueError("TACE Opt3 currently requires full periodic boundaries")
-    if request.config.collect_trajectory or request.output_path is not None:
-        raise NotImplementedError(
-            "TACE Opt3 captures energy/forces but not stress; use --no-statistics "
-            "for the short Matbench timing/observation protocol"
+    if request.options.get("compute_stress", False) and not request.config.collect_trajectory:
+        raise ValueError(
+            "TACE Opt3 computes stress only at trajectory record boundaries"
         )
-    if request.options.get("compute_stress", False) is not False:
-        raise ValueError("TACE Opt3 does not capture stress")
     if request.options.get("model_dtype", "checkpoint") != "checkpoint":
         raise ValueError("TACE Opt3 fixes model_dtype='checkpoint'")
     _positive_int(request.options, "graph_warmup_steps", _DEFAULT_CAPTURE_WARMUP)
@@ -993,6 +994,25 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         prefix="opt3",
     )
     atoms = request.atoms.copy()
+    trajectory_path = (
+        Path(request.output_path).expanduser().resolve()
+        if request.output_path is not None
+        else None
+    )
+    partial_path = (
+        trajectory_path.with_name(f"{trajectory_path.stem}.part.extxyz")
+        if trajectory_path is not None
+        else None
+    )
+    if trajectory_path is not None:
+        if not config.collect_trajectory:
+            raise ValueError("TACE output_path requires collect_trajectory=True")
+        trajectory_path.parent.mkdir(parents=True, exist_ok=True)
+        if trajectory_path.exists() and not request.options.get("overwrite", False):
+            raise FileExistsError(f"Refusing to overwrite {trajectory_path}")
+        for stale in (trajectory_path, partial_path):
+            if stale is not None and stale.exists():
+                stale.unlink()
     MaxwellBoltzmannDistribution(
         atoms,
         temperature_K=config.temperature_k,
@@ -1009,6 +1029,17 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     ).clone()
     potential = TACEWholeStepPotential(
         atoms, request.model_path, device=device, options=request.options
+    )
+    stress_evaluator = (
+        TACETorchSimEvaluator(
+            atoms,
+            request.model_path,
+            device=device,
+            compute_stress=True,
+            profiler=profiler,
+        )
+        if config.collect_trajectory
+        else None
     )
     state = GPUMDState(
         positions=positions,
@@ -1099,6 +1130,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
 
     observation_steps = set(config.observation_steps)
     observations = []
+    in_memory_trajectory = (
+        [] if config.collect_trajectory and trajectory_path is None else None
+    )
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.synchronize(device)
     profiler.start()
@@ -1112,6 +1146,31 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             state = runner.state
     if controller is None:
         runner.raise_if_overflow()
+
+    def record_frame(step: int) -> None:
+        if stress_evaluator is None:
+            raise RuntimeError("TACE trajectory stress evaluator is missing")
+        _forces, _energy, stress = stress_evaluator(state.positions)
+        if stress is None:
+            raise RuntimeError(
+                "TACE checkpoint does not provide stress required by Matbench trajectory"
+            )
+        frame_state = GPUMDState(
+            positions=state.positions,
+            momenta=state.momenta,
+            forces=state.forces,
+            potential_energy=state.potential_energy,
+            stress=stress,
+        )
+        frame = _snapshot(atoms, frame_state, step=step, require_stress=True)
+        if partial_path is not None:
+            ase.io.write(partial_path, frame, append=True, format="extxyz")
+        else:
+            assert in_memory_trajectory is not None
+            in_memory_trajectory.append(frame)
+
+    if config.collect_trajectory:
+        record_frame(0)
     if config.collect_statistics and 0 in observation_steps:
         observations.append(_record_observation(state, 0, masses))
     if controller is None:
@@ -1121,6 +1180,8 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             if config.collect_statistics and step in observation_steps:
                 runner.raise_if_overflow()
                 observations.append(_record_observation(state, step, masses))
+            if config.collect_trajectory and step % config.record_interval == 0:
+                record_frame(step)
     else:
         completed = 0
         for step in transaction_boundaries(
@@ -1128,6 +1189,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             window_steps=int(request.options["rob1_window_steps"]),
             observation_steps=(
                 config.observation_steps if config.collect_statistics else ()
+            ),
+            record_interval=(
+                config.record_interval if config.collect_trajectory else 0
             ),
             verlet_rebuild_interval=runner.verlet_rebuild_interval,
         ):
@@ -1138,9 +1202,14 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             state = runner.state
             if config.collect_statistics and step in observation_steps:
                 observations.append(_record_observation(state, step, masses))
+            if config.collect_trajectory and step % config.record_interval == 0:
+                record_frame(step)
     torch.cuda.synchronize(device)
     profiler.stop()
     elapsed = time.perf_counter() - started
+    if trajectory_path is not None:
+        assert partial_path is not None
+        os.replace(partial_path, trajectory_path)
     if controller is None:
         runner.raise_if_overflow()
     peak_memory_gb = torch.cuda.max_memory_allocated(device) / 1.0e9
@@ -1169,6 +1238,10 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         peak_cuda_memory_gb=peak_memory_gb,
         final_atoms=final_atoms,
         observations=observations,
+        trajectory=in_memory_trajectory,
+        trajectory_path=(
+            str(trajectory_path) if trajectory_path is not None else None
+        ),
         metadata={
             "engine": "torch-sim-tace-gpu-resident-whole-step-cuda-graph",
             "backend": request.backend,
@@ -1253,7 +1326,13 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "amp": False,
             "tf32": False,
             "model_specific_fusion": bool(potential.enable_cue),
-            "compute_stress": False,
+            "compute_stress": config.collect_trajectory,
+            "trajectory_stress_backend": (
+                "eager-record-boundary-same-checkpoint"
+                if config.collect_trajectory
+                else None
+            ),
+            "trajectory_stress_cost_in_elapsed": config.collect_trajectory,
             "integrator": config.integrator,
             "integrator_implementation": "tace.md_stages.opt3",
             "warmup_steps": config.warmup_steps,

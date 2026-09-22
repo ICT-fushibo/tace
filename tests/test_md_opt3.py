@@ -26,7 +26,11 @@ from tace.md_stages.opt3 import (
 )
 
 
-def _request(*, backend: str = "whole-step-cuda-graph") -> MDRunRequest:
+def _request(
+    *,
+    backend: str = "whole-step-cuda-graph",
+    collect_trajectory: bool = False,
+) -> MDRunRequest:
     return MDRunRequest(
         model="tace",
         stage="opt3",
@@ -40,6 +44,8 @@ def _request(*, backend: str = "whole-step-cuda-graph") -> MDRunRequest:
             steps=1,
             observation_steps=(0, 1),
             integrator="nose_hoover_chain",
+            collect_trajectory=collect_trajectory,
+            record_interval=1 if collect_trajectory else 0,
         ),
         backend=backend,
         options={"model_dtype": "checkpoint"},
@@ -48,6 +54,7 @@ def _request(*, backend: str = "whole-step-cuda-graph") -> MDRunRequest:
 
 def test_opt3_contract_accepts_matbench_nhc_and_rejects_wrong_backend():
     _validate_request(_request())
+    _validate_request(_request(collect_trajectory=True))
     with pytest.raises(ValueError, match="whole-step-cuda-graph"):
         _validate_request(_request(backend="gpu-resident"))
 
