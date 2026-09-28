@@ -17,17 +17,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+import ase.io
 import numpy as np
 import torch
-import ase.io
 from ase import units
 from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
-from md_benchmark.md_route import (
-    MDRunRequest,
-    MDRunResult,
-    configure_torch_baseline,
-    validate_result,
-)
 from md_benchmark.cap1_rob1 import (
     FixedAddressStateSnapshot,
     Rob1Controller,
@@ -35,6 +29,12 @@ from md_benchmark.cap1_rob1 import (
     read_rob1_window_status,
     transaction_boundaries,
     verlet_rebuild_due,
+)
+from md_benchmark.md_route import (
+    MDRunRequest,
+    MDRunResult,
+    configure_torch_baseline,
+    validate_result,
 )
 from md_benchmark.neighbor_utils import (
     capacities_from_counts,
@@ -124,14 +124,10 @@ def _integrate_nhc_pure(
             )
         if index == 0:
             g_j = (
-                (current_momenta.square() / integrator.masses).sum()
-                - 3.0 * integrator.num_atoms * integrator.kT
-            )
+                current_momenta.square() / integrator.masses
+            ).sum() - 3.0 * integrator.num_atoms * integrator.kT
         else:
-            g_j = (
-                values[index - 1].square() / integrator.Q[index - 1]
-                - integrator.kT
-            )
+            g_j = values[index - 1].square() / integrator.Q[index - 1] - integrator.kT
         values[index] = values[index] + delta2 * g_j
         if index < len(values) - 1:
             values[index] = values[index] * torch.exp(
@@ -179,13 +175,12 @@ class TACEWholeStepPotential:
             import torch_sim as ts
             from torch_sim.neighbors import torchsim_nl
         except ImportError as exc:
-            raise ImportError(
-                "TACE Opt3 requires torch-sim-atomistic>=0.6.1"
-            ) from exc
+            raise ImportError("TACE Opt3 requires torch-sim-atomistic>=0.6.1") from exc
         from tace.interface.torchsim import TACETorchSimCalc
 
         self.device = device
         self.num_atoms = len(atoms)
+        self.capture_stress = bool(options.get("_opt4_capture_stress", False))
         # Keep the fixed-candidate selection cost separate from graph capture.
         # TACE's builder uses torch.topk while creating the Verlet candidate
         # bank; on a recovery this is setup work, not a CAP overflow replay.
@@ -203,7 +198,7 @@ class TACEWholeStepPotential:
                 dtype=None,
                 neighbor_list_fn=torchsim_nl,
                 compute_forces=True,
-                compute_stress=False,
+                compute_stress=self.capture_stress,
                 atomic_numbers=atomic_numbers,
                 system_idx=system_idx,
                 enable_oeq=False,
@@ -224,14 +219,14 @@ class TACEWholeStepPotential:
         self.model = calculator.model
         if options.get("_opt4_passes"):
             from md_benchmark.opt4_registry import prepare_model
+
             from .opt4_fusion import install
+
             prepare_model(self.model, options, install)
         self.model_dtype = self.model.get_model_dtype()
         self.neighbor_list_fn = torchsim_nl
         self.system_idx = calculator.system_idx
-        sim_state = ts.io.atoms_to_state(
-            [atoms], device=device, dtype=self.model_dtype
-        )
+        sim_state = ts.io.atoms_to_state([atoms], device=device, dtype=self.model_dtype)
         self.cell = sim_state.row_vector_cell.reshape(3, 3).contiguous()
         self.pbc = sim_state.pbc.reshape(3).contiguous()
         initial_positions = sim_state.positions.detach().clone()
@@ -245,6 +240,10 @@ class TACEWholeStepPotential:
             "lattice": sim_state.row_vector_cell,
             "positions": self.static_positions,
         }
+        if self.capture_stress:
+            self.static_data["_opt4_stress_volume"] = (
+                torch.linalg.det(self.cell).abs().detach()
+            )
 
         initial_edge_index, _, initial_edge_shifts = self.neighbor_list_fn(
             self.static_positions,
@@ -256,9 +255,7 @@ class TACEWholeStepPotential:
         if initial_edge_index.shape[1] < 1:
             raise RuntimeError("TACE Opt3 initial neighbour graph contains no edges")
         self.initial_edge_count = int(initial_edge_index.shape[1])
-        initial_maximum = maximum_neighbors_in_graph(
-            initial_edge_index, self.num_atoms
-        )
+        initial_maximum = maximum_neighbors_in_graph(initial_edge_index, self.num_atoms)
         margin = _nonnegative_float(
             options, "graph_neighbor_margin", _DEFAULT_NEIGHBOR_MARGIN
         )
@@ -326,8 +323,7 @@ class TACEWholeStepPotential:
         )
         if bool(initial_excess.max().item() > 0):
             raise RuntimeError(
-                "TACE Opt3 per-centre capacity vector is smaller than the "
-                "initial graph"
+                "TACE Opt3 per-centre capacity vector is smaller than the initial graph"
             )
         self.initial_max_neighbors = initial_maximum
         self.neighbor_capacities = capacities
@@ -336,9 +332,7 @@ class TACEWholeStepPotential:
         if explicit_caps is None and options.get("per_atom_cap", False):
             self.capacity_source = "initial-per-atom-cap-vector"
         self.edge_capacity = int(sum(capacities))
-        sink_count = _positive_int(
-            options, "graph_sink_count", _DEFAULT_SINK_COUNT
-        )
+        sink_count = _positive_int(options, "graph_sink_count", _DEFAULT_SINK_COUNT)
         self.builder = FixedShapeTACENeighborBuilder(
             num_atoms=self.num_atoms,
             cell=self.cell,
@@ -349,9 +343,7 @@ class TACEWholeStepPotential:
             sink_count=sink_count,
             verlet_skin=float(options.get("verlet_skin", 0.0)),
             verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
-            overflow_to_dummy_only=bool(
-                options.get("overflow_to_dummy_only", False)
-            ),
+            overflow_to_dummy_only=bool(options.get("overflow_to_dummy_only", False)),
         )
         self._initialize_capacity_generation_skin_(
             self.static_positions,
@@ -366,6 +358,8 @@ class TACEWholeStepPotential:
         with torch.enable_grad():
             official_outputs = self.model(exact_data)
         official_energy, official_forces = self._extract(official_outputs)
+        if self.capture_stress:
+            self.reference_stress = self.last_stress.clone()
         self.reference_energy = official_energy.detach().clone()
         self.reference_forces = official_forces.detach().clone()
 
@@ -374,13 +368,23 @@ class TACEWholeStepPotential:
             representation.radial_basis,
             self.model_metadata["cutoff_a"],
         ).to(device=device, dtype=self.model_dtype)
-        self.padding_density_masks_enabled = _enable_padding_density_masks_(
-            self.model
-        )
+        self.padding_density_masks_enabled = _enable_padding_density_masks_(self.model)
         self.builder.build(self.static_positions)
         with torch.enable_grad():
-            fixed_outputs = self.model(self.static_data)
+            fixed_outputs = self.model(
+                dict(self.static_data) if self.capture_stress else self.static_data
+            )
         fixed_energy, fixed_forces = self._extract(fixed_outputs)
+        if self.capture_stress:
+            from md_benchmark.stress_capture import validate_stress
+
+            self.fixed_initial_stress = self.last_stress.clone()
+            validate_stress(
+                self.fixed_initial_stress,
+                self.reference_stress,
+                dtype=self.model_dtype,
+                context="TACE fixed-padding stress",
+            )
         self.fixed_initial_energy = fixed_energy.detach().clone()
         self.fixed_initial_forces = fixed_forces.detach().clone()
         energy_atol = _positive_float(
@@ -459,9 +463,7 @@ class TACEWholeStepPotential:
             cutoff=self.model_metadata["cutoff_a"],
             neighbors_per_atom=self.neighbors_per_atom,
             neighbor_capacities=selected,
-            sink_count=_positive_int(
-                options, "graph_sink_count", _DEFAULT_SINK_COUNT
-            ),
+            sink_count=_positive_int(options, "graph_sink_count", _DEFAULT_SINK_COUNT),
             verlet_skin=float(options.get("verlet_skin", 0.0)),
             verlet_candidate_capacity=options.get("verlet_candidate_capacity"),
             overflow_to_dummy_only=True,
@@ -484,19 +486,18 @@ class TACEWholeStepPotential:
         self.builder.reset_stats()
 
     def _extract(self, outputs: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-        if (
-            outputs.get("energy") is None
-            or outputs.get("forces") is None
-        ):
+        if self.capture_stress:
+            from md_benchmark.stress_capture import stress_matrix
+
+            self.last_stress = stress_matrix(outputs.get("stress")).detach()
+        if outputs.get("energy") is None or outputs.get("forces") is None:
             raise RuntimeError(f"TACE model omitted energy/forces: {sorted(outputs)}")
         return (
             outputs["energy"].reshape(-1)[0],
             outputs["forces"].reshape(self.num_atoms, 3),
         )
 
-    def evaluate(
-        self, positions: Tensor, *, step: Tensor
-    ) -> tuple[Tensor, Tensor]:
+    def evaluate(self, positions: Tensor, *, step: Tensor) -> tuple[Tensor, Tensor]:
         """Build topology and run TACE; this entire method is captured."""
 
         with torch.no_grad():
@@ -504,7 +505,9 @@ class TACEWholeStepPotential:
         with nvtx_range("neighbor_geometry"):
             self.builder.build(self.static_positions, step=step)
         with model_nvtx_ranges(self.model), torch.enable_grad():
-            outputs = self.model(self.static_data)
+            outputs = self.model(
+                dict(self.static_data) if self.capture_stress else self.static_data
+            )
         energy, forces = self._extract(outputs)
         return forces.to(torch.float64), energy.to(torch.float64)
 
@@ -537,6 +540,10 @@ class TACEWholeStepGraph:
         self.initial_momenta = state.momenta.clone()
         self.initial_forces = state.forces.clone()
         self.initial_energy = state.potential_energy.clone()
+        if potential.capture_stress:
+            if state.stress is None:
+                state.stress = potential.fixed_initial_stress.to(torch.float64).clone()
+            self.initial_stress = state.stress.clone()
         self.initial_eta = (
             integrator.eta.clone()
             if isinstance(integrator, NoseHooverChainIntegrator)
@@ -547,9 +554,7 @@ class TACEWholeStepGraph:
             if isinstance(integrator, NoseHooverChainIntegrator)
             else None
         )
-        self.step_counter = torch.zeros(
-            (), device=self.device, dtype=torch.long
-        )
+        self.step_counter = torch.zeros((), device=self.device, dtype=torch.long)
         self.advance = torch.zeros((), device=self.device, dtype=torch.float64)
         self.graph: torch.cuda.CUDAGraph | None = None
         self.capture_stream: torch.cuda.Stream | None = None
@@ -568,6 +573,8 @@ class TACEWholeStepGraph:
         self.state.momenta.copy_(self.initial_momenta)
         self.state.forces.copy_(self.initial_forces)
         self.state.potential_energy.copy_(self.initial_energy)
+        if self.potential.capture_stress:
+            self.state.stress.copy_(self.initial_stress)
         self.step_counter.zero_()
         self.advance.zero_()
         if isinstance(self.integrator, NoseHooverChainIntegrator):
@@ -588,23 +595,17 @@ class TACEWholeStepGraph:
             ).clamp_min(1.0e-12)
             scale = torch.sqrt(
                 1.0
-                + (
-                    self.integrator.target_temperature / temperature - 1.0
-                )
+                + (self.integrator.target_temperature / temperature - 1.0)
                 * (self.integrator.dt / self.integrator.taut)
             ).clamp(min=0.9, max=1.1)
             half_momenta = state.momenta * scale
-            half_momenta = (
-                half_momenta + 0.5 * self.integrator.dt * state.forces
+            half_momenta = half_momenta + 0.5 * self.integrator.dt * state.forces
+            half_momenta = half_momenta - half_momenta.sum(dim=0, keepdim=True) / float(
+                half_momenta.shape[0]
             )
-            half_momenta = half_momenta - half_momenta.sum(
-                dim=0, keepdim=True
-            ) / float(half_momenta.shape[0])
             advanced_positions = (
                 state.positions
-                + self.integrator.dt
-                * half_momenta
-                / self.integrator.masses
+                + self.integrator.dt * half_momenta / self.integrator.masses
             )
             eta_final = p_eta_final = None
         elif isinstance(self.integrator, NoseHooverChainIntegrator):
@@ -619,9 +620,7 @@ class TACEWholeStepGraph:
             half_momenta = half_momenta + dt2 * state.forces
             advanced_positions = (
                 state.positions
-                + self.integrator.dt
-                * half_momenta
-                / self.integrator.masses
+                + self.integrator.dt * half_momenta / self.integrator.masses
             )
         else:
             raise TypeError(
@@ -655,14 +654,14 @@ class TACEWholeStepGraph:
     def _graph_body(self) -> None:
         state = self.state
         assert state.forces is not None and state.potential_energy is not None
-        positions, momenta, forces, energy, eta_final, p_eta_final = (
-            self._step_values()
-        )
+        positions, momenta, forces, energy, eta_final, p_eta_final = self._step_values()
         with torch.no_grad():
             state.positions.copy_(positions)
             state.momenta.copy_(momenta)
             state.forces.copy_(forces)
             state.potential_energy.copy_(energy)
+            if self.potential.capture_stress:
+                state.stress.copy_(self.potential.last_stress)
             if isinstance(self.integrator, NoseHooverChainIntegrator):
                 assert eta_final is not None and p_eta_final is not None
                 self.integrator.eta.copy_(
@@ -689,6 +688,8 @@ class TACEWholeStepGraph:
             self.potential.builder.edge_index,
             self.potential.builder.edge_shifts,
         ]
+        if self.potential.capture_stress:
+            tensors.append(self.state.stress)
         if isinstance(self.integrator, NoseHooverChainIntegrator):
             tensors.extend((self.integrator.eta, self.integrator.p_eta))
         return tuple(tensors)
@@ -707,6 +708,8 @@ class TACEWholeStepGraph:
             "forces": forces.detach().clone(),
             "energy": energy.detach().clone(),
         }
+        if self.potential.capture_stress:
+            reference["stress"] = self.potential.last_stress.clone()
         if eta is not None and p_eta is not None:
             reference["eta"] = eta.detach().clone()
             reference["p_eta"] = p_eta.detach().clone()
@@ -734,6 +737,16 @@ class TACEWholeStepGraph:
             "forces": self.state.forces,
             "energy": self.state.potential_energy,
         }
+        if self.potential.capture_stress:
+            from md_benchmark.stress_capture import validate_stress
+
+            candidate["stress"] = self.state.stress
+            validate_stress(
+                candidate["stress"],
+                reference["stress"],
+                dtype=self.potential.model_dtype,
+                context="TACE replay stress",
+            )
         if isinstance(self.integrator, NoseHooverChainIntegrator):
             candidate["eta"] = self.integrator.eta
             candidate["p_eta"] = self.integrator.p_eta
@@ -760,6 +773,7 @@ class TACEWholeStepGraph:
             "energy": energy_atol,
             "eta": state_atol,
             "p_eta": state_atol,
+            "stress": 1e-5 if self.potential.model_dtype == torch.float32 else 1e-8,
         }
         self.validation = {
             "reference": "eager_fixed_builder_integrator_one_step",
@@ -876,9 +890,7 @@ class TACEWholeStepGraph:
             "verlet_rebuild_interval": self.verlet_rebuild_interval,
             "cuda_graph_total_replays": self.total_replays,
             "cuda_graph_production_replays": self.production_replays,
-            "cuda_graph_replay_output_addresses_stable": (
-                self.output_addresses_stable
-            ),
+            "cuda_graph_replay_output_addresses_stable": (self.output_addresses_stable),
             "whole_step_eager_graph_validation": self.validation,
         }
 
@@ -893,6 +905,8 @@ class TACEWholeStepGraph:
             "step_counter": self.step_counter,
             "advance": self.advance,
         }
+        if self.potential.capture_stress:
+            state["stress"] = self.state.stress
         if isinstance(self.integrator, NoseHooverChainIntegrator):
             state["eta"] = self.integrator.eta
             state["p_eta"] = self.integrator.p_eta
@@ -905,12 +919,8 @@ class TACEWholeStepGraph:
         builder = self.potential.builder
         return read_rob1_window_status(
             capacity_misses=builder.window_capacity_misses,
-            overflow_dummy_only_replays=(
-                builder.window_overflow_dummy_only_replays
-            ),
-            maximum_required_by_atom=(
-                builder.window_maximum_neighbors_by_atom
-            ),
+            overflow_dummy_only_replays=(builder.window_overflow_dummy_only_replays),
+            maximum_required_by_atom=(builder.window_maximum_neighbors_by_atom),
             verlet_skin_misses=builder.skin_misses,
         )
 
@@ -919,9 +929,7 @@ class TACEWholeStepGraph:
         self.capture_stream = None
 
 
-def _nonnegative_float(
-    options: dict[str, Any], key: str, default: float
-) -> float:
+def _nonnegative_float(options: dict[str, Any], key: str, default: float) -> float:
     value = options.get(key, default)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"TACE Opt3 {key} must be numeric")
@@ -946,7 +954,10 @@ def _validate_request(request: MDRunRequest) -> None:
         raise ValueError("NVT MD requires at least two atoms")
     if not bool(np.all(request.atoms.pbc)):
         raise ValueError("TACE Opt3 currently requires full periodic boundaries")
-    if request.options.get("compute_stress", False) and not request.config.collect_trajectory:
+    if (
+        request.options.get("compute_stress", False)
+        and not request.config.collect_trajectory
+    ):
         raise ValueError(
             "TACE Opt3 computes stress only at trajectory record boundaries"
         )
@@ -954,18 +965,12 @@ def _validate_request(request: MDRunRequest) -> None:
         raise ValueError("TACE Opt3 fixes model_dtype='checkpoint'")
     _positive_int(request.options, "graph_warmup_steps", _DEFAULT_CAPTURE_WARMUP)
     _positive_float(request.options, "graph_rtol", 2.0e-5)
-    _positive_float(
-        request.options, "graph_energy_atol", _DEFAULT_GRAPH_ENERGY_ATOL
-    )
-    _positive_float(
-        request.options, "graph_force_atol", _DEFAULT_GRAPH_FORCE_ATOL
-    )
+    _positive_float(request.options, "graph_energy_atol", _DEFAULT_GRAPH_ENERGY_ATOL)
+    _positive_float(request.options, "graph_force_atol", _DEFAULT_GRAPH_FORCE_ATOL)
     _nonnegative_float(
         request.options, "graph_neighbor_margin", _DEFAULT_NEIGHBOR_MARGIN
     )
-    _positive_int(
-        request.options, "graph_neighbor_step", _DEFAULT_NEIGHBOR_STEP
-    )
+    _positive_int(request.options, "graph_neighbor_step", _DEFAULT_NEIGHBOR_STEP)
     _positive_int(request.options, "graph_sink_count", _DEFAULT_SINK_COUNT)
 
 
@@ -1038,7 +1043,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             compute_stress=True,
             profiler=profiler,
         )
-        if config.collect_trajectory
+        if config.collect_trajectory and not potential.capture_stress
         else None
     )
     state = GPUMDState(
@@ -1056,9 +1061,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         state,
         integrator,
         capture_warmup=capture_warmup,
-        verlet_rebuild_interval=int(
-            request.options.get("verlet_rebuild_interval", 0)
-        ),
+        verlet_rebuild_interval=int(request.options.get("verlet_rebuild_interval", 0)),
     )
     runner.capture()
     rob1_enabled = bool(request.options.get("_opt4_rob1", False))
@@ -1078,6 +1081,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
                 momenta=snapshot["momenta"].clone(),
                 forces=snapshot["forces"].clone(),
                 potential_energy=snapshot["energy"].clone(),
+                stress=snapshot["stress"].clone() if "stress" in snapshot else None,
             )
             recovery_integrator = _build_integrator(request, masses)
             generation = TACEWholeStepGraph(
@@ -1090,9 +1094,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
                 ),
             )
             generation.capture()
-            generation.production_replays = int(
-                snapshot["step_counter"].detach().cpu()
-            ) + 1
+            generation.production_replays = (
+                int(snapshot["step_counter"].detach().cpu()) + 1
+            )
             return generation
 
         controller = Rob1Controller(
@@ -1148,9 +1152,12 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         runner.raise_if_overflow()
 
     def record_frame(step: int) -> None:
-        if stress_evaluator is None:
-            raise RuntimeError("TACE trajectory stress evaluator is missing")
-        _forces, _energy, stress = stress_evaluator(state.positions)
+        if potential.capture_stress:
+            stress = state.stress
+        else:
+            if stress_evaluator is None:
+                raise RuntimeError("TACE trajectory stress evaluator is missing")
+            _forces, _energy, stress = stress_evaluator(state.positions)
         if stress is None:
             raise RuntimeError(
                 "TACE checkpoint does not provide stress required by Matbench trajectory"
@@ -1163,6 +1170,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             stress=stress,
         )
         frame = _snapshot(atoms, frame_state, step=step, require_stress=True)
+        from md_benchmark.stress_capture import save_validation_frame
+
+        save_validation_frame(frame, request.options)
         if partial_path is not None:
             ase.io.write(partial_path, frame, append=True, format="extxyz")
         else:
@@ -1239,9 +1249,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         final_atoms=final_atoms,
         observations=observations,
         trajectory=in_memory_trajectory,
-        trajectory_path=(
-            str(trajectory_path) if trajectory_path is not None else None
-        ),
+        trajectory_path=(str(trajectory_path) if trajectory_path is not None else None),
         metadata={
             "engine": "torch-sim-tace-gpu-resident-whole-step-cuda-graph",
             "backend": request.backend,
@@ -1271,9 +1279,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "expected_production_graph_replay_count": expected_replays,
             "production_graph_replay_count_verified": True,
             "initial_force_evaluation_in_measured_region": True,
-            "capacity_overflow_count": graph_stats[
-                "fixed_builder_capacity_misses"
-            ],
+            "capacity_overflow_count": graph_stats["fixed_builder_capacity_misses"],
             "neighbor_list_inside_cuda_graph": True,
             "cuda_graph_neighbor_build_inside": True,
             "fixed_address_model_inputs": True,
@@ -1299,9 +1305,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             "edge_padding": "distributed_far_shifted_self_edge_sink",
             "sink_padding": "distributed_far_shifted_self_edges",
             "padding_node_policy": "real_nodes_only_no_dummy_readout_atoms",
-            "padding_density_masks_enabled": (
-                potential.padding_density_masks_enabled
-            ),
+            "padding_density_masks_enabled": (potential.padding_density_masks_enabled),
             "edge_overflow_policy": (
                 "rob1_rollback_promote_recapture_no_fallback"
                 if rob1_enabled
@@ -1360,6 +1364,18 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             **graph_stats,
         },
     )
+    if potential.capture_stress:
+        from md_benchmark.stress_capture import BACKEND, capture_metadata
+
+        result.metadata.update(
+            capture_metadata(True, stable=runner.output_addresses_stable)
+        )
+        result.metadata.update(
+            trajectory_stress_backend=BACKEND,
+            trajectory_stress_recompute_count=0,
+            trajectory_record_model_calls=0,
+            trajectory_stress_source="captured-current-committed-state",
+        )
     validate_result(request, result)
     return result
 

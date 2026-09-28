@@ -110,7 +110,11 @@ class TensorModel(torch.nn.Module):
         if self.flags.compute_stress or self.flags.compute_virials:
             grad = grads[idx]
             V = torch.zeros_like(data["lattice"]) if grad is None else -grad
-            VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
+            # Opt4 fixed-cell MD supplies the setup-time volume. All normal
+            # inference/training callers retain the original dynamic-cell path.
+            VOLUME = data.get("_opt4_stress_volume")
+            if VOLUME is None:
+                VOLUME = torch.linalg.det(data["lattice"]).abs().unsqueeze(-1)
             S = -V / VOLUME.view(-1, 1, 1)
             S = torch.where(torch.abs(S) < 1e10, S, torch.zeros_like(S))
             idx += 1
