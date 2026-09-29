@@ -1172,7 +1172,16 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         frame = _snapshot(atoms, frame_state, step=step, require_stress=True)
         from md_benchmark.stress_capture import save_validation_frame
 
-        save_validation_frame(frame, request.options)
+        # Smoke-only diagnostics: preserve the exact committed edge order and
+        # padding, also after ROB recovery. No copies/files in timing runs.
+        save_validation_frame(
+            frame,
+            request.options,
+            fixed_topology=(
+                runner.potential.builder.edge_index,
+                runner.potential.builder.edge_shifts,
+            ),
+        )
         if partial_path is not None:
             ase.io.write(partial_path, frame, append=True, format="extxyz")
         else:
