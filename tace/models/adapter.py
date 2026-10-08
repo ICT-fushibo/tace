@@ -10,6 +10,7 @@ from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
 from tace.dataset.element import TorchElement
+from tace.md_stages.stress_geometry import strained_edge_vectors
 
 from ..dataset.quantity import PROPERTY, ComputeFlag
 from .lammps import Graph
@@ -325,20 +326,35 @@ class TensorModel(torch.nn.Module):
             device = data["node_attrs"].device
             positions = data["positions"]
             num_graphs = data["ptr"].numel() - 1
-            if self.flags.compute_virials or self.flags.compute_stress:
+            opt4_strain = data.get("_opt4_edge_strain")
+            if opt4_strain is not None:
+                # Opt4 local-potential, fixed-cell inference only. Native
+                # training/Opt1--3 and the stress-disabled path do not set it.
+                if self.training or hasattr(self.readout_fn, "les"):
+                    raise RuntimeError("Opt4 edge strain requires local-potential inference")
+                if not (self.flags.compute_virials or self.flags.compute_stress):
+                    raise RuntimeError("Opt4 edge strain requires a stress derivative")
+                displacement = opt4_strain
+            elif self.flags.compute_virials or self.flags.compute_stress:
                 displacement = compute_symmetric_displacement(data, num_graphs)
             else:
                 displacement = None
             source = data["edge_index"][0]
             target = data["edge_index"][1]
             edge_batch = data["batch"][source]
-            edge_vector = (
-                data["positions"][target]
-                - data["positions"][source]
-                + torch.einsum(
-                    "ni,nij->nj", data["edge_shifts"], data["lattice"][edge_batch]
+            if opt4_strain is not None:
+                edge_vector = strained_edge_vectors(
+                    positions, data["lattice"], data["edge_index"],
+                    data["edge_shifts"], data["batch"], opt4_strain,
                 )
-            )
+            else:
+                edge_vector = (
+                    data["positions"][target]
+                    - data["positions"][source]
+                    + torch.einsum(
+                        "ni,nij->nj", data["edge_shifts"], data["lattice"][edge_batch]
+                    )
+                )
             if set(self.get_target_property()) & {
                 "edge_vector",
                 "atomic_stresses",

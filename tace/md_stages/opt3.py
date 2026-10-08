@@ -244,6 +244,11 @@ class TACEWholeStepPotential:
             self.static_data["_opt4_stress_volume"] = (
                 torch.linalg.det(self.cell).abs().detach()
             )
+            if hasattr(self.model.readout_fn, "les"):
+                raise NotImplementedError("Opt4 edge-strain stress does not support LES")
+            self.static_data["_opt4_edge_strain"] = torch.zeros(
+                (1, 3, 3), dtype=self.model_dtype, device=device, requires_grad=True
+            )
 
         initial_edge_index, _, initial_edge_shifts = self.neighbor_list_fn(
             self.static_positions,
@@ -353,6 +358,8 @@ class TACEWholeStepPotential:
         self.static_data["edge_shifts"] = self.builder.edge_shifts
 
         exact_data = dict(self.static_data)
+        # Keep an independent native affine-strain setup reference.
+        exact_data.pop("_opt4_edge_strain", None)
         exact_data["edge_index"] = initial_edge_index
         exact_data["edge_shifts"] = initial_edge_shifts
         with torch.enable_grad():
@@ -690,6 +697,7 @@ class TACEWholeStepGraph:
         ]
         if self.potential.capture_stress:
             tensors.append(self.state.stress)
+            tensors.append(self.potential.static_data["_opt4_edge_strain"])
         if isinstance(self.integrator, NoseHooverChainIntegrator):
             tensors.extend((self.integrator.eta, self.integrator.p_eta))
         return tuple(tensors)
@@ -907,6 +915,7 @@ class TACEWholeStepGraph:
         }
         if self.potential.capture_stress:
             state["stress"] = self.state.stress
+            state["stress_strain"] = self.potential.static_data["_opt4_edge_strain"]
         if isinstance(self.integrator, NoseHooverChainIntegrator):
             state["eta"] = self.integrator.eta
             state["p_eta"] = self.integrator.p_eta
@@ -1384,6 +1393,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             trajectory_stress_recompute_count=0,
             trajectory_record_model_calls=0,
             trajectory_stress_source="captured-current-committed-state",
+            stress_derivative_backend="joint-position-periodic-edge-strain-vjp",
         )
     validate_result(request, result)
     return result
