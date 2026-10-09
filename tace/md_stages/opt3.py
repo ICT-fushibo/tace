@@ -181,6 +181,8 @@ class TACEWholeStepPotential:
         self.device = device
         self.num_atoms = len(atoms)
         self.capture_stress = bool(options.get("_opt4_capture_stress", False))
+        from md_benchmark.capture_scope import scope_from_options
+        self.benchmark_capture_scope = scope_from_options(options)
         # Keep the fixed-candidate selection cost separate from graph capture.
         # TACE's builder uses torch.topk while creating the Verlet candidate
         # bank; on a recovery this is setup work, not a CAP overflow replay.
@@ -823,10 +825,11 @@ class TACEWholeStepGraph:
 
         addresses = tuple(tensor.data_ptr() for tensor in self._persistent_tensors())
         started = time.perf_counter()
-        graph = torch.cuda.CUDAGraph()
+        from md_benchmark.capture_scope import capture_execution
         try:
-            with torch.cuda.graph(graph, stream=side_stream), torch.enable_grad():
-                self._graph_body()
+            graph = capture_execution(
+                self._graph_body, self.potential.builder, stream=side_stream,
+                scope=self.potential.benchmark_capture_scope)
         except Exception as exc:
             raise RuntimeError(
                 "TACE Opt3 whole-step CUDA Graph capture failed; eager fallback "
@@ -835,7 +838,7 @@ class TACEWholeStepGraph:
         torch.cuda.synchronize(self.device)
         self.capture_wall_time_s = time.perf_counter() - started
         self.graph = graph
-        self.capture_count = 1
+        self.capture_count = graph.capture_count
         self.restore_initial_()
         self.potential.builder.reset_stats()
         self._validate_graph_step(eager_reference)
@@ -1051,6 +1054,8 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     potential = TACEWholeStepPotential(
         atoms, request.model_path, device=device, options=request.options
     )
+    from md_benchmark.stress_mode import stress_disabled
+    no_stress = stress_disabled(request.options)
     stress_evaluator = (
         TACETorchSimEvaluator(
             atoms,
@@ -1059,7 +1064,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             compute_stress=True,
             profiler=profiler,
         )
-        if config.collect_trajectory and not potential.capture_stress
+        if config.collect_trajectory and not potential.capture_stress and not no_stress
         else None
     )
     state = GPUMDState(
@@ -1168,13 +1173,15 @@ def run_md(request: MDRunRequest) -> MDRunResult:
         runner.raise_if_overflow()
 
     def record_frame(step: int) -> None:
-        if potential.capture_stress:
+        if no_stress:
+            stress = None
+        elif potential.capture_stress:
             stress = state.stress
         else:
             if stress_evaluator is None:
                 raise RuntimeError("TACE trajectory stress evaluator is missing")
             _forces, _energy, stress = stress_evaluator(state.positions)
-        if stress is None:
+        if stress is None and not no_stress:
             raise RuntimeError(
                 "TACE checkpoint does not provide stress required by Matbench trajectory"
             )
@@ -1185,7 +1192,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             potential_energy=state.potential_energy,
             stress=stress,
         )
-        frame = _snapshot(atoms, frame_state, step=step, require_stress=True)
+        frame = _snapshot(atoms, frame_state, step=step, require_stress=not no_stress)
         from md_benchmark.stress_capture import save_validation_frame
 
         # Smoke-only diagnostics: preserve the exact committed edge order and

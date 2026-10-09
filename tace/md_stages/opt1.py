@@ -492,9 +492,9 @@ def run_md(request: MDRunRequest) -> MDRunResult:
     # Stress is needed for Matbench trajectory frames, but it is not part of the
     # Cu/H2O timing/statistics contract. Avoid the extra cell derivative there;
     # callers that need stress without a trajectory can request it explicitly.
-    compute_stress = config.collect_trajectory or request.options.get(
-        "compute_stress", False
-    )
+    from md_benchmark.stress_mode import wants_stress
+    compute_stress = wants_stress(request.options,
+        config.collect_trajectory or request.options.get("compute_stress", False))
     profiler = CudaPhaseProfiler(
         enabled=performance_profile_requested(request.options),
         device=device,
@@ -532,7 +532,7 @@ def run_md(request: MDRunRequest) -> MDRunResult:
             partial_path.unlink()
 
     def write_frame(step: int) -> None:
-        frame = _snapshot(atoms, state, step=step, require_stress=True)
+        frame = _snapshot(atoms, state, step=step, require_stress=compute_stress)
         if partial_path is not None:
             ase.io.write(partial_path, frame, append=True, format="extxyz")
         else:
