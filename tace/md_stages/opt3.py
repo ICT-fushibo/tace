@@ -809,7 +809,8 @@ class TACEWholeStepGraph:
             raise RuntimeError("TACE whole-step CUDA Graph is already captured")
         eager_reference = self._eager_one_step_reference()
         current_stream = torch.cuda.current_stream(self.device)
-        side_stream = torch.cuda.Stream(device=self.device)
+        side_stream = (current_stream if self.potential.benchmark_capture_scope == "fixed-eager"
+                       else torch.cuda.Stream(device=self.device))
         self.capture_stream = side_stream
         side_stream.wait_stream(current_stream)
         with torch.cuda.stream(side_stream):
