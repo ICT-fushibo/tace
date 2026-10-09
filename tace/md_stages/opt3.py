@@ -375,7 +375,14 @@ class TACEWholeStepPotential:
             representation.radial_basis,
             self.model_metadata["cutoff_a"],
         ).to(device=device, dtype=self.model_dtype)
-        self.padding_density_masks_enabled = _enable_padding_density_masks_(self.model)
+        if options.get("_opt4_rob1", False):
+            from .padding_density import enable_opt4_density_masks_
+
+            self.padding_density_masks_enabled = enable_opt4_density_masks_(
+                self.model, self.model_metadata["cutoff_a"]
+            )
+        else:
+            self.padding_density_masks_enabled = _enable_padding_density_masks_(self.model)
         self.builder.build(self.static_positions)
         with torch.enable_grad():
             fixed_outputs = self.model(

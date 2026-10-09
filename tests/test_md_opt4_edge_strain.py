@@ -12,6 +12,79 @@ spec = importlib.util.spec_from_file_location("edge_strain_production", path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+density_path = path.with_name("padding_density.py")
+density_spec = importlib.util.spec_from_file_location("padding_density_production", density_path)
+density_module = importlib.util.module_from_spec(density_spec)
+density_spec.loader.exec_module(density_module)
+
+
+class TACEPaddingDensityTests(unittest.TestCase):
+    def test_inside_zero_envelope_keeps_density_and_vjp(self):
+        for dtype in (torch.float32, torch.float64):
+            density = torch.tensor([[.3], [.5], [.7]], dtype=dtype, requires_grad=True)
+            # Real edge 1 has an envelope rounded to zero. Edge 2 is padding.
+            cutoff = torch.tensor([[.2], [0.], [0.]], dtype=dtype, requires_grad=True)
+            length = torch.tensor([[3.], [4.9999], [12.]], dtype=dtype)
+            actual = density_module.apply_opt4_density_mask(
+                density, cutoff, length, 5., False)
+            torch.testing.assert_close(actual, torch.tensor([[.3], [.5], [0.]], dtype=dtype))
+            grad, gc = torch.autograd.grad(actual.sum(), (density, cutoff), allow_unused=True)
+            torch.testing.assert_close(grad, torch.tensor([[1.], [1.], [0.]], dtype=dtype))
+            self.assertIsNone(gc)
+
+    def test_native_smooth_density_cutoff_derivative_is_preserved(self):
+        density = torch.tensor([[.3], [.5], [.7]], dtype=torch.float64, requires_grad=True)
+        cutoff = torch.tensor([[.2], [.1], [0.]], dtype=torch.float64, requires_grad=True)
+        length = torch.tensor([[3.], [4.9], [12.]], dtype=torch.float64)
+        result = density_module.apply_opt4_density_mask(density, cutoff, length, 5., True)
+        gd, gc = torch.autograd.grad(result.sum(), (density, cutoff))
+        torch.testing.assert_close(gd, cutoff.detach())
+        torch.testing.assert_close(gc, torch.tensor([[.3], [.5], [0.]], dtype=torch.float64))
+        for applied in (False, True):
+            dummy = density_module.apply_opt4_density_mask(
+                density, cutoff, torch.full_like(length, 12.), 5., applied)
+            torch.testing.assert_close(dummy, torch.zeros_like(dummy))
+
+    def test_setup_is_idempotent_nonpersistent_and_does_not_mutate_native_flag(self):
+        model = torch.nn.Sequential(torch.nn.Linear(1, 1))
+        model[0].edge_density = torch.nn.Linear(1, 1)
+        model[0].apply_density_cutoff = False
+        model[0]._opt2_binary_density_mask = True
+        self.assertEqual(density_module.enable_opt4_density_masks_(model, 5.), 1)
+        ptr = model[0]._opt4_density_padding_cutoff.data_ptr()
+        self.assertEqual(density_module.enable_opt4_density_masks_(model, 5.), 0)
+        self.assertEqual(model[0]._opt4_density_padding_cutoff.data_ptr(), ptr)
+        self.assertTrue(model[0]._opt2_binary_density_mask)
+        self.assertFalse(model[0].apply_density_cutoff)
+        self.assertFalse(any('padding_cutoff' in k for k in model.state_dict()))
+
+    def test_both_production_interactions_select_opt4_and_preserve_legacy(self):
+        source = density_path.parents[1] / 'models/_e3nn/inter.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        for name in ('CgtpInteraction', 'uuSO2Interaction'):
+            cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == name)
+            forward = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'forward')
+            block = next(n for n in forward.body if isinstance(n, ast.If) and
+                         isinstance(n.test, ast.Call) and isinstance(n.test.func, ast.Name) and
+                         n.test.func.id == 'hasattr' and n.test.args[1].value == 'edge_density')
+            features = torch.tensor([[.3], [.5], [.7]], dtype=torch.float64, requires_grad=True)
+            cutoff = torch.tensor([[.2], [0.], [0.]], dtype=torch.float64)
+            obj = SimpleNamespace(edge_density=lambda x: x, apply_density_cutoff=False,
+                                  _opt2_binary_density_mask=True, alpha=0., beta=1.,
+                                  truncate_ghosts=lambda x, n: x)
+            env = dict(torch=torch, self=obj, edge_feats=features, cutoff=cutoff,
+                       graph=SimpleNamespace(edge_length=torch.tensor([[3.], [4.9], [12.]])),
+                       edge_index=torch.tensor([[0, 0, 0], [0, 0, 0]]), nlocal=None,
+                       node_attrs_total=torch.zeros(1, 1),
+                       scatter_sum=lambda x, *a, **kw: x.sum(dim=0, keepdim=True),
+                       apply_opt4_density_mask=density_module.apply_opt4_density_mask)
+            code = compile(ast.Module(body=[block], type_ignores=[]), str(source), 'exec')
+            exec(code, env)
+            torch.testing.assert_close(env['density'], torch.tanh(features[:1]**2))
+            obj._opt4_density_padding_cutoff = torch.tensor(5.)
+            exec(code, env)
+            torch.testing.assert_close(env['density'], torch.tanh(features[:2]**2).sum(0, keepdim=True))
+
 
 class TACEEdgeStrainTests(unittest.TestCase):
     def fixture(self, dtype=torch.float64, device="cpu", dummy=False):

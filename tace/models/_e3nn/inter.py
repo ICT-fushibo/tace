@@ -9,6 +9,7 @@ import torch
 from e3nn import o3
 
 from tace.utils.torch_scatter import scatter_sum
+from tace.md_stages.padding_density import apply_opt4_density_mask
 
 from ..layout import LayoutTransform
 from ..linear import e3nnLinear
@@ -218,7 +219,13 @@ class CgtpInteraction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            if cutoff is not None:
+            padding_cutoff = getattr(self, "_opt4_density_padding_cutoff", None)
+            if padding_cutoff is not None:
+                density = apply_opt4_density_mask(
+                    density, cutoff, graph.edge_length, padding_cutoff,
+                    self.apply_density_cutoff,
+                )
+            elif cutoff is not None:
                 if getattr(self, "_opt2_binary_density_mask", False):
                     density = density * (cutoff != 0).to(dtype=density.dtype)
                 elif self.apply_density_cutoff:
@@ -455,7 +462,13 @@ class uuSO2Interaction(Interaction):
 
         if hasattr(self, "edge_density"):
             density = torch.tanh(self.edge_density(edge_feats) ** 2)
-            if cutoff is not None:
+            padding_cutoff = getattr(self, "_opt4_density_padding_cutoff", None)
+            if padding_cutoff is not None:
+                density = apply_opt4_density_mask(
+                    density, cutoff, graph.edge_length, padding_cutoff,
+                    self.apply_density_cutoff,
+                )
+            elif cutoff is not None:
                 if getattr(self, "_opt2_binary_density_mask", False):
                     density = density * (cutoff != 0).to(dtype=density.dtype)
                 elif self.apply_density_cutoff:
