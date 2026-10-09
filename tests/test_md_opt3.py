@@ -187,7 +187,24 @@ def test_whole_step_hot_path_has_no_host_transfer_or_eager_fallback():
     assert attributes.isdisjoint({"cpu", "numpy", "item", "tolist", "data_ptr"})
     assert "_integrate_nhc_pure" in sources
     assert "builder.build" in sources
-    assert "self.model(self.static_data)" in sources
+    # Stress capture intentionally supplies a fresh mapping because native
+    # strain preparation mutates it; force-only Opt3 still receives the exact
+    # persistent mapping. Check semantics instead of a one-line source string.
+    model_calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+        and node.func.attr == "model"
+    ]
+    assert len(model_calls) == 1
+    assert len(model_calls[0].args) == 1
+    expected = ast.parse(
+        "dict(self.static_data) if self.capture_stress else self.static_data",
+        mode="eval",
+    ).body
+    assert ast.dump(model_calls[0].args[0]) == ast.dump(expected)
 
 
 def test_capture_is_one_whole_step_graph_and_has_no_fallback_branch():
