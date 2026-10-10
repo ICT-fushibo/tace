@@ -74,14 +74,21 @@ def refresh(model, options) -> None:
         if isinstance(region, CheckedRegion):
             module._opt4_edge_capacity = int(edge_rows.numel())
             region.reference.set_layout(edge_rows, rows, max_terms)
+            grouped = getattr(region, '_grouped_cg_boundary', None)
+            if grouped is not None:
+                grouped.set_layout(edge_rows, rows, max_terms)
             region.signatures.clear()
 
 
 def install(model, passes, report, options):
+    grouped_requested = 'tace_grouped_cg' in passes
+    if grouped_requested and 'fasteq_uniform1d_rejector' not in passes:
+        raise FusionSetupError('tace_grouped_cg requires fasteq_uniform1d_rejector')
     if "fasteq_uniform1d_rejector" not in passes:
         return
     edge_rows, rows, max_terms = _layout(options, next(model.parameters()))
     modules = []
+    grouped_modules = []
     for path, module in list(model.named_modules()):
         if type(module).__name__ != "O3ScatterTensorProduct" or "rejector" not in path:
             continue
@@ -95,12 +102,31 @@ def install(model, passes, report, options):
             "benchmark_requested": report.get("benchmark_boundaries", False),
         }
         boundary = _Uniform1DRejector(module.tp, edge_rows, rows, max_terms, detail)
-        module._opt4_fasteq_uniform1d = CheckedRegion(
+        candidate = None
+        grouped_boundary = None
+        if grouped_requested:
+            from .tp_grouped_cg import rewrite_grouped_cg
+            grouped_tp, groups = rewrite_grouped_cg(module.tp)
+            if groups:
+                detail['grouped_cg'] = groups
+                detail['native_gemm_groups'] = len(groups)
+                detail['eliminated_tensordots_per_forward'] = sum(g['instructions']-1 for g in groups)
+                grouped_boundary = _Uniform1DRejector(grouped_tp, edge_rows, rows, max_terms, detail)
+                # Compile the candidate once; validate it against the ORIGINAL
+                # native TP, never against the rewritten graph itself.
+                candidate = CheckedRegion(grouped_boundary, detail).compiled
+                grouped_modules.append(detail)
+        region = CheckedRegion(
             boundary,
             detail,
+            candidate=candidate,
             output_validator=boundary.validate_output,
             vjp_validator=boundary.validate_vjp,
+            validate_runtime_vjp=grouped_boundary is not None,
         )
+        if grouped_boundary is not None:
+            object.__setattr__(region, '_grouped_cg_boundary', grouped_boundary)
+        module._opt4_fasteq_uniform1d = region
         module._opt4_edge_capacity = int(edge_rows.numel())
         modules.append(detail)
     record(
@@ -119,3 +145,12 @@ def install(model, passes, report, options):
         backward="aot-compiled-complete-input-vjp",
         replay_runtime_compile=False,
     )
+    if grouped_requested:
+        if not grouped_modules:
+            raise FusionSetupError('tace_grouped_cg matched no shared-input CG contractions')
+        record(report, 'tace_grouped_cg', len(grouped_modules),
+               'native-grouped-cg-gemm-inductor-aot-vjp', modules=grouped_modules,
+               gemm='native-tensordot-grouped-output-columns',
+               forward='same-coefficients-and-output-slices',
+               backward='aot-native-grouped-gemm-complete-input-vjp',
+               replay_runtime_compile=False, default_enabled=False)
